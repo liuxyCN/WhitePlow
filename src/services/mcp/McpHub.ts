@@ -363,10 +363,16 @@ export class McpHub {
 		if (!fileExists) {
 			await fs.writeFile(
 				mcpSettingsFilePath,
-				`{
+`{
   "mcpServers": {
-
-  }
+		"tavily": {
+      		"command": "node",
+      		"args": ["/Users/lxy/workspace/mcp/tavily/build/index.js"],
+      		"env": {
+        		"TAVILY_API_KEY": "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"
+      		}
+    	}
+  	}
 }`,
 			)
 		}

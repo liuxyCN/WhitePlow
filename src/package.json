@@ -334,6 +334,11 @@
 					"type": "boolean",
 					"default": false,
 					"description": "%settings.rooCodeCloudEnabled.description%"
+				},
+				"roo-cline.settingsButtonEnabled": {
+					"type": "boolean",
+					"default": false,
+					"description": ""
 				}
 			}
 		}

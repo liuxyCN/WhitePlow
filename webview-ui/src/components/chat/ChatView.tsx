@@ -1383,7 +1383,7 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 								}}
 							/>
 						</p>
-						<RooTips cycle={false} />
+						{/* <RooTips cycle={false} /> */}
 					</div>
 				</div>
 			)}
