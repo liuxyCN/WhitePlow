@@ -1,5 +1,5 @@
 {
-	"greeting": "Welcome to Roo Code",
+	"greeting": "Welcome to WhitePlow",
 	"task": {
 		"title": "Task",
 		"seeMore": "See more",
@@ -146,55 +146,55 @@
 		"tokens": "tokens"
 	},
 	"instructions": {
-		"wantsToFetch": "Roo wants to fetch detailed instructions to assist with the current task"
+		"wantsToFetch": "WhitePlow wants to fetch detailed instructions to assist with the current task"
 	},
 	"fileOperations": {
-		"wantsToRead": "Roo wants to read this file:",
-		"wantsToReadMultiple": "Roo wants to read multiple files:",
-		"wantsToReadAndXMore": "Roo wants to read this file and {{count}} more:",
-		"wantsToReadOutsideWorkspace": "Roo wants to read this file outside of the workspace:",
-		"didRead": "Roo read this file:",
-		"wantsToEdit": "Roo wants to edit this file:",
-		"wantsToEditOutsideWorkspace": "Roo wants to edit this file outside of the workspace:",
-		"wantsToApplyBatchChanges": "Roo wants to apply changes to multiple files:",
-		"wantsToCreate": "Roo wants to create a new file:",
-		"wantsToSearchReplace": "Roo wants to search and replace in this file:",
-		"didSearchReplace": "Roo performed search and replace on this file:",
-		"wantsToInsert": "Roo wants to insert content into this file:",
-		"wantsToInsertWithLineNumber": "Roo wants to insert content into this file at line {{lineNumber}}:",
-		"wantsToInsertAtEnd": "Roo wants to append content to the end of this file:"
+		"wantsToRead": "WhitePlow wants to read this file:",
+		"wantsToReadMultiple": "WhitePlow wants to read multiple files:",
+		"wantsToReadAndXMore": "WhitePlow wants to read this file and {{count}} more:",
+		"wantsToReadOutsideWorkspace": "WhitePlow wants to read this file outside of the workspace:",
+		"didRead": "WhitePlow read this file:",
+		"wantsToEdit": "WhitePlow wants to edit this file:",
+		"wantsToEditOutsideWorkspace": "WhitePlow wants to edit this file outside of the workspace:",
+		"wantsToApplyBatchChanges": "WhitePlow wants to apply changes to multiple files:",
+		"wantsToCreate": "WhitePlow wants to create a new file:",
+		"wantsToSearchReplace": "WhitePlow wants to search and replace in this file:",
+		"didSearchReplace": "WhitePlow performed search and replace on this file:",
+		"wantsToInsert": "WhitePlow wants to insert content into this file:",
+		"wantsToInsertWithLineNumber": "WhitePlow wants to insert content into this file at line {{lineNumber}}:",
+		"wantsToInsertAtEnd": "WhitePlow wants to append content to the end of this file:"
 	},
 	"directoryOperations": {
-		"wantsToViewTopLevel": "Roo wants to view the top level files in this directory:",
-		"didViewTopLevel": "Roo viewed the top level files in this directory:",
-		"wantsToViewRecursive": "Roo wants to recursively view all files in this directory:",
-		"didViewRecursive": "Roo recursively viewed all files in this directory:",
-		"wantsToViewDefinitions": "Roo wants to view source code definition names used in this directory:",
-		"didViewDefinitions": "Roo viewed source code definition names used in this directory:",
-		"wantsToSearch": "Roo wants to search this directory for <code>{{regex}}</code>:",
-		"didSearch": "Roo searched this directory for <code>{{regex}}</code>:"
+		"wantsToViewTopLevel": "WhitePlow wants to view the top level files in this directory:",
+		"didViewTopLevel": "WhitePlow viewed the top level files in this directory:",
+		"wantsToViewRecursive": "WhitePlow wants to recursively view all files in this directory:",
+		"didViewRecursive": "WhitePlow recursively viewed all files in this directory:",
+		"wantsToViewDefinitions": "WhitePlow wants to view source code definition names used in this directory:",
+		"didViewDefinitions": "WhitePlow viewed source code definition names used in this directory:",
+		"wantsToSearch": "WhitePlow wants to search this directory for <code>{{regex}}</code>:",
+		"didSearch": "WhitePlow searched this directory for <code>{{regex}}</code>:"
 	},
 	"codebaseSearch": {
-		"wantsToSearch": "Roo wants to search the codebase for <code>{{query}}</code>:",
-		"wantsToSearchWithPath": "Roo wants to search the codebase for <code>{{query}}</code> in <code>{{path}}</code>:",
+		"wantsToSearch": "WhitePlow wants to search the codebase for <code>{{query}}</code>:",
+		"wantsToSearchWithPath": "WhitePlow wants to search the codebase for <code>{{query}}</code> in <code>{{path}}</code>:",
 		"didSearch": "Found {{count}} result(s) for <code>{{query}}</code>:"
 	},
 	"commandOutput": "Command Output",
 	"response": "Response",
 	"arguments": "Arguments",
 	"mcp": {
-		"wantsToUseTool": "Roo wants to use a tool on the {{serverName}} MCP server:",
-		"wantsToAccessResource": "Roo wants to access a resource on the {{serverName}} MCP server:"
+		"wantsToUseTool": "WhitePlow wants to use a tool on the {{serverName}} MCP server:",
+		"wantsToAccessResource": "WhitePlow wants to access a resource on the {{serverName}} MCP server:"
 	},
 	"modes": {
-		"wantsToSwitch": "Roo wants to switch to {{mode}} mode",
-		"wantsToSwitchWithReason": "Roo wants to switch to {{mode}} mode because: {{reason}}",
-		"didSwitch": "Roo switched to {{mode}} mode",
-		"didSwitchWithReason": "Roo switched to {{mode}} mode because: {{reason}}"
+		"wantsToSwitch": "WhitePlow wants to switch to {{mode}} mode",
+		"wantsToSwitchWithReason": "WhitePlow wants to switch to {{mode}} mode because: {{reason}}",
+		"didSwitch": "WhitePlow switched to {{mode}} mode",
+		"didSwitchWithReason": "WhitePlow switched to {{mode}} mode because: {{reason}}"
 	},
 	"subtasks": {
-		"wantsToCreate": "Roo wants to create a new subtask in {{mode}} mode:",
-		"wantsToFinish": "Roo wants to finish this subtask",
+		"wantsToCreate": "WhitePlow wants to create a new subtask in {{mode}} mode:",
+		"wantsToFinish": "WhitePlow wants to finish this subtask",
 		"newTaskContent": "Subtask Instructions",
 		"completionContent": "Subtask Completed",
 		"resultContent": "Subtask Results",
@@ -202,25 +202,25 @@
 		"completionInstructions": "Subtask completed! You can review the results and suggest any corrections or next steps. If everything looks good, confirm to return the result to the parent task."
 	},
 	"questions": {
-		"hasQuestion": "Roo has a question:"
+		"hasQuestion": "WhitePlow has a question:"
 	},
 	"taskCompleted": "Task Completed",
 	"error": "Error",
 	"diffError": {
 		"title": "Edit Unsuccessful"
 	},
-	"troubleMessage": "Roo is having trouble...",
+	"troubleMessage": "WhitePlow is having trouble...",
 	"powershell": {
 		"issues": "It seems like you're having Windows PowerShell issues, please see this"
 	},
 	"autoApprove": {
 		"title": "Auto-approve:",
 		"none": "None",
-		"description": "Auto-approve allows Roo Code to perform actions without asking for permission. Only enable for actions you fully trust. More detailed configuration available in <settingsLink>Settings</settingsLink>."
+		"description": "Auto-approve allows WhitePlow to perform actions without asking for permission. Only enable for actions you fully trust. More detailed configuration available in <settingsLink>Settings</settingsLink>."
 	},
 	"announcement": {
-		"title": "🎉 Roo Code {{version}} Released",
-		"description": "Roo Code {{version}} brings major new features and improvements based on your feedback.",
+		"title": "🎉 WhitePlow {{version}} Released",
+		"description": "WhitePlow {{version}} brings major new features and improvements based on your feedback.",
 		"whatsNew": "What's New",
 		"feature1": "<bold>Experimental Marketplace</bold>: Discover and install modes and MCPs from the new marketplace (enable in <experimentalSettingsLink>Experimental Settings</experimentalSettingsLink>)",
 		"feature2": "<bold>Enhanced File Operations</bold>: Multiple concurrent file writes in experimental settings, and concurrent reads now in <contextSettingsLink>Context Settings</contextSettingsLink>",
@@ -236,7 +236,7 @@
 		"copyToInput": "Copy to input (same as shift + click)"
 	},
 	"browser": {
-		"rooWantsToUse": "Roo wants to use the browser:",
+		"rooWantsToUse": "WhitePlow wants to use the browser:",
 		"consoleLogs": "Console Logs",
 		"noNewLogs": "(No new logs)",
 		"screenshot": "Browser screenshot",
@@ -270,13 +270,13 @@
 	"profileViolationWarning": "The current profile violates your organization's settings",
 	"shellIntegration": {
 		"title": "Command Execution Warning",
-		"description": "Your command is being executed without VSCode terminal shell integration. To suppress this warning you can disable shell integration in the <strong>Terminal</strong> section of the <settingsLink>Roo Code settings</settingsLink> or troubleshoot VSCode terminal integration using the link below.",
+		"description": "Your command is being executed without VSCode terminal shell integration. To suppress this warning you can disable shell integration in the <strong>Terminal</strong> section of the <settingsLink>WhitePlow settings</settingsLink> or troubleshoot VSCode terminal integration using the link below.",
 		"troubleshooting": "Click here for shell integration documentation."
 	},
 	"ask": {
 		"autoApprovedRequestLimitReached": {
 			"title": "Auto-Approved Request Limit Reached",
-			"description": "Roo has reached the auto-approved limit of {{count}} API request(s). Would you like to reset the count and proceed with the task?",
+			"description": "WhitePlow has reached the auto-approved limit of {{count}} API request(s). Would you like to reset the count and proceed with the task?",
 			"button": "Reset and Continue"
 		}
 	},
