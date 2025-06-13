@@ -49,7 +49,7 @@ const WelcomeView = () => {
 
 	const defaultApiConfig : ProviderSettings = {
 		apiProvider:'openai',
-		openAiBaseUrl:'https://a.chinalifepe.com/v1',
+		openAiBaseUrl:'https://a.abc.com/v1',
 		openAiModelId:'deepseek-r1',
 		openAiR1FormatEnabled:true,
 		enableReasoningEffort:true,
