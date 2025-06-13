@@ -14,7 +14,7 @@ type AccountViewProps = {
 export const AccountView = ({ userInfo, isAuthenticated, onDone }: AccountViewProps) => {
 	const { t } = useAppTranslation()
 
-	const rooLogoUri = (window as any).IMAGES_BASE_URI + "/roo-logo.svg"
+	const rooLogoUri = (window as any).IMAGES_BASE_URI + "/whiteplow-logo.png"
 
 	return (
 		<div className="flex flex-col h-full p-4 bg-vscode-editor-background">
@@ -70,7 +70,7 @@ export const AccountView = ({ userInfo, isAuthenticated, onDone }: AccountViewPr
 									maskRepeat: "no-repeat",
 									maskSize: "contain",
 								}}>
-								<img src={rooLogoUri} alt="Roo logo" className="w-12 h-12 opacity-0" />
+								<img src={rooLogoUri} alt="WhitePlow logo" className="w-12 h-12 opacity-0" />
 							</div>
 						</div>
 					</div>
