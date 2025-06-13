@@ -131,9 +131,13 @@ const getCommandsMap = ({ context, outputChannel, provider }: RegisterCommandOpt
 
 		TelemetryService.instance.captureTitleButtonClicked("settings")
 
-		visibleProvider.postMessageToWebview({ type: "action", action: "settingsButtonClicked" })
-		// Also explicitly post the visibility message to trigger scroll reliably
-		visibleProvider.postMessageToWebview({ type: "action", action: "didBecomeVisible" })
+		const settingsButtonEnabled = vscode.workspace.getConfiguration(Package.name).get<string[]>("settingsButtonEnabled") || false
+
+		if(settingsButtonEnabled){
+			visibleProvider.postMessageToWebview({ type: "action", action: "settingsButtonClicked" })
+			// Also explicitly post the visibility message to trigger scroll reliably
+			visibleProvider.postMessageToWebview({ type: "action", action: "didBecomeVisible" })
+		}
 	},
 	historyButtonClicked: () => {
 		const visibleProvider = getVisibleProviderOrLog(outputChannel)

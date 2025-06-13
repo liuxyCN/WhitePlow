@@ -439,10 +439,10 @@ export class McpHub {
 		if (!fileExists) {
 			await fs.writeFile(
 				mcpSettingsFilePath,
-				`{
+`{
   "mcpServers": {
-
-  }
+		
+  	}
 }`,
 			)
 		}

@@ -102,6 +102,8 @@ export const globalSettingsSchema = z.object({
 	customSupportPrompts: customSupportPromptsSchema.optional(),
 	enhancementApiConfigId: z.string().optional(),
 	historyPreviewCollapsed: z.boolean().optional(),
+
+	settingsButtonEnabled: z.boolean().optional(),
 })
 
 export type GlobalSettings = z.infer<typeof globalSettingsSchema>
@@ -188,6 +190,8 @@ export const GLOBAL_SETTINGS_KEYS = keysOf<GlobalSettings>()([
 	"enhancementApiConfigId",
 	"cachedChromeHostUrl",
 	"historyPreviewCollapsed",
+	
+	"settingsButtonEnabled",
 ])
 
 /**
