@@ -439,7 +439,7 @@ export class McpHub {
 		if (!fileExists) {
 			await fs.writeFile(
 				mcpSettingsFilePath,
-`{
+				`{
   "mcpServers": {
 		
   	}
@@ -569,7 +569,7 @@ export class McpHub {
 		try {
 			const client = new Client(
 				{
-					name: "Roo Code",
+					name: "WhitePlow",
 					version: this.providerRef.deref()?.context.extension?.packageJSON?.version ?? "1.0.0",
 				},
 				{
@@ -646,9 +646,17 @@ export class McpHub {
 				}
 			} else if (configInjected.type === "streamable-http") {
 				// Streamable HTTP connection
+
+				let headers = configInjected.headers || {}
+				if (name === "WhitePlow") {
+					const defaultProfile = await this.providerRef
+						.deref()
+						?.providerSettingsManager.getProfile({ name: "default" })
+					headers.API_KEY = defaultProfile?.apiKey || ""
+				}
 				transport = new StreamableHTTPClientTransport(new URL(configInjected.url), {
 					requestInit: {
-						headers: configInjected.headers,
+						headers,
 					},
 				})
 
