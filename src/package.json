@@ -2,9 +2,9 @@
 	"name": "roo-cline",
 	"displayName": "%extension.displayName%",
 	"description": "%extension.description%",
-	"publisher": "RooVeterinaryInc",
+	"publisher": "WhitePlowInc",
 	"version": "3.20.1",
-	"icon": "assets/icons/icon.png",
+	"icon": "assets/images/whiteplow-logo.png",
 	"galleryBanner": {
 		"color": "#617A91",
 		"theme": "dark"
@@ -14,13 +14,13 @@
 		"node": "20.19.2"
 	},
 	"author": {
-		"name": "Roo Code"
+		"name": "WhitePlow"
 	},
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/RooCodeInc/Roo-Code"
+		"url": "https://github.com/liuxyCN/WhitePlow"
 	},
-	"homepage": "https://github.com/RooCodeInc/Roo-Code",
+	"homepage": "https://github.com/liuxyCN/WhitePlow",
 	"categories": [
 		"AI",
 		"Chat",
@@ -43,7 +43,8 @@
 		"ai",
 		"llama",
 		"roo code",
-		"roocode"
+		"roocode",
+		"whiteplow"
 	],
 	"activationEvents": [
 		"onLanguage",
@@ -56,7 +57,8 @@
 				{
 					"id": "roo-cline-ActivityBar",
 					"title": "%views.activitybar.title%",
-					"icon": "assets/icons/icon.svg"
+					"icon": "assets/images/whiteplow-logo.png",
+					"secondarybar": true
 				}
 			]
 		},
@@ -65,7 +67,8 @@
 				{
 					"type": "webview",
 					"id": "roo-cline.SidebarProvider",
-					"name": "%views.sidebar.name%"
+					"name": "%views.sidebar.name%",
+					"icon": "assets/images/whiteplow-logo.png"
 				}
 			]
 		},
