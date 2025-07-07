@@ -12,6 +12,22 @@
 		"description": "开启后 WhitePlow 可帮你创建<1>新</1>自定义 MCP 服务器。<0>了解服务器创建</0>",
 		"hint": "提示：不需要 WhitePlow 创建新 MCP 服务器时建议关闭，减少 API Token 费用。"
 	},
+	"gateway": {
+		"title": "MCP 网关配置",
+		"description": "配置 MCP 网关连接以增强服务器管理功能",
+		"enable": {
+			"title": "启用 MCP 网关",
+			"description": "开启此选项以启用 MCP 网关集成。这将提供额外的文件处理工具，如 OCR 功能。"
+		},
+		"url": {
+			"label": "网关 URL",
+			"placeholder": "https://your-mcp-gateway.com/api"
+		},
+		"apiKey": {
+			"label": "API 密钥",
+			"placeholder": "请输入您的 MCP 网关 API 密钥"
+		}
+	},
 	"editGlobalMCP": "编辑全局 MCP",
 	"editProjectMCP": "编辑项目 MCP",
 	"learnMoreEditingSettings": "了解如何编辑 MCP 设置文件",

@@ -2,6 +2,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { StdioClientTransport, getDefaultEnvironment } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js"
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js"
+import { InMemoryFileCoolServer } from "./InMemoryMcpServer.js"
 import ReconnectingEventSource from "reconnecting-eventsource"
 import {
 	CallToolResultSchema,
@@ -37,12 +38,13 @@ export type McpConnection = {
 	server: McpServer
 	client: Client
 	transport: StdioClientTransport | SSEClientTransport | StreamableHTTPClientTransport
+	inMemoryServer?: InMemoryFileCoolServer // For in-memory connections
 }
 
 // Base configuration schema for common settings
 const BaseConfigSchema = z.object({
 	disabled: z.boolean().optional(),
-	timeout: z.number().min(1).max(3600).optional().default(60),
+	timeout: z.number().min(1).max(3600).optional().default(600),
 	alwaysAllow: z.array(z.string()).default([]),
 	watchPaths: z.array(z.string()).optional(), // paths to watch for changes and restart server
 })
@@ -141,6 +143,7 @@ export class McpHub {
 		this.setupWorkspaceFoldersWatcher()
 		this.initializeGlobalMcpServers()
 		this.initializeProjectMcpServers()
+		this.initializeInMemoryFileCoolServer().catch(console.error)
 	}
 	/**
 	 * Registers a client (e.g., ClineProvider) using this hub.
@@ -558,10 +561,91 @@ export class McpHub {
 		await this.initializeMcpServers("project")
 	}
 
+	// Initialize in-memory file-cool server
+	private async initializeInMemoryFileCoolServer(): Promise<void> {
+		try {
+			console.log("Initializing in-memory file-cool server...")
+
+			// Get configuration from GlobalSettings
+			const provider = this.providerRef.deref()
+			let config: { apiUrl?: string; apiKey?: string } | undefined = undefined
+			if (provider) {
+				const { mcpGatewayEnabled, mcpGatewayUrl, mcpGatewayApiKey } = await provider.getState()
+
+				// Only initialize if MCP Gateway is enabled
+				if (!mcpGatewayEnabled) {
+					console.log("MCP Gateway is disabled. Skipping file-cool server initialization.")
+					return
+				}
+
+				// Only pass config if both URL and API key are provided and not empty
+				if (mcpGatewayUrl && mcpGatewayUrl.trim() && mcpGatewayApiKey && mcpGatewayApiKey.trim()) {
+					config = {
+						apiUrl: mcpGatewayUrl.trim(),
+						apiKey: mcpGatewayApiKey.trim()
+					}
+					console.log("MCP Gateway configuration found, initializing file-cool server with custom settings")
+				} else {
+					console.log("MCP Gateway configuration not complete - URL or API Key missing. File-cool server will require configuration.")
+				}
+			}
+
+			const inMemoryServer = new InMemoryFileCoolServer(config)
+			const client = await inMemoryServer.connect()
+			console.log("In-memory server connected successfully")
+
+			const connection: McpConnection = {
+				server: {
+					name: "file-cool-memory",
+					config: JSON.stringify({ type: "stdio", command: "in-memory" }), // Valid config for in-memory server
+					status: "connected",
+					disabled: false,
+					source: "memory" as any, // Special source to avoid normal validation flows
+					errorHistory: [],
+					tools: [],
+					resources: [],
+					resourceTemplates: [],
+				},
+				client,
+				transport: null as any, // Not used for in-memory connections
+				inMemoryServer,
+			}
+
+			// Add connection first
+			this.connections.push(connection)
+			console.log("Connection added to connections list")
+
+			// Add a small delay to ensure everything is ready
+			await new Promise(resolve => setTimeout(resolve, 100))
+
+			// Fetch tools and resources
+			console.log("Fetching tools for in-memory server...")
+			try {
+				connection.server.tools = await this.fetchToolsList("file-cool-memory", "memory")
+				console.log("In-memory server tools fetched:", connection.server.tools.length)
+			} catch (error) {
+				console.error("Failed to fetch tools:", error)
+			}
+
+			try {
+				connection.server.resources = await this.fetchResourcesList("file-cool-memory", "memory")
+				connection.server.resourceTemplates = await this.fetchResourceTemplatesList("file-cool-memory", "memory")
+			} catch (error) {
+				console.error("Failed to fetch resources:", error)
+			}
+
+			await this.notifyWebviewOfServerChanges()
+
+			console.log("In-memory file-cool server initialized successfully with", connection.server.tools?.length || 0, "tools")
+		} catch (error) {
+			console.error("Failed to initialize in-memory file-cool server:", error)
+		}
+	}
+
 	private async connectToServer(
 		name: string,
 		config: z.infer<typeof ServerConfigSchema>,
-		source: "global" | "project" = "global",
+		source: "global" | "project" | "memory" = "global",
 	): Promise<void> {
 		// Remove existing connection if it exists with the same source
 		await this.deleteConnection(name, source)
@@ -800,13 +884,13 @@ export class McpHub {
 	 * @param source Optional source to filter by (global or project)
 	 * @returns The matching connection or undefined if not found
 	 */
-	private findConnection(serverName: string, source?: "global" | "project"): McpConnection | undefined {
+	private findConnection(serverName: string, source?: "global" | "project" | "memory"): McpConnection | undefined {
 		// If source is specified, only find servers with that source
 		if (source !== undefined) {
 			return this.connections.find((conn) => conn.server.name === serverName && conn.server.source === source)
 		}
 
-		// If no source is specified, first look for project servers, then global servers
+		// If no source is specified, search in priority order: project > global > memory
 		// This ensures that when servers have the same name, project servers are prioritized
 		const projectConn = this.connections.find(
 			(conn) => conn.server.name === serverName && conn.server.source === "project",
@@ -814,19 +898,28 @@ export class McpHub {
 		if (projectConn) return projectConn
 
 		// If no project server is found, look for global servers
-		return this.connections.find(
+		const globalConn = this.connections.find(
 			(conn) => conn.server.name === serverName && (conn.server.source === "global" || !conn.server.source),
+		)
+		if (globalConn) return globalConn
+
+		// Finally, look for memory servers
+		return this.connections.find(
+			(conn) => conn.server.name === serverName && conn.server.source === "memory",
 		)
 	}
 
-	private async fetchToolsList(serverName: string, source?: "global" | "project"): Promise<McpTool[]> {
+	private async fetchToolsList(serverName: string, source?: "global" | "project" | "memory"): Promise<McpTool[]> {
 		try {
 			// Use the helper method to find the connection
 			const connection = this.findConnection(serverName, source)
 
 			if (!connection) {
+				console.error(`Server ${serverName} with source ${source} not found`)
 				throw new Error(`Server ${serverName} not found`)
 			}
+
+			console.log(`Fetching tools for ${serverName} (source: ${source})...`)
 
 			const response = await connection.client.request({ method: "tools/list" }, ListToolsResultSchema)
 
@@ -835,27 +928,30 @@ export class McpHub {
 			let configPath: string
 			let alwaysAllowConfig: string[] = []
 
-			// Read from the appropriate config file based on the actual source
-			try {
-				if (actualSource === "project") {
-					// Get project MCP config path
-					const projectMcpPath = await this.getProjectMcpPath()
-					if (projectMcpPath) {
-						configPath = projectMcpPath
+			// Skip config file reading for memory servers
+			if (actualSource !== "memory") {
+				// Read from the appropriate config file based on the actual source
+				try {
+					if (actualSource === "project") {
+						// Get project MCP config path
+						const projectMcpPath = await this.getProjectMcpPath()
+						if (projectMcpPath) {
+							configPath = projectMcpPath
+							const content = await fs.readFile(configPath, "utf-8")
+							const config = JSON.parse(content)
+							alwaysAllowConfig = config.mcpServers?.[serverName]?.alwaysAllow || []
+						}
+					} else {
+						// Get global MCP settings path
+						configPath = await this.getMcpSettingsFilePath()
 						const content = await fs.readFile(configPath, "utf-8")
 						const config = JSON.parse(content)
 						alwaysAllowConfig = config.mcpServers?.[serverName]?.alwaysAllow || []
 					}
-				} else {
-					// Get global MCP settings path
-					configPath = await this.getMcpSettingsFilePath()
-					const content = await fs.readFile(configPath, "utf-8")
-					const config = JSON.parse(content)
-					alwaysAllowConfig = config.mcpServers?.[serverName]?.alwaysAllow || []
+				} catch (error) {
+					console.error(`Failed to read alwaysAllow config for ${serverName}:`, error)
+					// Continue with empty alwaysAllowConfig
 				}
-			} catch (error) {
-				console.error(`Failed to read alwaysAllow config for ${serverName}:`, error)
-				// Continue with empty alwaysAllowConfig
 			}
 
 			// Mark tools as always allowed based on settings
@@ -871,7 +967,7 @@ export class McpHub {
 		}
 	}
 
-	private async fetchResourcesList(serverName: string, source?: "global" | "project"): Promise<McpResource[]> {
+	private async fetchResourcesList(serverName: string, source?: "global" | "project" | "memory"): Promise<McpResource[]> {
 		try {
 			const connection = this.findConnection(serverName, source)
 			if (!connection) {
@@ -887,7 +983,7 @@ export class McpHub {
 
 	private async fetchResourceTemplatesList(
 		serverName: string,
-		source?: "global" | "project",
+		source?: "global" | "project" | "memory",
 	): Promise<McpResourceTemplate[]> {
 		try {
 			const connection = this.findConnection(serverName, source)
@@ -905,7 +1001,7 @@ export class McpHub {
 		}
 	}
 
-	async deleteConnection(name: string, source?: "global" | "project"): Promise<void> {
+	async deleteConnection(name: string, source?: "global" | "project" | "memory"): Promise<void> {
 		// If source is provided, only delete connections from that source
 		const connections = source
 			? this.connections.filter((conn) => conn.server.name === name && conn.server.source === source)
@@ -913,8 +1009,13 @@ export class McpHub {
 
 		for (const connection of connections) {
 			try {
-				await connection.transport.close()
-				await connection.client.close()
+				// Handle in-memory servers
+				if (connection.inMemoryServer) {
+					await connection.inMemoryServer.disconnect()
+				} else {
+					await connection.transport.close()
+					await connection.client.close()
+				}
 			} catch (error) {
 				console.error(`Failed to close transport for ${name}:`, error)
 			}
@@ -930,16 +1031,18 @@ export class McpHub {
 
 	async updateServerConnections(
 		newServers: Record<string, any>,
-		source: "global" | "project" = "global",
+		source: "global" | "project" | "memory" = "global",
 		manageConnectingState: boolean = true,
 	): Promise<void> {
 		if (manageConnectingState) {
 			this.isConnecting = true
 		}
 		this.removeAllFileWatchers()
-		// Filter connections by source
+		// Filter connections by source, excluding in-memory servers
 		const currentConnections = this.connections.filter(
-			(conn) => conn.server.source === source || (!conn.server.source && source === "global"),
+			(conn) =>
+				conn.server.source !== "memory" && // Exclude in-memory servers
+				(conn.server.source === source || (!conn.server.source && source === "global")),
 		)
 		const currentNames = new Set(currentConnections.map((conn) => conn.server.name))
 		const newNames = new Set(Object.keys(newServers))
@@ -994,8 +1097,13 @@ export class McpHub {
 	private setupFileWatcher(
 		name: string,
 		config: z.infer<typeof ServerConfigSchema>,
-		source: "global" | "project" = "global",
+		source: "global" | "project" | "memory" = "global",
 	) {
+		// Skip file watchers for memory servers
+		if (source === "memory") {
+			return
+		}
+
 		// Initialize an empty array for this server if it doesn't exist
 		if (!this.fileWatchers.has(name)) {
 			this.fileWatchers.set(name, [])
@@ -1059,7 +1167,12 @@ export class McpHub {
 		this.fileWatchers.clear()
 	}
 
-	async restartConnection(serverName: string, source?: "global" | "project"): Promise<void> {
+	async restartConnection(serverName: string, source?: "global" | "project" | "memory"): Promise<void> {
+		// Skip restart for memory servers
+		if (source === "memory") {
+			return
+		}
+
 		this.isConnecting = true
 		const provider = this.providerRef.deref()
 		if (!provider) {
@@ -1096,6 +1209,23 @@ export class McpHub {
 
 		await this.notifyWebviewOfServerChanges()
 		this.isConnecting = false
+	}
+
+	public async refreshInMemoryServers(): Promise<void> {
+		try {
+			// Find and remove existing in-memory connections
+			const inMemoryConnections = this.connections.filter(conn => conn.server.source === "memory")
+			for (const conn of inMemoryConnections) {
+				await this.deleteConnection(conn.server.name, conn.server.source)
+			}
+
+			// Re-initialize in-memory servers with new configuration
+			await this.initializeInMemoryFileCoolServer()
+
+			await this.notifyWebviewOfServerChanges()
+		} catch (error) {
+			console.error("Error refreshing in-memory servers:", error)
+		}
 	}
 
 	public async refreshAllConnections(): Promise<void> {
@@ -1153,6 +1283,9 @@ export class McpHub {
 			await this.initializeMcpServers("global")
 			await this.initializeMcpServers("project")
 
+			// Re-initialize in-memory servers
+			await this.initializeInMemoryFileCoolServer()
+
 			await delay(100)
 
 			await this.notifyWebviewOfServerChanges()
@@ -1163,6 +1296,62 @@ export class McpHub {
 		} finally {
 			this.isConnecting = false
 		}
+	}
+
+	/**
+	 * Sort connections by priority: project > global > memory
+	 * Within each source type, sort by configuration order, then alphabetically
+	 */
+	private sortConnectionsByPriority(globalOrder: string[], projectOrder: string[]): McpConnection[] {
+		return [...this.connections].sort((a, b) => {
+			const aSource = a.server.source || "global"
+			const bSource = b.server.source || "global"
+
+			// Define source priority: project (0) > global (1) > memory (2)
+			const sourcePriority = { project: 0, global: 1, memory: 2 }
+			const aPriority = sourcePriority[aSource as keyof typeof sourcePriority] ?? 1
+			const bPriority = sourcePriority[bSource as keyof typeof sourcePriority] ?? 1
+
+			// If different source types, sort by priority
+			if (aPriority !== bPriority) {
+				return aPriority - bPriority
+			}
+
+			// Same source type - sort by order within that source
+			return this.compareServersByOrder(a.server.name, b.server.name, aSource, globalOrder, projectOrder)
+		})
+	}
+
+	/**
+	 * Compare two servers by their order within the same source type
+	 */
+	private compareServersByOrder(
+		nameA: string,
+		nameB: string,
+		source: string,
+		globalOrder: string[],
+		projectOrder: string[]
+	): number {
+		const getOrderIndex = (name: string, order: string[]) => {
+			const index = order.indexOf(name)
+			return index === -1 ? Number.MAX_SAFE_INTEGER : index
+		}
+
+		let indexA: number, indexB: number
+
+		if (source === "project") {
+			indexA = getOrderIndex(nameA, projectOrder)
+			indexB = getOrderIndex(nameB, projectOrder)
+		} else if (source === "global") {
+			indexA = getOrderIndex(nameA, globalOrder)
+			indexB = getOrderIndex(nameB, globalOrder)
+		} else {
+			// Memory servers: sort alphabetically
+			return nameA.localeCompare(nameB)
+		}
+
+		// If both have same order index (including both not found), sort alphabetically
+		return indexA !== indexB ? indexA - indexB : nameA.localeCompare(nameB)
 	}
 
 	private async notifyWebviewOfServerChanges(): Promise<void> {
@@ -1185,26 +1374,8 @@ export class McpHub {
 			}
 		}
 
-		// Sort connections: first project servers in their defined order, then global servers in their defined order
-		// This ensures that when servers have the same name, project servers are prioritized
-		const sortedConnections = [...this.connections].sort((a, b) => {
-			const aIsGlobal = a.server.source === "global" || !a.server.source
-			const bIsGlobal = b.server.source === "global" || !b.server.source
-
-			// If both are global or both are project, sort by their respective order
-			if (aIsGlobal && bIsGlobal) {
-				const indexA = globalServerOrder.indexOf(a.server.name)
-				const indexB = globalServerOrder.indexOf(b.server.name)
-				return indexA - indexB
-			} else if (!aIsGlobal && !bIsGlobal) {
-				const indexA = projectServerOrder.indexOf(a.server.name)
-				const indexB = projectServerOrder.indexOf(b.server.name)
-				return indexA - indexB
-			}
-
-			// Project servers come before global servers (reversed from original)
-			return aIsGlobal ? 1 : -1
-		})
+		// Sort connections by priority and order
+		const sortedConnections = this.sortConnectionsByPriority(globalServerOrder, projectServerOrder)
 
 		// Send sorted servers to webview
 		const targetProvider: ClineProvider | undefined = this.providerRef.deref()
@@ -1232,7 +1403,7 @@ export class McpHub {
 	public async toggleServerDisabled(
 		serverName: string,
 		disabled: boolean,
-		source?: "global" | "project",
+		source?: "global" | "project" | "memory",
 	): Promise<void> {
 		try {
 			// Find the connection to determine if it's a global or project server
@@ -1242,6 +1413,14 @@ export class McpHub {
 			}
 
 			const serverSource = connection.server.source || "global"
+
+			// For memory servers, just update the in-memory state without touching config files
+			if (serverSource === "memory") {
+				connection.server.disabled = disabled
+				await this.notifyWebviewOfServerChanges()
+				return
+			}
+
 			// Update the server config in the appropriate file
 			await this.updateServerConfig(serverName, { disabled }, serverSource)
 
@@ -1280,8 +1459,12 @@ export class McpHub {
 	private async updateServerConfig(
 		serverName: string,
 		configUpdate: Record<string, any>,
-		source: "global" | "project" = "global",
+		source: "global" | "project" | "memory" = "global",
 	): Promise<void> {
+		// Skip config updates for memory servers
+		if (source === "memory") {
+			return
+		}
 		// Determine which config file to update
 		let configPath: string
 		if (source === "project") {
@@ -1362,7 +1545,7 @@ export class McpHub {
 		}
 	}
 
-	public async deleteServer(serverName: string, source?: "global" | "project"): Promise<void> {
+	public async deleteServer(serverName: string, source?: "global" | "project" | "memory"): Promise<void> {
 		try {
 			// Find the connection to determine if it's a global or project server
 			const connection = this.findConnection(serverName, source)
@@ -1371,6 +1554,14 @@ export class McpHub {
 			}
 
 			const serverSource = connection.server.source || "global"
+
+			// For memory servers, just disconnect and remove from connections
+			if (serverSource === "memory") {
+				await this.deleteConnection(serverName, serverSource)
+				await this.notifyWebviewOfServerChanges()
+				return
+			}
+
 			// Determine config file based on server source
 			const isProjectServer = serverSource === "project"
 			let configPath: string
@@ -1430,7 +1621,7 @@ export class McpHub {
 		}
 	}
 
-	async readResource(serverName: string, uri: string, source?: "global" | "project"): Promise<McpResourceResponse> {
+	async readResource(serverName: string, uri: string, source?: "global" | "project" | "memory"): Promise<McpResourceResponse> {
 		const connection = this.findConnection(serverName, source)
 		if (!connection) {
 			throw new Error(`No connection found for server: ${serverName}${source ? ` with source ${source}` : ""}`)
@@ -1453,7 +1644,7 @@ export class McpHub {
 		serverName: string,
 		toolName: string,
 		toolArguments?: Record<string, unknown>,
-		source?: "global" | "project",
+		source?: "global" | "project" | "memory",
 	): Promise<McpToolCallResponse> {
 		const connection = this.findConnection(serverName, source)
 		if (!connection) {
@@ -1468,11 +1659,11 @@ export class McpHub {
 		let timeout: number
 		try {
 			const parsedConfig = ServerConfigSchema.parse(JSON.parse(connection.server.config))
-			timeout = (parsedConfig.timeout ?? 60) * 1000
+			timeout = (parsedConfig.timeout ?? 600) * 1000
 		} catch (error) {
 			console.error("Failed to parse server config for timeout:", error)
-			// Default to 60 seconds if parsing fails
-			timeout = 60 * 1000
+			// Default to 600 seconds if parsing fails
+			timeout = 600 * 1000
 		}
 
 		return await connection.client.request(
@@ -1492,10 +1683,23 @@ export class McpHub {
 
 	async toggleToolAlwaysAllow(
 		serverName: string,
-		source: "global" | "project",
+		source: "global" | "project" | "memory",
 		toolName: string,
 		shouldAllow: boolean,
 	): Promise<void> {
+		// Skip config file updates for memory servers
+		if (source === "memory") {
+			// For memory servers, just update the in-memory tool configuration
+			const connection = this.findConnection(serverName, source)
+			if (connection) {
+				const tool = connection.server.tools?.find(t => t.name === toolName)
+				if (tool) {
+					tool.alwaysAllow = shouldAllow
+				}
+			}
+			await this.notifyWebviewOfServerChanges()
+			return
+		}
 		try {
 			// Find the connection with matching name and source
 			const connection = this.findConnection(serverName, source)

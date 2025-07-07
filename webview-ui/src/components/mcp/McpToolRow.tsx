@@ -8,7 +8,7 @@ import { vscode } from "@src/utils/vscode"
 type McpToolRowProps = {
 	tool: McpTool
 	serverName?: string
-	serverSource?: "global" | "project"
+	serverSource?: "global" | "project" | "memory"
 	alwaysAllowMcp?: boolean
 }
 

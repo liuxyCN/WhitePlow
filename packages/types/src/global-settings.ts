@@ -94,6 +94,9 @@ export const globalSettingsSchema = z.object({
 
 	mcpEnabled: z.boolean().optional(),
 	enableMcpServerCreation: z.boolean().optional(),
+	mcpGatewayEnabled: z.boolean().optional(),
+	mcpGatewayUrl: z.string().optional(),
+	mcpGatewayApiKey: z.string().optional(),
 
 	mode: z.string().optional(),
 	modeApiConfigs: z.record(z.string(), z.string()).optional(),
@@ -181,6 +184,9 @@ export const GLOBAL_SETTINGS_KEYS = keysOf<GlobalSettings>()([
 	"telemetrySetting",
 	"mcpEnabled",
 	"enableMcpServerCreation",
+	"mcpGatewayEnabled",
+	"mcpGatewayUrl",
+	"mcpGatewayApiKey",
 
 	"mode",
 	"modeApiConfigs",

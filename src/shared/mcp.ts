@@ -15,7 +15,7 @@ export type McpServer = {
 	resourceTemplates?: McpResourceTemplate[]
 	disabled?: boolean
 	timeout?: number
-	source?: "global" | "project"
+	source?: "global" | "project" | "memory"
 	projectPath?: string
 	instructions?: string
 }

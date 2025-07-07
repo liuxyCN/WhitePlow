@@ -531,7 +531,7 @@ export const webviewMessageHandler = async (
 
 			try {
 				provider.log(`Attempting to delete MCP server: ${message.serverName}`)
-				await provider.getMcpHub()?.deleteServer(message.serverName, message.source as "global" | "project")
+				await provider.getMcpHub()?.deleteServer(message.serverName, message.source as "global" | "project" | "memory")
 				provider.log(`Successfully deleted MCP server: ${message.serverName}`)
 
 				// Refresh the webview state
@@ -545,7 +545,7 @@ export const webviewMessageHandler = async (
 		}
 		case "restartMcpServer": {
 			try {
-				await provider.getMcpHub()?.restartConnection(message.text!, message.source as "global" | "project")
+				await provider.getMcpHub()?.restartConnection(message.text!, message.source as "global" | "project" | "memory")
 			} catch (error) {
 				provider.log(
 					`Failed to retry connection for ${message.text}: ${JSON.stringify(error, Object.getOwnPropertyNames(error), 2)}`,
@@ -559,7 +559,7 @@ export const webviewMessageHandler = async (
 					.getMcpHub()
 					?.toggleToolAlwaysAllow(
 						message.serverName!,
-						message.source as "global" | "project",
+						message.source as "global" | "project" | "memory",
 						message.toolName!,
 						Boolean(message.alwaysAllow),
 					)
@@ -577,7 +577,7 @@ export const webviewMessageHandler = async (
 					?.toggleServerDisabled(
 						message.serverName!,
 						message.disabled!,
-						message.source as "global" | "project",
+						message.source as "global" | "project" | "memory",
 					)
 			} catch (error) {
 				provider.log(
@@ -593,6 +593,33 @@ export const webviewMessageHandler = async (
 			break
 		case "enableMcpServerCreation":
 			await updateGlobalState("enableMcpServerCreation", message.bool ?? true)
+			await provider.postStateToWebview()
+			break
+		case "mcpGatewayEnabled":
+			await updateGlobalState("mcpGatewayEnabled", message.bool ?? false)
+			// Refresh in-memory MCP servers when gateway is enabled/disabled
+			const mcpHubForGateway = provider.getMcpHub()
+			if (mcpHubForGateway) {
+				await mcpHubForGateway.refreshInMemoryServers()
+			}
+			await provider.postStateToWebview()
+			break
+		case "mcpGatewayUrl":
+			await updateGlobalState("mcpGatewayUrl", message.text ?? "")
+			// Refresh in-memory MCP servers to apply new configuration
+			const mcpHubForUrl = provider.getMcpHub()
+			if (mcpHubForUrl) {
+				await mcpHubForUrl.refreshInMemoryServers()
+			}
+			await provider.postStateToWebview()
+			break
+		case "mcpGatewayApiKey":
+			await updateGlobalState("mcpGatewayApiKey", message.text ?? "")
+			// Refresh in-memory MCP servers to apply new configuration
+			const mcpHubForKey = provider.getMcpHub()
+			if (mcpHubForKey) {
+				await mcpHubForKey.refreshInMemoryServers()
+			}
 			await provider.postStateToWebview()
 			break
 		case "refreshAllMcpServers": {

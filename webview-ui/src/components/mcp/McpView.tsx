@@ -7,6 +7,7 @@ import {
 	VSCodePanels,
 	VSCodePanelTab,
 	VSCodePanelView,
+	VSCodeTextField,
 } from "@vscode/webview-ui-toolkit/react"
 
 import { McpServer } from "@roo/mcp"
@@ -43,6 +44,12 @@ const McpView = ({ onDone }: McpViewProps) => {
 		mcpEnabled,
 		enableMcpServerCreation,
 		setEnableMcpServerCreation,
+		mcpGatewayEnabled,
+		setMcpGatewayEnabled,
+		mcpGatewayUrl,
+		setMcpGatewayUrl,
+		mcpGatewayApiKey,
+		setMcpGatewayApiKey,
 	} = useExtensionState()
 
 	const { t } = useAppTranslation()
@@ -103,6 +110,68 @@ const McpView = ({ onDone }: McpViewProps) => {
 								</Trans>
 								<p style={{ marginTop: "8px" }}>{t("mcp:enableServerCreation.hint")}</p>
 							</div>
+						</div>
+
+						{/* MCP Gateway Configuration */}
+						<div style={{ marginBottom: 20 }}>
+							<h4 style={{ margin: "0 0 10px 0", fontWeight: "500" }}>{t("mcp:gateway.title")}</h4>
+							<div
+								style={{
+									fontSize: "12px",
+									marginBottom: "10px",
+									color: "var(--vscode-descriptionForeground)",
+								}}>
+								{t("mcp:gateway.description")}
+							</div>
+
+							{/* MCP Gateway Enable Toggle */}
+							<div style={{ marginBottom: 15 }}>
+								<VSCodeCheckbox
+									checked={mcpGatewayEnabled}
+									onChange={(e: any) => {
+										setMcpGatewayEnabled(e.target.checked)
+										vscode.postMessage({ type: "mcpGatewayEnabled", bool: e.target.checked })
+									}}>
+									<span style={{ fontWeight: "500" }}>{t("mcp:gateway.enable.title")}</span>
+								</VSCodeCheckbox>
+								<div
+									style={{
+										fontSize: "12px",
+										marginTop: "5px",
+										color: "var(--vscode-descriptionForeground)",
+									}}>
+									{t("mcp:gateway.enable.description")}
+								</div>
+							</div>
+
+							{/* Gateway URL and API Key - only show when enabled */}
+							{mcpGatewayEnabled && (
+								<div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
+									<VSCodeTextField
+										value={mcpGatewayUrl || ""}
+										onInput={(e: any) => {
+											const value = e.target.value
+											setMcpGatewayUrl(value)
+											vscode.postMessage({ type: "mcpGatewayUrl", text: value })
+										}}
+										placeholder={t("mcp:gateway.url.placeholder")}
+										style={{ width: "100%" }}>
+										<label style={{ fontWeight: "500" }}>{t("mcp:gateway.url.label")}</label>
+									</VSCodeTextField>
+									<VSCodeTextField
+										value={mcpGatewayApiKey || ""}
+										type="password"
+										onInput={(e: any) => {
+											const value = e.target.value
+											setMcpGatewayApiKey(value)
+											vscode.postMessage({ type: "mcpGatewayApiKey", text: value })
+										}}
+										placeholder={t("mcp:gateway.apiKey.placeholder")}
+										style={{ width: "100%" }}>
+										<label style={{ fontWeight: "500" }}>{t("mcp:gateway.apiKey.label")}</label>
+									</VSCodeTextField>
+								</div>
+							)}
 						</div>
 
 						{/* Server List */}
@@ -183,7 +252,7 @@ const ServerRow = ({ server, alwaysAllowMcp }: { server: McpServer; alwaysAllowM
 	const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 	const [timeoutValue, setTimeoutValue] = useState(() => {
 		const configTimeout = JSON.parse(server.config)?.timeout
-		return configTimeout ?? 60 // Default 1 minute (60 seconds)
+		return configTimeout ?? 600 // Default 10 minutes (600 seconds)
 	})
 
 	const timeoutOptions = [

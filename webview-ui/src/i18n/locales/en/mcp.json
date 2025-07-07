@@ -12,6 +12,22 @@
 		"description": "Enable this to have WhitePlow help you build <1>new</1> custom MCP servers. <0>Learn about server creation</0>",
 		"hint": "Hint: To reduce API token costs, disable this setting when you are not actively asking WhitePlow to create a new MCP server."
 	},
+	"gateway": {
+		"title": "MCP Gateway Configuration",
+		"description": "Configure connection to MCP Gateway for enhanced server management",
+		"enable": {
+			"title": "Enable MCP Gateway",
+			"description": "Turn this ON to enable MCP Gateway integration. This allows access to additional file processing tools like OCR."
+		},
+		"url": {
+			"label": "Gateway URL",
+			"placeholder": "https://your-mcp-gateway.com/api"
+		},
+		"apiKey": {
+			"label": "API Key",
+			"placeholder": "Enter your MCP Gateway API key"
+		}
+	},
 	"editGlobalMCP": "Edit Global MCP",
 	"editProjectMCP": "Edit Project MCP",
 	"refreshMCP": "Refresh MCP Servers",

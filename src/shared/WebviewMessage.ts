@@ -162,6 +162,9 @@ export interface WebviewMessage {
 		| "removeInstalledMarketplaceItem"
 		| "marketplaceInstallResult"
 		| "switchTab"
+		| "mcpGatewayEnabled"
+		| "mcpGatewayUrl"
+		| "mcpGatewayApiKey"
 	text?: string
 	tab?: "settings" | "history" | "mcp" | "modes" | "chat" | "marketplace" | "account"
 	disabled?: boolean
@@ -187,7 +190,7 @@ export interface WebviewMessage {
 	modeConfig?: ModeConfig
 	timeout?: number
 	payload?: WebViewMessagePayload
-	source?: "global" | "project"
+	source?: "global" | "project" | "memory"
 	requestId?: string
 	ids?: string[]
 	hasSystemPromptOverride?: boolean

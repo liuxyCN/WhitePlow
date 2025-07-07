@@ -90,6 +90,9 @@ export interface ExtensionMessage {
 		| "indexCleared"
 		| "codebaseIndexConfig"
 		| "marketplaceInstallResult"
+		| "mcpGatewayEnabled"
+		| "mcpGatewayUrl"
+		| "mcpGatewayApiKey"
 	text?: string
 	payload?: any // Add a generic payload for now, can refine later
 	action?:
@@ -226,6 +229,9 @@ export type ExtensionState = Pick<
 
 	mcpEnabled: boolean
 	enableMcpServerCreation: boolean
+	mcpGatewayEnabled?: boolean
+	mcpGatewayUrl?: string
+	mcpGatewayApiKey?: string
 
 	mode: Mode
 	customModes: ModeConfig[]
