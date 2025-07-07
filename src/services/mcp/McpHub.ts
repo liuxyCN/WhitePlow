@@ -585,6 +585,9 @@ export class McpHub {
 						apiKey: mcpGatewayApiKey.trim()
 					}
 					console.log("MCP Gateway configuration found, initializing file-cool server with custom settings")
+
+					// Also initialize streamable-http gateway servers
+					await this.initializeStreamableHttpGatewayServers(mcpGatewayUrl.trim(), mcpGatewayApiKey.trim())
 				} else {
 					console.log("MCP Gateway configuration not complete - URL or API Key missing. File-cool server will require configuration.")
 				}
@@ -639,6 +642,45 @@ export class McpHub {
 			console.log("In-memory file-cool server initialized successfully with", connection.server.tools?.length || 0, "tools")
 		} catch (error) {
 			console.error("Failed to initialize in-memory file-cool server:", error)
+		}
+	}
+
+	// Initialize streamable-http gateway servers
+	private async initializeStreamableHttpGatewayServers(gatewayUrl: string, apiKey: string): Promise<void> {
+		try {
+			console.log("Initializing streamable-http MCP gateway servers...")
+
+			// Initialize main gateway server
+			const gatewayServerConfig = {
+				type: "streamable-http" as const,
+				url: gatewayUrl + 'server',
+				headers: {
+					"API_KEY": apiKey
+				},
+				disabled: false,
+				timeout: 600,
+				alwaysAllow: []
+			}
+
+			// Initialize playwright server
+			const playwrightServerConfig = {
+				type: "streamable-http" as const,
+				url: gatewayUrl + 'playwright',
+				headers: {
+					"API_KEY": apiKey
+				},
+				disabled: false,
+				timeout: 600,
+				alwaysAllow: []
+			}
+
+			// Connect to both servers
+			await this.connectToServer("mcp-gateway", gatewayServerConfig, "memory")
+			await this.connectToServer("playwright", playwrightServerConfig, "memory")
+
+			console.log("Streamable-http MCP gateway servers initialized successfully")
+		} catch (error) {
+			console.error("Failed to initialize streamable-http MCP gateway servers:", error)
 		}
 	}
 
