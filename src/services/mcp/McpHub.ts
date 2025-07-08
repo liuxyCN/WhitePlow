@@ -599,7 +599,7 @@ export class McpHub {
 
 			const connection: McpConnection = {
 				server: {
-					name: "file-cool-memory",
+					name: "file-cool",
 					config: JSON.stringify({ type: "stdio", command: "in-memory" }), // Valid config for in-memory server
 					status: "connected",
 					disabled: false,
@@ -624,15 +624,15 @@ export class McpHub {
 			// Fetch tools and resources
 			console.log("Fetching tools for in-memory server...")
 			try {
-				connection.server.tools = await this.fetchToolsList("file-cool-memory", "memory")
+				connection.server.tools = await this.fetchToolsList("file-cool", "memory")
 				console.log("In-memory server tools fetched:", connection.server.tools.length)
 			} catch (error) {
 				console.error("Failed to fetch tools:", error)
 			}
 
 			try {
-				connection.server.resources = await this.fetchResourcesList("file-cool-memory", "memory")
-				connection.server.resourceTemplates = await this.fetchResourceTemplatesList("file-cool-memory", "memory")
+				connection.server.resources = await this.fetchResourcesList("file-cool", "memory")
+				connection.server.resourceTemplates = await this.fetchResourceTemplatesList("file-cool", "memory")
 			} catch (error) {
 				console.error("Failed to fetch resources:", error)
 			}
@@ -695,7 +695,7 @@ export class McpHub {
 		try {
 			const client = new Client(
 				{
-					name: "WhitePlow",
+					name: "NeonTractor",
 					version: this.providerRef.deref()?.context.extension?.packageJSON?.version ?? "1.0.0",
 				},
 				{
@@ -774,7 +774,7 @@ export class McpHub {
 				// Streamable HTTP connection
 
 				let headers = configInjected.headers || {}
-				if (name === "WhitePlow") {
+				if (name === "NeonTractor") {
 					const defaultProfile = await this.providerRef
 						.deref()
 						?.providerSettingsManager.getProfile({ name: "default" })
