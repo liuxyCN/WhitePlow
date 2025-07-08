@@ -2,9 +2,9 @@
 	"name": "roo-cline",
 	"displayName": "%extension.displayName%",
 	"description": "%extension.description%",
-	"publisher": "WhitePlowInc",
+	"publisher": "NeonTractorInc",
 	"version": "3.20.1",
-	"icon": "assets/images/whiteplow-logo.png",
+	"icon": "assets/images/neontractor-logo.png",
 	"galleryBanner": {
 		"color": "#617A91",
 		"theme": "dark"
@@ -14,13 +14,13 @@
 		"node": "20.19.2"
 	},
 	"author": {
-		"name": "WhitePlow"
+		"name": "NeonTractor"
 	},
 	"repository": {
 		"type": "git",
-		"url": "https://github.com/liuxyCN/WhitePlow"
+		"url": "https://github.com/liuxyCN/NeonTractor"
 	},
-	"homepage": "https://github.com/liuxyCN/WhitePlow",
+	"homepage": "https://github.com/liuxyCN/NeonTractor",
 	"categories": [
 		"AI",
 		"Chat",
@@ -44,7 +44,7 @@
 		"llama",
 		"roo code",
 		"roocode",
-		"whiteplow"
+		"neontractor"
 	],
 	"activationEvents": [
 		"onLanguage",
@@ -57,7 +57,7 @@
 				{
 					"id": "roo-cline-ActivityBar",
 					"title": "%views.activitybar.title%",
-					"icon": "assets/images/whiteplow-logo.png",
+					"icon": "assets/images/neontractor-logo.png",
 					"secondarybar": true
 				}
 			]
@@ -68,7 +68,7 @@
 					"type": "webview",
 					"id": "roo-cline.SidebarProvider",
 					"name": "%views.sidebar.name%",
-					"icon": "assets/images/whiteplow-logo.png"
+					"icon": "assets/images/neontractor-logo.png"
 				}
 			]
 		},

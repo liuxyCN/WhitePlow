@@ -11,15 +11,15 @@ const RooHero = () => {
 			<div
 				style={{
 					backgroundColor: "var(--vscode-foreground)",
-					WebkitMaskImage: `url('${imagesBaseUri}/whiteplow-logo.png')`,
+					WebkitMaskImage: `url('${imagesBaseUri}/neontractor-logo.png')`,
 					WebkitMaskRepeat: "no-repeat",
 					WebkitMaskSize: "contain",
-					maskImage: `url('${imagesBaseUri}/whiteplow-logo.png')`,
+					maskImage: `url('${imagesBaseUri}/neontractor-logo.png')`,
 					maskRepeat: "no-repeat",
 					maskSize: "contain",
 				}}
 				className="mx-auto">
-				<img src={imagesBaseUri + "/whiteplow-logo.png"} alt="WhitePlow logo" className="h-8 opacity-0" />
+				<img src={imagesBaseUri + "/neontractor-logo.png"} alt="NeonTractor logo" className="h-16" />
 			</div>
 		</div>
 	)
