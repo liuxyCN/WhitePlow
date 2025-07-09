@@ -11,6 +11,7 @@ import {
 	ListToolsResultSchema,
 	ReadResourceResultSchema,
 } from "@modelcontextprotocol/sdk/types.js"
+import axios from "axios"
 import chokidar, { FSWatcher } from "chokidar"
 import delay from "delay"
 import deepEqual from "fast-deep-equal"
@@ -650,35 +651,58 @@ export class McpHub {
 		try {
 			console.log("Initializing streamable-http MCP gateway servers...")
 
-			// Initialize main gateway server
-			const gatewayServerConfig = {
-				type: "streamable-http" as const,
-				url: gatewayUrl + 'server',
+			// Fetch server list from gateway URL
+			const serverListUrl = gatewayUrl.endsWith('/') ? gatewayUrl + 'server-list' : gatewayUrl + '/server-list'
+			console.log(`Fetching server list from: ${serverListUrl}`)
+
+			const response = await axios.get(serverListUrl, {
 				headers: {
 					"API_KEY": apiKey
 				},
-				disabled: false,
-				timeout: 600,
-				alwaysAllow: []
+				timeout: 10000 // 10 seconds timeout
+			})
+
+			if (!response.data || !Array.isArray(response.data)) {
+				console.error("Invalid server list response format:", response.data)
+				throw new Error("Invalid server list response format")
 			}
 
-			// Initialize playwright server
-			const playwrightServerConfig = {
-				type: "streamable-http" as const,
-				url: gatewayUrl + 'playwright',
-				headers: {
-					"API_KEY": apiKey
-				},
-				disabled: false,
-				timeout: 600,
-				alwaysAllow: []
+			const serverList = response.data
+			console.log(`Found ${serverList.length} servers to initialize:`, serverList.map((s: any) => s.name || s))
+
+			// Loop through each server and initialize
+			for (const serverInfo of serverList) {
+				try {
+					// Handle both string and object formats
+					const serverName = typeof serverInfo === 'string' ? serverInfo : serverInfo.name
+					const serverPath = typeof serverInfo === 'string' ? serverInfo : (serverInfo.path || serverInfo.name)
+
+					if (!serverName) {
+						console.warn("Skipping server with missing name:", serverInfo)
+						continue
+					}
+
+					const serverConfig = {
+						type: "streamable-http" as const,
+						url: gatewayUrl.endsWith('/') ? gatewayUrl + serverPath : gatewayUrl + '/' + serverPath,
+						headers: {
+							"API_KEY": apiKey
+						},
+						disabled: false,
+						timeout: 600,
+						alwaysAllow: []
+					}
+
+					console.log(`Connecting to server: ${serverName} at ${serverConfig.url}`)
+					await this.connectToServer(serverName, serverConfig, "memory")
+					console.log(`Successfully connected to server: ${serverName}`)
+				} catch (serverError) {
+					console.error(`Failed to connect to server ${typeof serverInfo === 'string' ? serverInfo : serverInfo.name}:`, serverError)
+					// Continue with other servers even if one fails
+				}
 			}
 
-			// Connect to both servers
-			await this.connectToServer("mcp-gateway", gatewayServerConfig, "memory")
-			await this.connectToServer("playwright", playwrightServerConfig, "memory")
-
-			console.log("Streamable-http MCP gateway servers initialized successfully")
+			console.log("Streamable-http MCP gateway servers initialization completed")
 		} catch (error) {
 			console.error("Failed to initialize streamable-http MCP gateway servers:", error)
 		}
