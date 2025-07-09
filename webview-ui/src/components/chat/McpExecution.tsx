@@ -24,7 +24,7 @@ interface McpExecutionProps {
 			description?: string
 			alwaysAllow?: boolean
 		}>
-		source?: "global" | "project"
+		source?: "global" | "project" | "memory"
 	}
 	useMcpServer?: ClineAskUseMcpServer
 	alwaysAllowMcp?: boolean
