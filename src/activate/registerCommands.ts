@@ -135,7 +135,7 @@ const getCommandsMap = ({ context, outputChannel, provider }: RegisterCommandOpt
 
 		TelemetryService.instance.captureTitleButtonClicked("settings")
 
-		const settingsButtonEnabled = vscode.workspace.getConfiguration(Package.name).get<string[]>("settingsButtonEnabled") || true
+		const settingsButtonEnabled = vscode.workspace.getConfiguration(Package.name).get<boolean>("settingsButtonEnabled") ?? true
 
 		if(settingsButtonEnabled){
 			visibleProvider.postMessageToWebview({ type: "action", action: "settingsButtonClicked" })

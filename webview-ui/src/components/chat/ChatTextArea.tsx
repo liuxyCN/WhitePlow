@@ -1181,7 +1181,7 @@ const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 								</button>
 							</StandardTooltip>
 						)}
-						<IndexingStatusBadge />
+						{/* <IndexingStatusBadge /> */}
 						<StandardTooltip content={t("chat:addImages")}>
 							<button
 								aria-label={t("chat:addImages")}
