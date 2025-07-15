@@ -1,7 +1,5 @@
 // npx vitest run src/api/providers/__tests__/openrouter.spec.ts
 
-import { vitest, describe, it, expect, beforeEach } from "vitest"
-
 // Mock vscode first to avoid import errors
 vitest.mock("vscode", () => ({}))
 
@@ -10,6 +8,7 @@ import OpenAI from "openai"
 
 import { OpenRouterHandler } from "../openrouter"
 import { ApiHandlerOptions } from "../../../shared/api"
+import { Package } from "../../../shared/package"
 
 // Mock dependencies
 vitest.mock("openai")
@@ -64,6 +63,7 @@ describe("OpenRouterHandler", () => {
 			defaultHeaders: {
 				"HTTP-Referer": "https://github.com/RooVetGit/Roo-Cline",
 				"X-Title": "Roo Code",
+				"User-Agent": `RooCode/${Package.version}`,
 			},
 		})
 	})

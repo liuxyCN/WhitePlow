@@ -56,6 +56,9 @@ export async function writeToFileTool(
 		return
 	}
 
+	// Check if file is write-protected
+	const isWriteProtected = cline.rooProtectedController?.isWriteProtected(relPath) || false
+
 	// Check if file exists using cached map or fs.access
 	let fileExists: boolean
 
@@ -70,11 +73,11 @@ export async function writeToFileTool(
 	// pre-processing newContent for cases where weaker models might add artifacts like markdown codeblock markers (deepseek/llama) or extra escape characters (gemini)
 	if (newContent.startsWith("```")) {
 		// cline handles cases where it includes language specifiers like ```python ```js
-		newContent = newContent.split("\n").slice(1).join("\n").trim()
+		newContent = newContent.split("\n").slice(1).join("\n")
 	}
 
 	if (newContent.endsWith("```")) {
-		newContent = newContent.split("\n").slice(0, -1).join("\n").trim()
+		newContent = newContent.split("\n").slice(0, -1).join("\n")
 	}
 
 	if (!cline.api.getModel().id.includes("claude")) {
@@ -90,6 +93,7 @@ export async function writeToFileTool(
 		path: getReadablePath(cline.cwd, removeClosingTag("path", relPath)),
 		content: newContent,
 		isOutsideWorkspace,
+		isProtected: isWriteProtected,
 	}
 
 	try {
@@ -201,7 +205,7 @@ export async function writeToFileTool(
 					: undefined,
 			} satisfies ClineSayTool)
 
-			const didApprove = await askApproval("tool", completeMessage)
+			const didApprove = await askApproval("tool", completeMessage, undefined, isWriteProtected)
 
 			if (!didApprove) {
 				await cline.diffViewProvider.revertChanges()

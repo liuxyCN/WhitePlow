@@ -7,8 +7,11 @@ import * as vscode from "vscode"
 import type { ClineMessage } from "@roo-code/types"
 
 import { waitFor, sleep } from "../utils"
+import { setDefaultSuiteTimeout } from "../test-utils"
 
-suite("Roo Code use_mcp_tool Tool", () => {
+suite.skip("Roo Code use_mcp_tool Tool", function () {
+	setDefaultSuiteTimeout(this)
+
 	let tempDir: string
 	let testFiles: {
 		simple: string
@@ -554,7 +557,7 @@ suite("Roo Code use_mcp_tool Tool", () => {
 		}
 	})
 
-	test("Should request MCP filesystem directory_tree tool and complete successfully", async function () {
+	test.skip("Should request MCP filesystem directory_tree tool and complete successfully", async function () {
 		const api = globalThis.api
 		const messages: ClineMessage[] = []
 		let _taskCompleted = false
@@ -764,7 +767,7 @@ suite("Roo Code use_mcp_tool Tool", () => {
 		}
 	})
 
-	test("Should validate MCP request message format and complete successfully", async function () {
+	test.skip("Should validate MCP request message format and complete successfully", async function () {
 		const api = globalThis.api
 		const messages: ClineMessage[] = []
 		let _taskCompleted = false

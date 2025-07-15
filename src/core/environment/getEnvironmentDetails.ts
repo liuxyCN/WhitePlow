@@ -18,6 +18,7 @@ import { arePathsEqual } from "../../utils/path"
 import { formatResponse } from "../prompts/responses"
 
 import { Task } from "../task/Task"
+import { formatReminderSection } from "./reminder"
 
 export async function getEnvironmentDetails(cline: Task, includeFileDetails: boolean = false) {
 	let details = ""
@@ -103,7 +104,10 @@ export async function getEnvironmentDetails(cline: Task, includeFileDetails: boo
 		terminalDetails += "\n\n# Actively Running Terminals"
 
 		for (const busyTerminal of busyTerminals) {
-			terminalDetails += `\n## Original command: \`${busyTerminal.getLastCommand()}\``
+			const cwd = busyTerminal.getCurrentWorkingDirectory()
+			terminalDetails += `\n## Terminal ${busyTerminal.id} (Active)`
+			terminalDetails += `\n### Working Directory: \`${cwd}\``
+			terminalDetails += `\n### Original command: \`${busyTerminal.getLastCommand()}\``
 			let newOutput = TerminalRegistry.getUnretrievedOutput(busyTerminal.id)
 
 			if (newOutput) {
@@ -145,7 +149,9 @@ export async function getEnvironmentDetails(cline: Task, includeFileDetails: boo
 
 			// Add this terminal's outputs to the details.
 			if (terminalOutputs.length > 0) {
-				terminalDetails += `\n## Terminal ${inactiveTerminal.id}`
+				const cwd = inactiveTerminal.getCurrentWorkingDirectory()
+				terminalDetails += `\n## Terminal ${inactiveTerminal.id} (Inactive)`
+				terminalDetails += `\n### Working Directory: \`${cwd}\``
 				terminalOutputs.forEach((output) => {
 					terminalDetails += `\n### New Output\n${output}`
 				})
@@ -192,13 +198,8 @@ export async function getEnvironmentDetails(cline: Task, includeFileDetails: boo
 
 	// Add context tokens information.
 	const { contextTokens, totalCost } = getApiMetrics(cline.clineMessages)
-	const { id: modelId, info: modelInfo } = cline.api.getModel()
-	const contextWindow = modelInfo.contextWindow
+	const { id: modelId } = cline.api.getModel()
 
-	const contextPercentage =
-		contextTokens && contextWindow ? Math.round((contextTokens / contextWindow) * 100) : undefined
-
-	details += `\n\n# Current Context Size (Tokens)\n${contextTokens ? `${contextTokens.toLocaleString()} (${contextPercentage}%)` : "(Not available)"}`
 	details += `\n\n# Current Cost\n${totalCost !== null ? `$${totalCost.toFixed(2)}` : "(Not available)"}`
 
 	// Add current mode and any mode-specific warnings.
@@ -232,16 +233,6 @@ export async function getEnvironmentDetails(cline: Task, includeFileDetails: boo
 		}
 	}
 
-	// Add warning if not in code mode.
-	if (
-		!isToolAllowedForMode("write_to_file", currentMode, customModes ?? [], { apply_diff: cline.diffEnabled }) &&
-		!isToolAllowedForMode("apply_diff", currentMode, customModes ?? [], { apply_diff: cline.diffEnabled })
-	) {
-		const currentModeName = getModeBySlug(currentMode, customModes)?.name ?? currentMode
-		const defaultModeName = getModeBySlug(defaultModeSlug, customModes)?.name ?? defaultModeSlug
-		details += `\n\nNOTE: You are currently in '${currentModeName}' mode, which does not allow write operations. To write files, the user will need to switch to a mode that supports file writing, such as '${defaultModeName}' mode.`
-	}
-
 	if (includeFileDetails) {
 		details += `\n\n# Current Workspace Directory (${cline.cwd.toPosix()}) Files\n`
 		const isDesktop = arePathsEqual(cline.cwd, path.join(os.homedir(), "Desktop"))
@@ -252,20 +243,27 @@ export async function getEnvironmentDetails(cline: Task, includeFileDetails: boo
 			details += "(Desktop files not shown automatically. Use list_files to explore if needed.)"
 		} else {
 			const maxFiles = maxWorkspaceFiles ?? 200
-			const [files, didHitLimit] = await listFiles(cline.cwd, true, maxFiles)
-			const { showRooIgnoredFiles = true } = state ?? {}
 
-			const result = formatResponse.formatFilesList(
-				cline.cwd,
-				files,
-				didHitLimit,
-				cline.rooIgnoreController,
-				showRooIgnoredFiles,
-			)
+			// Early return for limit of 0
+			if (maxFiles === 0) {
+				details += "(Workspace files context disabled. Use list_files to explore if needed.)"
+			} else {
+				const [files, didHitLimit] = await listFiles(cline.cwd, true, maxFiles)
+				const { showRooIgnoredFiles = true } = state ?? {}
 
-			details += result
+				const result = formatResponse.formatFilesList(
+					cline.cwd,
+					files,
+					didHitLimit,
+					cline.rooIgnoreController,
+					showRooIgnoredFiles,
+				)
+
+				details += result
+			}
 		}
 	}
 
-	return `<environment_details>\n${details.trim()}\n</environment_details>`
+	const reminderSection = formatReminderSection(cline.todoList)
+	return `<environment_details>\n${details.trim()}\n${reminderSection}\n</environment_details>`
 }

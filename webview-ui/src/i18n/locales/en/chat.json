@@ -1,5 +1,5 @@
 {
-	"greeting": "Welcome to NeonTractor",
+	"greeting": "Welcome to NeonTractor!",
 	"task": {
 		"title": "Task",
 		"seeMore": "See more",
@@ -12,7 +12,16 @@
 		"closeAndStart": "Close task and start a new one",
 		"export": "Export task history",
 		"share": "Share task",
-		"delete": "Delete Task (Shift + Click to skip confirmation)"
+		"delete": "Delete Task (Shift + Click to skip confirmation)",
+		"shareWithOrganization": "Share with Organization",
+		"shareWithOrganizationDescription": "Only members of your organization can access",
+		"sharePublicly": "Share Publicly",
+		"sharePubliclyDescription": "Anyone with the link can access",
+		"connectToCloud": "Connect to Cloud",
+		"connectToCloudDescription": "Sign in to NeonTractor Cloud to share tasks",
+		"sharingDisabledByOrganization": "Sharing disabled by organization",
+		"shareSuccessOrganization": "Organization link copied to clipboard",
+		"shareSuccessPublic": "Public link copied to clipboard"
 	},
 	"unpin": "Unpin",
 	"pin": "Pin",
@@ -83,7 +92,7 @@
 	"onboarding": "Your task list in this workspace is empty.",
 	"rooTips": {
 		"boomerangTasks": {
-			"title": "Boomerang Tasks",
+			"title": "Task Orchestration",
 			"description": "Split tasks into smaller, manageable parts"
 		},
 		"stickyModels": {
@@ -102,9 +111,16 @@
 	"selectMode": "Select mode for interaction",
 	"selectApiConfig": "Select API configuration",
 	"enhancePrompt": "Enhance prompt with additional context",
+	"modeSelector": {
+		"title": "Modes",
+		"marketplace": "Mode Marketplace",
+		"settings": "Mode Settings",
+		"description": "Specialized personas that tailor NeonTractor's behavior."
+	},
 	"enhancePromptDescription": "The 'Enhance Prompt' button helps improve your prompt by providing additional context, clarification, or rephrasing. Try typing a prompt in here and clicking the button again to see how it works.",
 	"addImages": "Add images to message",
 	"sendMessage": "Send message",
+	"stopTts": "Stop text-to-speech",
 	"typeMessage": "Type a message...",
 	"typeTask": "Type your task here...",
 	"addContext": "@ to add context, / to switch modes",
@@ -115,6 +131,7 @@
 	"separator": "Separator",
 	"edit": "Edit...",
 	"forNextMode": "for next mode",
+	"forPreviousMode": "for previous mode",
 	"apiRequest": {
 		"title": "API Request",
 		"failed": "API Request Failed",
@@ -156,6 +173,7 @@
 		"didRead": "NeonTractor read this file:",
 		"wantsToEdit": "NeonTractor wants to edit this file:",
 		"wantsToEditOutsideWorkspace": "NeonTractor wants to edit this file outside of the workspace:",
+		"wantsToEditProtected": "NeonTractor wants to edit a protected configuration file:",
 		"wantsToApplyBatchChanges": "NeonTractor wants to apply changes to multiple files:",
 		"wantsToCreate": "NeonTractor wants to create a new file:",
 		"wantsToSearchReplace": "NeonTractor wants to search and replace in this file:",
@@ -167,17 +185,27 @@
 	"directoryOperations": {
 		"wantsToViewTopLevel": "NeonTractor wants to view the top level files in this directory:",
 		"didViewTopLevel": "NeonTractor viewed the top level files in this directory:",
+		"wantsToViewTopLevelOutsideWorkspace": "NeonTractor wants to view the top level files in this directory (outside workspace):",
+		"didViewTopLevelOutsideWorkspace": "NeonTractor viewed the top level files in this directory (outside workspace):",
 		"wantsToViewRecursive": "NeonTractor wants to recursively view all files in this directory:",
 		"didViewRecursive": "NeonTractor recursively viewed all files in this directory:",
+		"wantsToViewRecursiveOutsideWorkspace": "NeonTractor wants to recursively view all files in this directory (outside workspace):",
+		"didViewRecursiveOutsideWorkspace": "NeonTractor recursively viewed all files in this directory (outside workspace):",
 		"wantsToViewDefinitions": "NeonTractor wants to view source code definition names used in this directory:",
 		"didViewDefinitions": "NeonTractor viewed source code definition names used in this directory:",
+		"wantsToViewDefinitionsOutsideWorkspace": "NeonTractor wants to view source code definition names used in this directory (outside workspace):",
+		"didViewDefinitionsOutsideWorkspace": "NeonTractor viewed source code definition names used in this directory (outside workspace):",
 		"wantsToSearch": "NeonTractor wants to search this directory for <code>{{regex}}</code>:",
-		"didSearch": "NeonTractor searched this directory for <code>{{regex}}</code>:"
+		"didSearch": "NeonTractor searched this directory for <code>{{regex}}</code>:",
+		"wantsToSearchOutsideWorkspace": "NeonTractor wants to search this directory (outside workspace) for <code>{{regex}}</code>:",
+		"didSearchOutsideWorkspace": "NeonTractor searched this directory (outside workspace) for <code>{{regex}}</code>:"
 	},
 	"codebaseSearch": {
 		"wantsToSearch": "NeonTractor wants to search the codebase for <code>{{query}}</code>:",
 		"wantsToSearchWithPath": "NeonTractor wants to search the codebase for <code>{{query}}</code> in <code>{{path}}</code>:",
-		"didSearch": "Found {{count}} result(s) for <code>{{query}}</code>:"
+		"didSearch_one": "Found 1 result",
+		"didSearch_other": "Found {{count}} results",
+		"resultTooltip": "Similarity score: {{score}} (click to open file)"
 	},
 	"commandOutput": "Command Output",
 	"response": "Response",
@@ -220,11 +248,10 @@
 	},
 	"announcement": {
 		"title": "🎉 NeonTractor {{version}} Released",
-		"description": "NeonTractor {{version}} brings major new features and improvements based on your feedback.",
+		"description": "NeonTractor {{version}} brings powerful new features and significant improvements to enhance your development workflow.",
 		"whatsNew": "What's New",
-		"feature1": "<bold>Experimental Marketplace</bold>: Discover and install modes and MCPs from the new marketplace (enable in <experimentalSettingsLink>Experimental Settings</experimentalSettingsLink>)",
-		"feature2": "<bold>Enhanced File Operations</bold>: Multiple concurrent file writes in experimental settings, and concurrent reads now in <contextSettingsLink>Context Settings</contextSettingsLink>",
-		"feature3": "<bold>MCP Improvements & More</bold>: Enhanced MCP support, Mermaid controls, Amazon Bedrock thinking support, and much more!",
+		"feature1": "<bold>Codebase Indexing Graduated from Experimental</bold>: Full codebase indexing is now stable and ready for production use with improved search and context understanding.",
+		"feature2": "<bold>New Todo List Feature</bold>: Keep your tasks on track with integrated todo management that helps you stay organized and focused on your development goals.",
 		"hideButton": "Hide announcement",
 		"detailsDiscussLinks": "Get more details and discuss in <discordLink>Discord</discordLink> and <redditLink>Reddit</redditLink> 🚀"
 	},
@@ -233,7 +260,9 @@
 		"seconds": "{{count}}s"
 	},
 	"followUpSuggest": {
-		"copyToInput": "Copy to input (same as shift + click)"
+		"copyToInput": "Copy to input (same as shift + click)",
+		"autoSelectCountdown": "Auto-selecting in {{count}}s",
+		"countdownDisplay": "{{count}}s"
 	},
 	"browser": {
 		"rooWantsToUse": "NeonTractor wants to use the browser:",
@@ -267,7 +296,7 @@
 		}
 	},
 	"systemPromptWarning": "WARNING: Custom system prompt override active. This can severely break functionality and cause unpredictable behavior.",
-	"profileViolationWarning": "The current profile violates your organization's settings",
+	"profileViolationWarning": "The current profile isn't compatible with your organization's settings",
 	"shellIntegration": {
 		"title": "Command Execution Warning",
 		"description": "Your command is being executed without VSCode terminal shell integration. To suppress this warning you can disable shell integration in the <strong>Terminal</strong> section of the <settingsLink>NeonTractor settings</settingsLink> or troubleshoot VSCode terminal integration using the link below.",
@@ -286,5 +315,8 @@
 		"indexed": "Indexed",
 		"error": "Index error",
 		"status": "Index status"
+	},
+	"versionIndicator": {
+		"ariaLabel": "Version {{version}} - Click to view release notes"
 	}
 }

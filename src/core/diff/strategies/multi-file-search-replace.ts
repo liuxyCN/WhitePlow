@@ -95,6 +95,8 @@ export class MultiFileSearchReplaceDiffStrategy implements DiffStrategy {
 
 Description: Request to apply targeted modifications to one or more files by searching for specific sections of content and replacing them. This tool supports both single-file and multi-file operations, allowing you to make changes across multiple files in a single request.
 
+**IMPORTANT: You MUST use multiple files in a single operation whenever possible to maximize efficiency and minimize back-and-forth.**
+
 You can perform multiple distinct search and replace operations within a single \`apply_diff\` call by providing multiple SEARCH/REPLACE blocks in the \`diff\` parameter. This is the preferred way to make several targeted changes efficiently.
 
 The SEARCH section must exactly match existing content including whitespace and indentation.
@@ -107,12 +109,12 @@ Parameters:
   - path: (required) The path of the file to modify (relative to the current workspace directory ${args.cwd})
   - diff: (required) One or more diff elements containing:
     - content: (required) The search/replace block defining the changes.
-    - start_line: (optional) The line number of original content where the search block starts.
+    - start_line: (required) The line number of original content where the search block starts.
 
 Diff format:
 \`\`\`
 <<<<<<< SEARCH
-:start_line: (optional) The line number of original content where the search block starts.
+:start_line: (required) The line number of original content where the search block starts.
 -------
 [exact content to find including whitespace]
 =======
@@ -157,7 +159,7 @@ def calculate_total(items):
 </args>
 </apply_diff>
 
-Search/Replace content with multi edits in one file:
+Search/Replace content with multi edits across multiple files:
 <apply_diff>
 <args>
 <file>
@@ -294,7 +296,7 @@ Each file requires its own path, start_line, and diff elements.
 				"\n" +
 				"CORRECT FORMAT:\n\n" +
 				"<<<<<<< SEARCH\n" +
-				":start_line: (optional) The line number of original content where the search block starts.\n" +
+				":start_line: (required) The line number of original content where the search block starts.\n" +
 				"-------\n" +
 				"[exact content to find including whitespace]\n" +
 				"=======\n" +
@@ -410,7 +412,13 @@ Each file requires its own path, start_line, and diff elements.
 					resultContent = singleResult.content
 					successCount++
 				} else {
-					allFailParts.push(singleResult)
+					// If singleResult has failParts, push those directly to avoid nesting
+					if (singleResult.failParts && singleResult.failParts.length > 0) {
+						allFailParts.push(...singleResult.failParts)
+					} else {
+						// Otherwise push the single result itself
+						allFailParts.push(singleResult)
+					}
 				}
 			}
 
@@ -479,7 +487,7 @@ Each file requires its own path, start_line, and diff elements.
 
 		const replacements = matches
 			.map((match) => ({
-				startLine: Number(match[2] ?? 0),
+				startLine: _paramStartLine ?? Number(match[2] ?? 0),
 				searchContent: match[6],
 				replaceContent: match[7],
 			}))

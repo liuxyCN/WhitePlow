@@ -36,7 +36,7 @@ export function getReadFileToolDescription(blockName: string, blockParams: any):
 			}
 		} catch (error) {
 			console.error("Failed to parse read_file args XML for description:", error)
-			return `[${blockName} with unparseable args]`
+			return `[${blockName} with unparsable args]`
 		}
 	} else if (blockParams.path) {
 		// Fallback for legacy single-path usage
@@ -429,7 +429,7 @@ export async function readFileTool(
 
 			const relPath = fileResult.path
 			const fullPath = path.resolve(cline.cwd, relPath)
-			const { maxReadFileLine = 500 } = (await cline.providerRef.deref()?.getState()) ?? {}
+			const { maxReadFileLine = -1 } = (await cline.providerRef.deref()?.getState()) ?? {}
 
 			// Process approved files
 			try {

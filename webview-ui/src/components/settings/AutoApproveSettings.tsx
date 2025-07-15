@@ -16,6 +16,7 @@ type AutoApproveSettingsProps = HTMLAttributes<HTMLDivElement> & {
 	alwaysAllowReadOnlyOutsideWorkspace?: boolean
 	alwaysAllowWrite?: boolean
 	alwaysAllowWriteOutsideWorkspace?: boolean
+	alwaysAllowWriteProtected?: boolean
 	writeDelayMs: number
 	alwaysAllowBrowser?: boolean
 	alwaysApproveResubmit?: boolean
@@ -24,12 +25,17 @@ type AutoApproveSettingsProps = HTMLAttributes<HTMLDivElement> & {
 	alwaysAllowModeSwitch?: boolean
 	alwaysAllowSubtasks?: boolean
 	alwaysAllowExecute?: boolean
+	alwaysAllowFollowupQuestions?: boolean
+	alwaysAllowUpdateTodoList?: boolean
+	followupAutoApproveTimeoutMs?: number
 	allowedCommands?: string[]
+	deniedCommands?: string[]
 	setCachedStateField: SetCachedStateField<
 		| "alwaysAllowReadOnly"
 		| "alwaysAllowReadOnlyOutsideWorkspace"
 		| "alwaysAllowWrite"
 		| "alwaysAllowWriteOutsideWorkspace"
+		| "alwaysAllowWriteProtected"
 		| "writeDelayMs"
 		| "alwaysAllowBrowser"
 		| "alwaysApproveResubmit"
@@ -38,7 +44,11 @@ type AutoApproveSettingsProps = HTMLAttributes<HTMLDivElement> & {
 		| "alwaysAllowModeSwitch"
 		| "alwaysAllowSubtasks"
 		| "alwaysAllowExecute"
+		| "alwaysAllowFollowupQuestions"
+		| "followupAutoApproveTimeoutMs"
 		| "allowedCommands"
+		| "deniedCommands"
+		| "alwaysAllowUpdateTodoList"
 	>
 }
 
@@ -47,6 +57,7 @@ export const AutoApproveSettings = ({
 	alwaysAllowReadOnlyOutsideWorkspace,
 	alwaysAllowWrite,
 	alwaysAllowWriteOutsideWorkspace,
+	alwaysAllowWriteProtected,
 	writeDelayMs,
 	alwaysAllowBrowser,
 	alwaysApproveResubmit,
@@ -55,12 +66,17 @@ export const AutoApproveSettings = ({
 	alwaysAllowModeSwitch,
 	alwaysAllowSubtasks,
 	alwaysAllowExecute,
+	alwaysAllowFollowupQuestions,
+	followupAutoApproveTimeoutMs = 60000,
+	alwaysAllowUpdateTodoList,
 	allowedCommands,
+	deniedCommands,
 	setCachedStateField,
 	...props
 }: AutoApproveSettingsProps) => {
 	const { t } = useAppTranslation()
 	const [commandInput, setCommandInput] = useState("")
+	const [deniedCommandInput, setDeniedCommandInput] = useState("")
 
 	const handleAddCommand = () => {
 		const currentCommands = allowedCommands ?? []
@@ -70,6 +86,17 @@ export const AutoApproveSettings = ({
 			setCachedStateField("allowedCommands", newCommands)
 			setCommandInput("")
 			vscode.postMessage({ type: "allowedCommands", commands: newCommands })
+		}
+	}
+
+	const handleAddDeniedCommand = () => {
+		const currentCommands = deniedCommands ?? []
+
+		if (deniedCommandInput && !currentCommands.includes(deniedCommandInput)) {
+			const newCommands = [...currentCommands, deniedCommandInput]
+			setCachedStateField("deniedCommands", newCommands)
+			setDeniedCommandInput("")
+			vscode.postMessage({ type: "deniedCommands", commands: newCommands })
 		}
 	}
 
@@ -92,6 +119,8 @@ export const AutoApproveSettings = ({
 					alwaysAllowModeSwitch={alwaysAllowModeSwitch}
 					alwaysAllowSubtasks={alwaysAllowSubtasks}
 					alwaysAllowExecute={alwaysAllowExecute}
+					alwaysAllowFollowupQuestions={alwaysAllowFollowupQuestions}
+					alwaysAllowUpdateTodoList={alwaysAllowUpdateTodoList}
 					onToggle={(key, value) => setCachedStateField(key, value)}
 				/>
 
@@ -138,8 +167,21 @@ export const AutoApproveSettings = ({
 									{t("settings:autoApprove.write.outsideWorkspace.label")}
 								</span>
 							</VSCodeCheckbox>
-							<div className="text-vscode-descriptionForeground text-sm mt-1 mb-3">
+							<div className="text-vscode-descriptionForeground text-sm mt-1">
 								{t("settings:autoApprove.write.outsideWorkspace.description")}
+							</div>
+						</div>
+						<div>
+							<VSCodeCheckbox
+								checked={alwaysAllowWriteProtected}
+								onChange={(e: any) =>
+									setCachedStateField("alwaysAllowWriteProtected", e.target.checked)
+								}
+								data-testid="always-allow-write-protected-checkbox">
+								<span className="font-medium">{t("settings:autoApprove.write.protected.label")}</span>
+							</VSCodeCheckbox>
+							<div className="text-vscode-descriptionForeground text-sm mt-1 mb-3">
+								{t("settings:autoApprove.write.protected.description")}
 							</div>
 						</div>
 						<div>
@@ -181,6 +223,33 @@ export const AutoApproveSettings = ({
 							</div>
 							<div className="text-vscode-descriptionForeground text-sm mt-1">
 								{t("settings:autoApprove.retry.delayLabel")}
+							</div>
+						</div>
+					</div>
+				)}
+
+				{alwaysAllowFollowupQuestions && (
+					<div className="flex flex-col gap-3 pl-3 border-l-2 border-vscode-button-background">
+						<div className="flex items-center gap-4 font-bold">
+							<span className="codicon codicon-question" />
+							<div>{t("settings:autoApprove.followupQuestions.label")}</div>
+						</div>
+						<div>
+							<div className="flex items-center gap-2">
+								<Slider
+									min={1000}
+									max={300000}
+									step={1000}
+									value={[followupAutoApproveTimeoutMs]}
+									onValueChange={([value]) =>
+										setCachedStateField("followupAutoApproveTimeoutMs", value)
+									}
+									data-testid="followup-timeout-slider"
+								/>
+								<span className="w-20">{followupAutoApproveTimeoutMs / 1000}s</span>
+							</div>
+							<div className="text-vscode-descriptionForeground text-sm mt-1">
+								{t("settings:autoApprove.followupQuestions.timeoutLabel")}
 							</div>
 						</div>
 					</div>
@@ -231,6 +300,57 @@ export const AutoApproveSettings = ({
 										const newCommands = (allowedCommands ?? []).filter((_, i) => i !== index)
 										setCachedStateField("allowedCommands", newCommands)
 										vscode.postMessage({ type: "allowedCommands", commands: newCommands })
+									}}>
+									<div className="flex flex-row items-center gap-1">
+										<div>{cmd}</div>
+										<X className="text-foreground scale-75" />
+									</div>
+								</Button>
+							))}
+						</div>
+
+						{/* Denied Commands Section */}
+						<div className="mt-6">
+							<label className="block font-medium mb-1" data-testid="denied-commands-heading">
+								{t("settings:autoApprove.execute.deniedCommands")}
+							</label>
+							<div className="text-vscode-descriptionForeground text-sm mt-1">
+								{t("settings:autoApprove.execute.deniedCommandsDescription")}
+							</div>
+						</div>
+
+						<div className="flex gap-2">
+							<Input
+								value={deniedCommandInput}
+								onChange={(e: any) => setDeniedCommandInput(e.target.value)}
+								onKeyDown={(e: any) => {
+									if (e.key === "Enter") {
+										e.preventDefault()
+										handleAddDeniedCommand()
+									}
+								}}
+								placeholder={t("settings:autoApprove.execute.deniedCommandPlaceholder")}
+								className="grow"
+								data-testid="denied-command-input"
+							/>
+							<Button
+								className="h-8"
+								onClick={handleAddDeniedCommand}
+								data-testid="add-denied-command-button">
+								{t("settings:autoApprove.execute.addButton")}
+							</Button>
+						</div>
+
+						<div className="flex flex-wrap gap-2">
+							{(deniedCommands ?? []).map((cmd, index) => (
+								<Button
+									key={index}
+									variant="secondary"
+									data-testid={`remove-denied-command-${index}`}
+									onClick={() => {
+										const newCommands = (deniedCommands ?? []).filter((_, i) => i !== index)
+										setCachedStateField("deniedCommands", newCommands)
+										vscode.postMessage({ type: "deniedCommands", commands: newCommands })
 									}}>
 									<div className="flex flex-row items-center gap-1">
 										<div>{cmd}</div>

@@ -48,9 +48,11 @@ export const commandIds = [
 	"newTask",
 
 	"setCustomStoragePath",
+	"importSettings",
 
 	"focusInput",
 	"acceptInput",
+	"focusPanel",
 ] as const
 
 export type CommandId = (typeof commandIds)[number]
@@ -66,6 +68,7 @@ export const languages = [
 	// "es",
 	// "fr",
 	// "hi",
+	// "id",
 	// "it",
 	// "ja",
 	// "ko",

@@ -69,12 +69,17 @@ const WelcomeView = () => {
 
 	return (
 		<Tab>
-			<TabContent className="flex flex-col gap-5">
+			<TabContent className="flex flex-col gap-5 p-16">
 				<RooHero />
-				<h2 className="mx-auto">{t("chat:greeting")}</h2>
+				<h2 className="mt-0 mb-0">{t("welcome:greeting")}</h2>
 
-				<div className="outline rounded p-4">
-					<Trans i18nKey="welcome:introduction" />
+				<div className="font-bold">
+					<p>
+						<Trans i18nKey="welcome:introduction" />
+					</p>
+					<p>
+						<Trans i18nKey="welcome:chooseProvider" />
+					</p>
 				</div>
 
 				<div className="mb-4">

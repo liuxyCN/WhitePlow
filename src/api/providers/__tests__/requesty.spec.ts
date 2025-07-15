@@ -1,11 +1,11 @@
 // npx vitest run api/providers/__tests__/requesty.spec.ts
 
-import { vitest, describe, it, expect, beforeEach } from "vitest"
 import { Anthropic } from "@anthropic-ai/sdk"
 import OpenAI from "openai"
 
 import { RequestyHandler } from "../requesty"
 import { ApiHandlerOptions } from "../../../shared/api"
+import { Package } from "../../../shared/package"
 
 const mockCreate = vitest.fn()
 
@@ -60,6 +60,7 @@ describe("RequestyHandler", () => {
 			defaultHeaders: {
 				"HTTP-Referer": "https://github.com/RooVetGit/Roo-Cline",
 				"X-Title": "Roo Code",
+				"User-Agent": `RooCode/${Package.version}`,
 			},
 		})
 	})

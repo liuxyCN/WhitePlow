@@ -2,7 +2,7 @@ import * as vscode from "vscode"
 import * as path from "path"
 import * as fs from "fs/promises"
 import * as yaml from "yaml"
-import { MarketplaceItem, MarketplaceItemType, InstallMarketplaceItemOptions, McpParameter } from "./types"
+import type { MarketplaceItem, MarketplaceItemType, InstallMarketplaceItemOptions, McpParameter } from "@roo-code/types"
 import { GlobalFileNames } from "../../shared/globalFileNames"
 import { ensureSettingsDirectoryExists } from "../../utils/globalContext"
 
@@ -23,7 +23,7 @@ export class SimpleInstaller {
 			case "mcp":
 				return await this.installMcp(item, target, options)
 			default:
-				throw new Error(`Unsupported item type: ${item.type}`)
+				throw new Error(`Unsupported item type: ${(item as any).type}`)
 		}
 	}
 
@@ -47,7 +47,9 @@ export class SimpleInstaller {
 		let existingData: any = { customModes: [] }
 		try {
 			const existing = await fs.readFile(filePath, "utf-8")
-			existingData = yaml.parse(existing) || { customModes: [] }
+			const parsed = yaml.parse(existing)
+			// Ensure we have a valid object with customModes array
+			existingData = parsed && typeof parsed === "object" ? parsed : { customModes: [] }
 		} catch (error: any) {
 			if (error.code === "ENOENT") {
 				// File doesn't exist, use default structure - this is fine
@@ -84,7 +86,7 @@ export class SimpleInstaller {
 
 		// Write back to file
 		await fs.mkdir(path.dirname(filePath), { recursive: true })
-		const yamlContent = yaml.stringify(existingData)
+		const yamlContent = yaml.stringify(existingData, { lineWidth: 0 })
 		await fs.writeFile(filePath, yamlContent, "utf-8")
 
 		// Calculate approximate line number where the new mode was added
@@ -135,7 +137,8 @@ export class SimpleInstaller {
 		}
 
 		// Merge parameters (method-specific override global)
-		const allParameters = [...(item.parameters || []), ...methodParameters]
+		const itemParameters = item.type === "mcp" ? item.parameters || [] : []
+		const allParameters = [...itemParameters, ...methodParameters]
 		const uniqueParameters = Array.from(new Map(allParameters.map((p) => [p.key, p])).values())
 
 		// Replace parameters if provided
@@ -158,7 +161,8 @@ export class SimpleInstaller {
 				methodParameters = method.parameters || []
 
 				// Re-merge parameters with the newly selected method
-				const allParametersForNewMethod = [...(item.parameters || []), ...methodParameters]
+				const itemParametersForNewMethod = item.type === "mcp" ? item.parameters || [] : []
+				const allParametersForNewMethod = [...itemParametersForNewMethod, ...methodParameters]
 				const uniqueParametersForNewMethod = Array.from(
 					new Map(allParametersForNewMethod.map((p) => [p.key, p])).values(),
 				)
@@ -239,7 +243,7 @@ export class SimpleInstaller {
 				await this.removeMcp(item, target)
 				break
 			default:
-				throw new Error(`Unsupported item type: ${item.type}`)
+				throw new Error(`Unsupported item type: ${(item as any).type}`)
 		}
 	}
 
@@ -251,7 +255,9 @@ export class SimpleInstaller {
 			let existingData: any
 
 			try {
-				existingData = yaml.parse(existing)
+				const parsed = yaml.parse(existing)
+				// Ensure we have a valid object
+				existingData = parsed && typeof parsed === "object" ? parsed : {}
 			} catch (parseError) {
 				// If we can't parse the file, we can't safely remove a mode
 				const fileName = target === "project" ? ".roomodes" : "custom-modes.yaml"
@@ -261,27 +267,30 @@ export class SimpleInstaller {
 				)
 			}
 
-			if (existingData?.customModes) {
-				// Parse the item content to get the slug
-				let content: string
-				if (Array.isArray(item.content)) {
-					// Array of McpInstallationMethod objects - use first method
-					content = item.content[0].content
-				} else {
-					content = item.content
-				}
-				const modeData = yaml.parse(content || "")
-
-				if (!modeData.slug) {
-					return // Nothing to remove if no slug
-				}
-
-				// Remove mode with matching slug
-				existingData.customModes = existingData.customModes.filter((mode: any) => mode.slug !== modeData.slug)
-
-				// Always write back the file, even if empty
-				await fs.writeFile(filePath, yaml.stringify(existingData), "utf-8")
+			// Ensure customModes array exists
+			if (!existingData.customModes) {
+				existingData.customModes = []
 			}
+
+			// Parse the item content to get the slug
+			let content: string
+			if (Array.isArray(item.content)) {
+				// Array of McpInstallationMethod objects - use first method
+				content = item.content[0].content
+			} else {
+				content = item.content
+			}
+			const modeData = yaml.parse(content || "")
+
+			if (!modeData.slug) {
+				return // Nothing to remove if no slug
+			}
+
+			// Remove mode with matching slug
+			existingData.customModes = existingData.customModes.filter((mode: any) => mode.slug !== modeData.slug)
+
+			// Always write back the file, even if empty
+			await fs.writeFile(filePath, yaml.stringify(existingData, { lineWidth: 0 }), "utf-8")
 		} catch (error: any) {
 			if (error.code === "ENOENT") {
 				// File doesn't exist, nothing to remove

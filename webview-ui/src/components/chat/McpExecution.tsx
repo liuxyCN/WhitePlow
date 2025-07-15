@@ -242,6 +242,7 @@ export const McpExecution = ({
 							serverName={useMcpServer.serverName}
 							serverSource={server?.source}
 							alwaysAllowMcp={alwaysAllowMcp}
+							isInChatContext={true}
 						/>
 					</div>
 				)}
@@ -256,6 +257,7 @@ export const McpExecution = ({
 							serverName={serverName}
 							serverSource={undefined}
 							alwaysAllowMcp={alwaysAllowMcp}
+							isInChatContext={true}
 						/>
 					</div>
 				)}
@@ -313,8 +315,8 @@ const ResponseContainerInternal = ({
 	return (
 		<div
 			className={cn("overflow-hidden", {
-				"max-h-[100%] mt-1 pt-1 border-t border-border/25": hasArguments,
-				"max-h-[100%] mt-1 pt-1": !hasArguments,
+				"max-h-96 overflow-y-auto mt-1 pt-1 border-t border-border/25": hasArguments,
+				"max-h-96 overflow-y-auto mt-1 pt-1": !hasArguments,
 			})}>
 			{isJson ? (
 				<CodeBlock source={response} language="json" />

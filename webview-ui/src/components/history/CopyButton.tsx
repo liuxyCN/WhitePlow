@@ -1,16 +1,15 @@
 import { useCallback } from "react"
 
 import { useClipboard } from "@/components/ui/hooks"
-import { Button } from "@/components/ui"
-import { cn } from "@/lib/utils"
+import { Button, StandardTooltip } from "@/components/ui"
 import { useAppTranslation } from "@/i18n/TranslationContext"
+import { cn } from "@/lib/utils"
 
 type CopyButtonProps = {
 	itemTask: string
-	className?: string
 }
 
-export const CopyButton = ({ itemTask, className }: CopyButtonProps) => {
+export const CopyButton = ({ itemTask }: CopyButtonProps) => {
 	const { isCopied, copy } = useClipboard()
 	const { t } = useAppTranslation()
 
@@ -26,14 +25,15 @@ export const CopyButton = ({ itemTask, className }: CopyButtonProps) => {
 	)
 
 	return (
-		<Button
-			variant="ghost"
-			size="icon"
-			title={t("history:copyPrompt")}
-			onClick={onCopy}
-			data-testid="copy-prompt-button"
-			className={cn("opacity-50 hover:opacity-100", className)}>
-			<span className={cn("codicon scale-80", { "codicon-check": isCopied, "codicon-copy": !isCopied })} />
-		</Button>
+		<StandardTooltip content={t("history:copyPrompt")}>
+			<Button
+				variant="ghost"
+				size="icon"
+				onClick={onCopy}
+				className="group-hover:opacity-100 opacity-50 transition-opacity"
+				data-testid="copy-prompt-button">
+				<span className={cn("codicon scale-80", { "codicon-check": isCopied, "codicon-copy": !isCopied })} />
+			</Button>
+		</StandardTooltip>
 	)
 }

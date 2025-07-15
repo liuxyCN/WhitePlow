@@ -48,6 +48,7 @@ const BaseConfigSchema = z.object({
 	timeout: z.number().min(1).max(3600).optional().default(600),
 	alwaysAllow: z.array(z.string()).default([]),
 	watchPaths: z.array(z.string()).optional(), // paths to watch for changes and restart server
+	disabledTools: z.array(z.string()).default([]),
 })
 
 // Custom error messages for better user feedback
@@ -136,16 +137,120 @@ export class McpHub {
 	isConnecting: boolean = false
 	private refCount: number = 0 // Reference counter for active clients
 	private configChangeDebounceTimers: Map<string, NodeJS.Timeout> = new Map()
+	// Store memory server tool states to persist across refreshes
+	private memoryServerToolStates: Map<string, { alwaysAllow: string[], disabledTools: string[] }> = new Map()
+	// Store memory server enable/disable states to persist across refreshes
+	private memoryServerDisabledStates: Map<string, boolean> = new Map()
 
 	constructor(provider: ClineProvider) {
 		this.providerRef = new WeakRef(provider)
 		this.watchMcpSettingsFile()
 		this.watchProjectMcpFile().catch(console.error)
 		this.setupWorkspaceFoldersWatcher()
+		// Load saved memory server tool states
+		this.loadMemoryServerToolStates().catch(console.error)
+		// Load saved memory server disabled states
+		this.loadMemoryServerDisabledStates().catch(console.error)
 		this.initializeGlobalMcpServers()
 		this.initializeProjectMcpServers()
 		this.initializeInMemoryFileCoolServer().catch(console.error)
 	}
+	/**
+	 * Save memory server tool states before refresh
+	 */
+	private async saveMemoryServerToolStates(): Promise<void> {
+		const memoryConnections = this.connections.filter(conn => conn.server.source === "memory")
+		for (const conn of memoryConnections) {
+			const alwaysAllow: string[] = []
+			const disabledTools: string[] = []
+
+			if (conn.server.tools) {
+				for (const tool of conn.server.tools) {
+					if (tool.alwaysAllow) {
+						alwaysAllow.push(tool.name)
+					}
+					if (!tool.enabledForPrompt) {
+						disabledTools.push(tool.name)
+					}
+				}
+			}
+
+			this.memoryServerToolStates.set(conn.server.name, { alwaysAllow, disabledTools })
+
+			// Also save the server's disabled state
+			this.memoryServerDisabledStates.set(conn.server.name, conn.server.disabled || false)
+		}
+
+		// Persist to plugin state
+		await this.persistMemoryServerToolStates()
+		await this.persistMemoryServerDisabledStates()
+	}
+
+	/**
+	 * Persist memory server tool states to plugin storage
+	 */
+	private async persistMemoryServerToolStates(): Promise<void> {
+		const provider = this.providerRef.deref()
+		if (provider) {
+			const stateObject = Object.fromEntries(this.memoryServerToolStates)
+			// Use VSCode's globalState directly for custom data
+			await provider.context.globalState.update("mcpMemoryServerToolStates", stateObject)
+		}
+	}
+
+	/**
+	 * Load memory server tool states from plugin storage
+	 */
+	private async loadMemoryServerToolStates(): Promise<void> {
+		const provider = this.providerRef.deref()
+		if (provider) {
+			const stateObject = provider.context.globalState.get("mcpMemoryServerToolStates") as Record<string, { alwaysAllow: string[], disabledTools: string[] }> | undefined
+			if (stateObject) {
+				this.memoryServerToolStates = new Map(Object.entries(stateObject))
+			}
+		}
+	}
+
+	/**
+	 * Load memory server disabled states from plugin storage
+	 */
+	private async loadMemoryServerDisabledStates(): Promise<void> {
+		const provider = this.providerRef.deref()
+		if (provider) {
+			const stateObject = provider.context.globalState.get("mcpMemoryServerDisabledStates") as Record<string, boolean> | undefined
+			if (stateObject) {
+				this.memoryServerDisabledStates = new Map(Object.entries(stateObject))
+			}
+		}
+	}
+
+	/**
+	 * Persist memory server disabled states to plugin storage
+	 */
+	private async persistMemoryServerDisabledStates(): Promise<void> {
+		const provider = this.providerRef.deref()
+		if (provider) {
+			const stateObject = Object.fromEntries(this.memoryServerDisabledStates)
+			await provider.context.globalState.update("mcpMemoryServerDisabledStates", stateObject)
+		}
+	}
+
+	/**
+	 * Restore memory server tool states after refresh
+	 */
+	private restoreMemoryServerToolStates(): void {
+		const memoryConnections = this.connections.filter(conn => conn.server.source === "memory")
+		for (const conn of memoryConnections) {
+			const savedState = this.memoryServerToolStates.get(conn.server.name)
+			if (savedState && conn.server.tools) {
+				for (const tool of conn.server.tools) {
+					tool.alwaysAllow = savedState.alwaysAllow.includes(tool.name)
+					tool.enabledForPrompt = !savedState.disabledTools.includes(tool.name)
+				}
+			}
+		}
+	}
+
 	/**
 	 * Registers a client (e.g., ClineProvider) using this hub.
 	 * Increments the reference count.
@@ -246,9 +351,10 @@ export class McpHub {
 
 	public setupWorkspaceFoldersWatcher(): void {
 		// Skip if test environment is detected
-		if (process.env.NODE_ENV === "test" || process.env.JEST_WORKER_ID !== undefined) {
+		if (process.env.NODE_ENV === "test") {
 			return
 		}
+
 		this.disposables.push(
 			vscode.workspace.onDidChangeWorkspaceFolders(async () => {
 				await this.updateProjectMcpServers()
@@ -318,11 +424,7 @@ export class McpHub {
 
 	private async watchProjectMcpFile(): Promise<void> {
 		// Skip if test environment is detected or VSCode APIs are not available
-		if (
-			process.env.NODE_ENV === "test" ||
-			process.env.JEST_WORKER_ID !== undefined ||
-			!vscode.workspace.createFileSystemWatcher
-		) {
+		if (process.env.NODE_ENV === "test" || !vscode.workspace.createFileSystemWatcher) {
 			return
 		}
 
@@ -455,11 +557,7 @@ export class McpHub {
 
 	private async watchMcpSettingsFile(): Promise<void> {
 		// Skip if test environment is detected or VSCode APIs are not available
-		if (
-			process.env.NODE_ENV === "test" ||
-			process.env.JEST_WORKER_ID !== undefined ||
-			!vscode.workspace.createFileSystemWatcher
-		) {
+		if (process.env.NODE_ENV === "test" || !vscode.workspace.createFileSystemWatcher) {
 			return
 		}
 
@@ -470,7 +568,6 @@ export class McpHub {
 		}
 
 		const settingsPath = await this.getMcpSettingsFilePath()
-		const settingsUri = vscode.Uri.file(settingsPath)
 		const settingsPattern = new vscode.RelativePattern(path.dirname(settingsPath), path.basename(settingsPath))
 
 		// Create a file system watcher for the global MCP settings file
@@ -598,12 +695,15 @@ export class McpHub {
 			const client = await inMemoryServer.connect()
 			console.log("In-memory server connected successfully")
 
+			// Check if there's a saved disabled state for file-cool server
+			const savedDisabledState = this.memoryServerDisabledStates.get("file-cool") ?? false
+
 			const connection: McpConnection = {
 				server: {
 					name: "file-cool",
 					config: JSON.stringify({ type: "stdio", command: "in-memory" }), // Valid config for in-memory server
 					status: "connected",
-					disabled: false,
+					disabled: savedDisabledState, // Apply saved disabled state
 					source: "memory" as any, // Special source to avoid normal validation flows
 					errorHistory: [],
 					tools: [],
@@ -682,15 +782,19 @@ export class McpHub {
 						continue
 					}
 
+					// Check if there's a saved disabled state for this server, default to true (disabled)
+					const savedDisabledState = this.memoryServerDisabledStates.get(serverName) ?? true
+
 					const serverConfig = {
 						type: "streamable-http" as const,
 						url: gatewayUrl.endsWith('/') ? gatewayUrl + serverPath : gatewayUrl + '/' + serverPath,
 						headers: {
 							"API_KEY": apiKey
 						},
-						disabled: false,
+						disabled: savedDisabledState, // Apply saved disabled state or default to disabled
 						timeout: 600,
-						alwaysAllow: []
+						alwaysAllow: [],
+						disabledTools: []
 					}
 
 					console.log(`Connecting to server: ${serverName} at ${serverConfig.url}`)
@@ -736,9 +840,25 @@ export class McpHub {
 			})) as typeof config
 
 			if (configInjected.type === "stdio") {
+				// On Windows, wrap commands with cmd.exe to handle non-exe executables like npx.ps1
+				// This is necessary for node version managers (fnm, nvm-windows, volta) that implement
+				// commands as PowerShell scripts rather than executables.
+				// Note: This adds a small overhead as commands go through an additional shell layer.
+				const isWindows = process.platform === "win32"
+
+				// Check if command is already cmd.exe to avoid double-wrapping
+				const isAlreadyWrapped =
+					configInjected.command.toLowerCase() === "cmd.exe" || configInjected.command.toLowerCase() === "cmd"
+
+				const command = isWindows && !isAlreadyWrapped ? "cmd.exe" : configInjected.command
+				const args =
+					isWindows && !isAlreadyWrapped
+						? ["/c", configInjected.command, ...(configInjected.args || [])]
+						: configInjected.args
+
 				transport = new StdioClientTransport({
-					command: configInjected.command,
-					args: configInjected.args,
+					command,
+					args,
 					cwd: configInjected.cwd,
 					env: {
 						...getDefaultEnvironment(),
@@ -993,37 +1113,60 @@ export class McpHub {
 			const actualSource = connection.server.source || "global"
 			let configPath: string
 			let alwaysAllowConfig: string[] = []
+			let disabledToolsList: string[] = []
 
 			// Skip config file reading for memory servers
 			if (actualSource !== "memory") {
 				// Read from the appropriate config file based on the actual source
 				try {
-					if (actualSource === "project") {
+					let serverConfigData: Record<string, any> = {}
+				if (actualSource === "project") {
 						// Get project MCP config path
 						const projectMcpPath = await this.getProjectMcpPath()
 						if (projectMcpPath) {
 							configPath = projectMcpPath
 							const content = await fs.readFile(configPath, "utf-8")
-							const config = JSON.parse(content)
-							alwaysAllowConfig = config.mcpServers?.[serverName]?.alwaysAllow || []
-						}
+							serverConfigData = JSON.parse(content)
+							}
 					} else {
 						// Get global MCP settings path
 						configPath = await this.getMcpSettingsFilePath()
 						const content = await fs.readFile(configPath, "utf-8")
-						const config = JSON.parse(content)
-						alwaysAllowConfig = config.mcpServers?.[serverName]?.alwaysAllow || []
+						serverConfigData = JSON.parse(content)
 					}
+				if (serverConfigData) {
+					alwaysAllowConfig = serverConfigData.mcpServers?.[serverName]?.alwaysAllow || []
+						disabledToolsList = serverConfigData.mcpServers?.[serverName]?.disabledTools || []
+				}
 				} catch (error) {
-					console.error(`Failed to read alwaysAllow config for ${serverName}:`, error)
-					// Continue with empty alwaysAllowConfig
+					console.error(`Failed to read tool configuration for ${serverName}:`, error)
+					// Continue with empty configs
+				}
+			} else {
+				// For memory servers, try to restore from saved states first, then from existing tools
+				const savedState = this.memoryServerToolStates.get(serverName)
+				if (savedState) {
+					alwaysAllowConfig = [...savedState.alwaysAllow]
+					disabledToolsList = [...savedState.disabledTools]
+				} else {
+					// Fallback: preserve existing tool states if they exist
+					const existingTools = connection.server.tools || []
+					for (const existingTool of existingTools) {
+						if (existingTool.alwaysAllow) {
+							alwaysAllowConfig.push(existingTool.name)
+						}
+						if (!existingTool.enabledForPrompt) {
+							disabledToolsList.push(existingTool.name)
+						}
+					}
 				}
 			}
 
-			// Mark tools as always allowed based on settings
+			// Mark tools as always allowed and enabled for prompt based on settings
 			const tools = (response?.tools || []).map((tool) => ({
 				...tool,
 				alwaysAllow: alwaysAllowConfig.includes(tool.name),
+				enabledForPrompt: !disabledToolsList.includes(tool.name),
 			}))
 
 			return tools
@@ -1279,6 +1422,9 @@ export class McpHub {
 
 	public async refreshInMemoryServers(): Promise<void> {
 		try {
+			// Save current memory server tool states before refresh
+			this.saveMemoryServerToolStates()
+
 			// Find and remove existing in-memory connections
 			const inMemoryConnections = this.connections.filter(conn => conn.server.source === "memory")
 			for (const conn of inMemoryConnections) {
@@ -1287,6 +1433,9 @@ export class McpHub {
 
 			// Re-initialize in-memory servers with new configuration
 			await this.initializeInMemoryFileCoolServer()
+
+			// Restore tool states after re-initialization
+			this.restoreMemoryServerToolStates()
 
 			await this.notifyWebviewOfServerChanges()
 		} catch (error) {
@@ -1304,6 +1453,9 @@ export class McpHub {
 		vscode.window.showInformationMessage(t("mcp:info.refreshing_all"))
 
 		try {
+			// Save current memory server tool states before refresh
+			this.saveMemoryServerToolStates()
+
 			const globalPath = await this.getMcpSettingsFilePath()
 			let globalServers: Record<string, any> = {}
 			try {
@@ -1351,6 +1503,9 @@ export class McpHub {
 
 			// Re-initialize in-memory servers
 			await this.initializeInMemoryFileCoolServer()
+
+			// Restore memory server tool states after re-initialization
+			this.restoreMemoryServerToolStates()
 
 			await delay(100)
 
@@ -1480,9 +1635,12 @@ export class McpHub {
 
 			const serverSource = connection.server.source || "global"
 
-			// For memory servers, just update the in-memory state without touching config files
+			// For memory servers, update the in-memory state and persist to globalState
 			if (serverSource === "memory") {
 				connection.server.disabled = disabled
+				// Save the disabled state to globalState for persistence
+				this.memoryServerDisabledStates.set(serverName, disabled)
+				await this.persistMemoryServerDisabledStates()
 				await this.notifyWebviewOfServerChanges()
 				return
 			}
@@ -1592,13 +1750,19 @@ export class McpHub {
 	public async updateServerTimeout(
 		serverName: string,
 		timeout: number,
-		source?: "global" | "project",
+		source?: "global" | "project" | "memory",
 	): Promise<void> {
 		try {
 			// Find the connection to determine if it's a global or project server
 			const connection = this.findConnection(serverName, source)
 			if (!connection) {
 				throw new Error(`Server ${serverName}${source ? ` with source ${source}` : ""} not found`)
+			}
+
+			// For memory servers, skip config file updates but still notify webview
+			if (connection.server.source === "memory") {
+				await this.notifyWebviewOfServerChanges()
+				return
 			}
 
 			// Update the server config in the appropriate file
@@ -1747,21 +1911,66 @@ export class McpHub {
 		)
 	}
 
-	async toggleToolAlwaysAllow(
+	/**
+	 * Helper method to update a specific tool list (alwaysAllow or disabledTools)
+	 * in the appropriate settings file.
+	 * @param serverName The name of the server to update
+	 * @param source Whether to update the global or project config
+	 * @param toolName The name of the tool to add or remove
+	 * @param listName The name of the list to modify ("alwaysAllow" or "disabledTools")
+	 * @param addTool Whether to add (true) or remove (false) the tool from the list
+	 */
+	private async updateServerToolList(
 		serverName: string,
 		source: "global" | "project" | "memory",
 		toolName: string,
-		shouldAllow: boolean,
+		listName: "alwaysAllow" | "disabledTools",
+		addTool: boolean,
 	): Promise<void> {
 		// Skip config file updates for memory servers
 		if (source === "memory") {
 			// For memory servers, just update the in-memory tool configuration
 			const connection = this.findConnection(serverName, source)
 			if (connection) {
+				// Find the tool and update its properties based on the list name
 				const tool = connection.server.tools?.find(t => t.name === toolName)
 				if (tool) {
-					tool.alwaysAllow = shouldAllow
+					if (listName === "alwaysAllow") {
+						tool.alwaysAllow = addTool
+					} else if (listName === "disabledTools") {
+						tool.enabledForPrompt = !addTool
+					}
 				}
+
+				// Update the saved state for persistence across refreshes
+				let savedState = this.memoryServerToolStates.get(serverName)
+				if (!savedState) {
+					savedState = { alwaysAllow: [], disabledTools: [] }
+					this.memoryServerToolStates.set(serverName, savedState)
+				}
+
+				if (listName === "alwaysAllow") {
+					if (addTool && !savedState.alwaysAllow.includes(toolName)) {
+						savedState.alwaysAllow.push(toolName)
+					} else if (!addTool) {
+						const index = savedState.alwaysAllow.indexOf(toolName)
+						if (index > -1) {
+							savedState.alwaysAllow.splice(index, 1)
+						}
+					}
+				} else if (listName === "disabledTools") {
+					if (addTool && !savedState.disabledTools.includes(toolName)) {
+						savedState.disabledTools.push(toolName)
+					} else if (!addTool) {
+						const index = savedState.disabledTools.indexOf(toolName)
+						if (index > -1) {
+							savedState.disabledTools.splice(index, 1)
+						}
+					}
+				}
+
+				// Persist the updated state
+				await this.persistMemoryServerToolStates()
 			}
 			await this.notifyWebviewOfServerChanges()
 			return
@@ -1796,12 +2005,10 @@ export class McpHub {
 			const content = await fs.readFile(normalizedPath, "utf-8")
 			const config = JSON.parse(content)
 
-			// Initialize mcpServers if it doesn't exist
 			if (!config.mcpServers) {
 				config.mcpServers = {}
 			}
 
-			// Initialize server config if it doesn't exist
 			if (!config.mcpServers[serverName]) {
 				config.mcpServers[serverName] = {
 					type: "stdio",
@@ -1810,33 +2017,61 @@ export class McpHub {
 				}
 			}
 
-			// Initialize alwaysAllow if it doesn't exist
-			if (!config.mcpServers[serverName].alwaysAllow) {
-				config.mcpServers[serverName].alwaysAllow = []
+			if (!config.mcpServers[serverName][listName]) {
+				config.mcpServers[serverName][listName] = []
 			}
 
-			const alwaysAllow = config.mcpServers[serverName].alwaysAllow
-			const toolIndex = alwaysAllow.indexOf(toolName)
+			const targetList = config.mcpServers[serverName][listName]
+			const toolIndex = targetList.indexOf(toolName)
 
-			if (shouldAllow && toolIndex === -1) {
-				// Add tool to always allow list
-				alwaysAllow.push(toolName)
-			} else if (!shouldAllow && toolIndex !== -1) {
-				// Remove tool from always allow list
-				alwaysAllow.splice(toolIndex, 1)
+			if (addTool && toolIndex === -1) {
+				targetList.push(toolName)
+			} else if (!addTool && toolIndex !== -1) {
+				targetList.splice(toolIndex, 1)
 			}
 
-			// Write updated config back to file
 			await fs.writeFile(normalizedPath, JSON.stringify(config, null, 2))
 
-			// Update the tools list to reflect the change
 			if (connection) {
-				// Explicitly pass the source to ensure we're updating the correct server's tools
 				connection.server.tools = await this.fetchToolsList(serverName, source)
 				await this.notifyWebviewOfServerChanges()
 			}
 		} catch (error) {
-			this.showErrorMessage(`Failed to update always allow settings for tool ${toolName}`, error)
+			console.error(`Failed to update server tool list for ${serverName}:`, error)
+			throw error
+		}
+	}
+
+	async toggleToolAlwaysAllow(
+		serverName: string,
+		source: "global" | "project" | "memory",
+		toolName: string,
+		shouldAllow: boolean,
+	): Promise<void> {
+		try {
+			await this.updateServerToolList(serverName, source, toolName, "alwaysAllow", shouldAllow)
+		} catch (error) {
+			this.showErrorMessage(
+				`Failed to toggle always allow for tool "${toolName}" on server "${serverName}" with source "${source}"`,
+				error,
+			)
+			throw error
+		}
+	}
+
+	async toggleToolEnabledForPrompt(
+		serverName: string,
+		source: "global" | "project" | "memory",
+		toolName: string,
+		isEnabled: boolean,
+	): Promise<void> {
+		try {
+			// When isEnabled is true, we want to remove the tool from the disabledTools list.
+			// When isEnabled is false, we want to add the tool to the disabledTools list.
+			const addToolToDisabledList = !isEnabled
+			await this.updateServerToolList(serverName, source, toolName, "disabledTools", addToolToDisabledList)
+		} catch (error) {
+			this.showErrorMessage(`Failed to update settings for tool ${toolName}`, error)
 			throw error // Re-throw to ensure the error is properly handled
 		}
 	}

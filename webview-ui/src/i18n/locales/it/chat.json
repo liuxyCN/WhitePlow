@@ -12,7 +12,16 @@
 		"export": "Esporta cronologia attività",
 		"delete": "Elimina attività (Shift + Clic per saltare la conferma)",
 		"condenseContext": "Condensa contesto in modo intelligente",
-		"share": "Condividi attività"
+		"share": "Condividi attività",
+		"shareWithOrganization": "Condividi con l'organizzazione",
+		"shareWithOrganizationDescription": "Solo i membri della tua organizzazione possono accedere",
+		"sharePublicly": "Condividi pubblicamente",
+		"sharePubliclyDescription": "Chiunque con il link può accedere",
+		"connectToCloud": "Connetti al Cloud",
+		"connectToCloudDescription": "Accedi a Roo Code Cloud per condividere attività",
+		"sharingDisabledByOrganization": "Condivisione disabilitata dall'organizzazione",
+		"shareSuccessOrganization": "Link organizzazione copiato negli appunti",
+		"shareSuccessPublic": "Link pubblico copiato negli appunti"
 	},
 	"unpin": "Rilascia",
 	"pin": "Fissa",
@@ -75,7 +84,7 @@
 	"onboarding": "Grazie alle più recenti innovazioni nelle capacità di codifica agentica, posso gestire complesse attività di sviluppo software passo dopo passo. Con strumenti che mi permettono di creare e modificare file, esplorare progetti complessi, utilizzare il browser ed eseguire comandi da terminale (dopo la tua autorizzazione), posso aiutarti in modi che vanno oltre il completamento del codice o il supporto tecnico. Posso persino usare MCP per creare nuovi strumenti ed estendere le mie capacità.",
 	"rooTips": {
 		"boomerangTasks": {
-			"title": "Attività Boomerang",
+			"title": "Orchestrazione di Attività",
 			"description": "Dividi le attività in parti più piccole e gestibili."
 		},
 		"stickyModels": {
@@ -96,17 +105,25 @@
 	"enhancePrompt": "Migliora prompt con contesto aggiuntivo",
 	"addImages": "Aggiungi immagini al messaggio",
 	"sendMessage": "Invia messaggio",
+	"stopTts": "Interrompi sintesi vocale",
 	"typeMessage": "Scrivi un messaggio...",
 	"typeTask": "Scrivi la tua attività qui...",
 	"addContext": "@ per aggiungere contesto, / per cambiare modalità",
 	"dragFiles": "tieni premuto shift per trascinare file",
 	"dragFilesImages": "tieni premuto shift per trascinare file/immagini",
 	"enhancePromptDescription": "Il pulsante 'Migliora prompt' aiuta a migliorare la tua richiesta fornendo contesto aggiuntivo, chiarimenti o riformulazioni. Prova a digitare una richiesta qui e fai di nuovo clic sul pulsante per vedere come funziona.",
+	"modeSelector": {
+		"title": "Modalità",
+		"marketplace": "Marketplace delle Modalità",
+		"settings": "Impostazioni Modalità",
+		"description": "Personalità specializzate che adattano il comportamento di Roo."
+	},
 	"errorReadingFile": "Errore nella lettura del file:",
 	"noValidImages": "Nessuna immagine valida è stata elaborata",
 	"separator": "Separatore",
 	"edit": "Modifica...",
 	"forNextMode": "per la prossima modalità",
+	"forPreviousMode": "per la modalità precedente",
 	"instructions": {
 		"wantsToFetch": "Roo vuole recuperare istruzioni dettagliate per aiutare con l'attività corrente"
 	},
@@ -145,6 +162,7 @@
 		"didRead": "Roo ha letto questo file:",
 		"wantsToEdit": "Roo vuole modificare questo file:",
 		"wantsToEditOutsideWorkspace": "Roo vuole modificare questo file al di fuori dell'area di lavoro:",
+		"wantsToEditProtected": "Roo vuole modificare un file di configurazione protetto:",
 		"wantsToCreate": "Roo vuole creare un nuovo file:",
 		"wantsToSearchReplace": "Roo vuole eseguire ricerca e sostituzione in questo file:",
 		"didSearchReplace": "Roo ha eseguito ricerca e sostituzione in questo file:",
@@ -163,7 +181,15 @@
 		"wantsToViewDefinitions": "Roo vuole visualizzare i nomi delle definizioni di codice sorgente utilizzate in questa directory:",
 		"didViewDefinitions": "Roo ha visualizzato i nomi delle definizioni di codice sorgente utilizzate in questa directory:",
 		"wantsToSearch": "Roo vuole cercare in questa directory <code>{{regex}}</code>:",
-		"didSearch": "Roo ha cercato in questa directory <code>{{regex}}</code>:"
+		"didSearch": "Roo ha cercato in questa directory <code>{{regex}}</code>:",
+		"wantsToSearchOutsideWorkspace": "Roo vuole cercare in questa directory (fuori dall'area di lavoro) <code>{{regex}}</code>:",
+		"didSearchOutsideWorkspace": "Roo ha cercato in questa directory (fuori dall'area di lavoro) <code>{{regex}}</code>:",
+		"wantsToViewTopLevelOutsideWorkspace": "Roo vuole visualizzare i file di primo livello in questa directory (fuori dall'area di lavoro):",
+		"didViewTopLevelOutsideWorkspace": "Roo ha visualizzato i file di primo livello in questa directory (fuori dall'area di lavoro):",
+		"wantsToViewRecursiveOutsideWorkspace": "Roo vuole visualizzare ricorsivamente tutti i file in questa directory (fuori dall'area di lavoro):",
+		"didViewRecursiveOutsideWorkspace": "Roo ha visualizzato ricorsivamente tutti i file in questa directory (fuori dall'area di lavoro):",
+		"wantsToViewDefinitionsOutsideWorkspace": "Roo vuole visualizzare i nomi delle definizioni di codice sorgente utilizzate in questa directory (fuori dall'area di lavoro):",
+		"didViewDefinitionsOutsideWorkspace": "Roo ha visualizzato i nomi delle definizioni di codice sorgente utilizzate in questa directory (fuori dall'area di lavoro):"
 	},
 	"commandOutput": "Output del comando",
 	"response": "Risposta",
@@ -210,15 +236,17 @@
 		"tokens": "token"
 	},
 	"followUpSuggest": {
-		"copyToInput": "Copia nell'input (o Shift + clic)"
+		"copyToInput": "Copia nell'input (o Shift + clic)",
+		"autoSelectCountdown": "Selezione automatica in {{count}}s",
+		"countdownDisplay": "{{count}}s"
 	},
 	"announcement": {
 		"title": "🎉 Rilasciato Roo Code {{version}}",
-		"description": "Roo Code {{version}} introduce potenti nuove funzionalità e miglioramenti basati sui tuoi feedback.",
+		"description": "Roo Code {{version}} porta nuove potenti funzionalità e miglioramenti significativi per potenziare il tuo flusso di lavoro di sviluppo.",
 		"whatsNew": "Novità",
-		"feature1": "<bold>Marketplace Sperimentale</bold>: Scopri e installa modalità e MCP dal nuovo marketplace (abilita in <experimentalSettingsLink>Impostazioni Sperimentali</experimentalSettingsLink>)",
-		"feature2": "<bold>Operazioni sui File Migliorate</bold>: Scritture multiple di file concorrenti nelle impostazioni sperimentali, e letture concorrenti ora in <contextSettingsLink>Impostazioni di Contesto</contextSettingsLink>",
-		"feature3": "<bold>Miglioramenti MCP e altro</bold>: Supporto MCP migliorato, controlli Mermaid, supporto per Amazon Bedrock thinking, e molto altro!",
+		"feature1": "<bold>Indicizzazione Codebase Promossa da Sperimentale</bold>: L'indicizzazione completa del codebase è ora stabile e pronta per l'uso in produzione con ricerca migliorata e comprensione del contesto.",
+		"feature2": "<bold>Nuova Funzione Lista Todo</bold>: Mantieni i tuoi task in carreggiata con la gestione integrata dei todo che ti aiuta a rimanere organizzato e concentrato sui tuoi obiettivi di sviluppo.",
+		"feature3": "<bold>Transizioni Migliorate da Architetto a Codice</bold>: Trasferimenti fluidi dalla pianificazione in modalità Architetto all'implementazione in modalità Codice.",
 		"hideButton": "Nascondi annuncio",
 		"detailsDiscussLinks": "Ottieni maggiori dettagli e partecipa alle discussioni su <discordLink>Discord</discordLink> e <redditLink>Reddit</redditLink> 🚀"
 	},
@@ -254,7 +282,7 @@
 		}
 	},
 	"systemPromptWarning": "ATTENZIONE: Sovrascrittura personalizzata delle istruzioni di sistema attiva. Questo può compromettere gravemente le funzionalità e causare comportamenti imprevedibili.",
-	"profileViolationWarning": "Il profilo corrente viola le impostazioni della tua organizzazione",
+	"profileViolationWarning": "Il profilo corrente non è compatibile con le impostazioni della tua organizzazione",
 	"shellIntegration": {
 		"title": "Avviso di esecuzione comando",
 		"description": "Il tuo comando viene eseguito senza l'integrazione shell del terminale VSCode. Per sopprimere questo avviso puoi disattivare l'integrazione shell nella sezione <strong>Terminal</strong> delle <settingsLink>impostazioni di Roo Code</settingsLink> o risolvere i problemi di integrazione del terminale VSCode utilizzando il link qui sotto.",
@@ -270,7 +298,9 @@
 	"codebaseSearch": {
 		"wantsToSearch": "Roo vuole cercare nella base di codice <code>{{query}}</code>:",
 		"wantsToSearchWithPath": "Roo vuole cercare nella base di codice <code>{{query}}</code> in <code>{{path}}</code>:",
-		"didSearch": "Trovato {{count}} risultato/i per <code>{{query}}</code>:"
+		"didSearch_one": "Trovato 1 risultato",
+		"didSearch_other": "Trovati {{count}} risultati",
+		"resultTooltip": "Punteggio di somiglianza: {{score}} (clicca per aprire il file)"
 	},
 	"read-batch": {
 		"approve": {
@@ -286,5 +316,8 @@
 		"indexed": "Indicizzato",
 		"error": "Errore indice",
 		"status": "Stato indice"
+	},
+	"versionIndicator": {
+		"ariaLabel": "Versione {{version}} - Clicca per visualizzare le note di rilascio"
 	}
 }

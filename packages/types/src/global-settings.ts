@@ -1,6 +1,6 @@
 import { z } from "zod"
 
-import { type Keys, keysOf } from "./type-fu.js"
+import { type Keys } from "./type-fu.js"
 import {
 	type ProviderSettings,
 	PROVIDER_SETTINGS_KEYS,
@@ -36,6 +36,7 @@ export const globalSettingsSchema = z.object({
 	alwaysAllowReadOnlyOutsideWorkspace: z.boolean().optional(),
 	alwaysAllowWrite: z.boolean().optional(),
 	alwaysAllowWriteOutsideWorkspace: z.boolean().optional(),
+	alwaysAllowWriteProtected: z.boolean().optional(),
 	writeDelayMs: z.number().optional(),
 	alwaysAllowBrowser: z.boolean().optional(),
 	alwaysApproveResubmit: z.boolean().optional(),
@@ -44,7 +45,11 @@ export const globalSettingsSchema = z.object({
 	alwaysAllowModeSwitch: z.boolean().optional(),
 	alwaysAllowSubtasks: z.boolean().optional(),
 	alwaysAllowExecute: z.boolean().optional(),
+	alwaysAllowFollowupQuestions: z.boolean().optional(),
+	followupAutoApproveTimeoutMs: z.number().optional(),
+	alwaysAllowUpdateTodoList: z.boolean().optional(),
 	allowedCommands: z.array(z.string()).optional(),
+	deniedCommands: z.array(z.string()).optional(),
 	allowedMaxRequests: z.number().nullish(),
 	autoCondenseContext: z.boolean().optional(),
 	autoCondenseContextPercent: z.number().optional(),
@@ -105,100 +110,17 @@ export const globalSettingsSchema = z.object({
 	customSupportPrompts: customSupportPromptsSchema.optional(),
 	enhancementApiConfigId: z.string().optional(),
 	historyPreviewCollapsed: z.boolean().optional(),
+	profileThresholds: z.record(z.string(), z.number()).optional(),
+	hasOpenedModeSelector: z.boolean().optional(),
+	lastModeExportPath: z.string().optional(),
+	lastModeImportPath: z.string().optional(),
 
 	settingsButtonEnabled: z.boolean().optional(),
 })
 
 export type GlobalSettings = z.infer<typeof globalSettingsSchema>
 
-export const GLOBAL_SETTINGS_KEYS = keysOf<GlobalSettings>()([
-	"currentApiConfigName",
-	"listApiConfigMeta",
-	"pinnedApiConfigs",
-
-	"lastShownAnnouncementId",
-	"customInstructions",
-	"taskHistory",
-
-	"condensingApiConfigId",
-	"customCondensingPrompt",
-
-	"autoApprovalEnabled",
-	"alwaysAllowReadOnly",
-	"alwaysAllowReadOnlyOutsideWorkspace",
-	"alwaysAllowWrite",
-	"alwaysAllowWriteOutsideWorkspace",
-	"writeDelayMs",
-	"alwaysAllowBrowser",
-	"alwaysApproveResubmit",
-	"requestDelaySeconds",
-	"alwaysAllowMcp",
-	"alwaysAllowModeSwitch",
-	"alwaysAllowSubtasks",
-	"alwaysAllowExecute",
-	"allowedCommands",
-	"allowedMaxRequests",
-	"autoCondenseContext",
-	"autoCondenseContextPercent",
-	"maxConcurrentFileReads",
-
-	"browserToolEnabled",
-	"browserViewportSize",
-	"screenshotQuality",
-	"remoteBrowserEnabled",
-	"remoteBrowserHost",
-
-	"enableCheckpoints",
-
-	"ttsEnabled",
-	"ttsSpeed",
-	"soundEnabled",
-	"soundVolume",
-
-	"maxOpenTabsContext",
-	"maxWorkspaceFiles",
-	"showRooIgnoredFiles",
-	"maxReadFileLine",
-
-	"terminalOutputLineLimit",
-	"terminalShellIntegrationTimeout",
-	"terminalShellIntegrationDisabled",
-	"terminalCommandDelay",
-	"terminalPowershellCounter",
-	"terminalZshClearEolMark",
-	"terminalZshOhMy",
-	"terminalZshP10k",
-	"terminalZdotdir",
-	"terminalCompressProgressBar",
-
-	"rateLimitSeconds",
-	"diffEnabled",
-	"fuzzyMatchThreshold",
-	"experiments",
-
-	"codebaseIndexModels",
-	"codebaseIndexConfig",
-
-	"language",
-
-	"telemetrySetting",
-	"mcpEnabled",
-	"enableMcpServerCreation",
-	"mcpGatewayEnabled",
-	"mcpGatewayUrl",
-	"mcpGatewayApiKey",
-
-	"mode",
-	"modeApiConfigs",
-	"customModes",
-	"customModePrompts",
-	"customSupportPrompts",
-	"enhancementApiConfigId",
-	"cachedChromeHostUrl",
-	"historyPreviewCollapsed",
-	
-	"settingsButtonEnabled",
-])
+export const GLOBAL_SETTINGS_KEYS = globalSettingsSchema.keyof().options
 
 /**
  * RooCodeSettings
@@ -211,32 +133,7 @@ export type RooCodeSettings = GlobalSettings & ProviderSettings
 /**
  * SecretState
  */
-
-export type SecretState = Pick<
-	ProviderSettings,
-	| "apiKey"
-	| "glamaApiKey"
-	| "openRouterApiKey"
-	| "awsAccessKey"
-	| "awsSecretKey"
-	| "awsSessionToken"
-	| "openAiApiKey"
-	| "geminiApiKey"
-	| "openAiNativeApiKey"
-	| "deepSeekApiKey"
-	| "mistralApiKey"
-	| "unboundApiKey"
-	| "requestyApiKey"
-	| "xaiApiKey"
-	| "groqApiKey"
-	| "chutesApiKey"
-	| "litellmApiKey"
-	| "codeIndexOpenAiKey"
-	| "codeIndexQdrantApiKey"
-	| "codebaseIndexOpenAiCompatibleApiKey"
->
-
-export const SECRET_STATE_KEYS = keysOf<SecretState>()([
+export const SECRET_STATE_KEYS = [
 	"apiKey",
 	"glamaApiKey",
 	"openRouterApiKey",
@@ -257,7 +154,9 @@ export const SECRET_STATE_KEYS = keysOf<SecretState>()([
 	"codeIndexOpenAiKey",
 	"codeIndexQdrantApiKey",
 	"codebaseIndexOpenAiCompatibleApiKey",
-])
+	"codebaseIndexGeminiApiKey",
+] as const satisfies readonly (keyof ProviderSettings)[]
+export type SecretState = Pick<ProviderSettings, (typeof SECRET_STATE_KEYS)[number]>
 
 export const isSecretStateKey = (key: string): key is Keys<SecretState> =>
 	SECRET_STATE_KEYS.includes(key as Keys<SecretState>)
@@ -284,7 +183,7 @@ export const EVALS_SETTINGS: RooCodeSettings = {
 	apiProvider: "openrouter",
 	openRouterUseMiddleOutTransform: false,
 
-	lastShownAnnouncementId: "may-29-2025-3-19",
+	lastShownAnnouncementId: "jul-09-2025-3-23-0",
 
 	pinnedApiConfigs: {},
 
@@ -293,6 +192,7 @@ export const EVALS_SETTINGS: RooCodeSettings = {
 	alwaysAllowReadOnlyOutsideWorkspace: false,
 	alwaysAllowWrite: true,
 	alwaysAllowWriteOutsideWorkspace: false,
+	alwaysAllowWriteProtected: false,
 	writeDelayMs: 1000,
 	alwaysAllowBrowser: true,
 	alwaysApproveResubmit: true,
@@ -301,6 +201,9 @@ export const EVALS_SETTINGS: RooCodeSettings = {
 	alwaysAllowModeSwitch: true,
 	alwaysAllowSubtasks: true,
 	alwaysAllowExecute: true,
+	alwaysAllowFollowupQuestions: true,
+	alwaysAllowUpdateTodoList: true,
+	followupAutoApproveTimeoutMs: 0,
 	allowedCommands: ["*"],
 
 	browserToolEnabled: false,
