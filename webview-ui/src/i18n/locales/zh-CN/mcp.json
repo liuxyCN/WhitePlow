@@ -20,6 +20,10 @@
 			"title": "启用 MCP 网关",
 			"description": "开启此选项以启用 MCP 网关集成。这将提供额外的文件处理工具，如 OCR 功能。"
 		},
+		"alwaysAllow": {
+			"title": "始终允许网关工具",
+			"description": "启用后，所有来自 MCP 网关的工具将自动允许，无需手动批准。禁用后，工具权限将通过保存的状态进行管理。"
+		},
 		"url": {
 			"label": "网关 URL",
 			"placeholder": "https://your-mcp-gateway.com/api"

@@ -950,6 +950,15 @@ export const webviewMessageHandler = async (
 			}
 			await provider.postStateToWebview()
 			break
+		case "mcpGatewayAlwaysAllow":
+			await updateGlobalState("mcpGatewayAlwaysAllow", message.bool ?? false)
+			// Update memory server tools' alwaysAllow status immediately
+			const mcpHubForAlwaysAllow = provider.getMcpHub()
+			if (mcpHubForAlwaysAllow) {
+				await mcpHubForAlwaysAllow.updateMemoryServerToolsAlwaysAllow()
+			}
+			await provider.postStateToWebview()
+			break
 		case "refreshAllMcpServers": {
 			const mcpHub = provider.getMcpHub()
 			if (mcpHub) {

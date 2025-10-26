@@ -98,6 +98,8 @@ export interface ExtensionStateContextType extends ExtensionState {
 	setMcpGatewayUrl: (value: string) => void
 	mcpGatewayApiKey?: string
 	setMcpGatewayApiKey: (value: string) => void
+	mcpGatewayAlwaysAllow?: boolean
+	setMcpGatewayAlwaysAllow: (value: boolean) => void
 	alwaysApproveResubmit?: boolean
 	setAlwaysApproveResubmit: (value: boolean) => void
 	requestDelaySeconds: number
@@ -188,6 +190,7 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 		mcpGatewayEnabled: false,
 		mcpGatewayUrl: "",
 		mcpGatewayApiKey: "",
+		mcpGatewayAlwaysAllow: false,
 		alwaysApproveResubmit: false,
 		requestDelaySeconds: 5,
 		currentApiConfigName: "default",
@@ -430,6 +433,7 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 		setMcpGatewayEnabled: (value) => setState((prevState) => ({ ...prevState, mcpGatewayEnabled: value })),
 		setMcpGatewayUrl: (value) => setState((prevState) => ({ ...prevState, mcpGatewayUrl: value })),
 		setMcpGatewayApiKey: (value) => setState((prevState) => ({ ...prevState, mcpGatewayApiKey: value })),
+		setMcpGatewayAlwaysAllow: (value) => setState((prevState) => ({ ...prevState, mcpGatewayAlwaysAllow: value })),
 		setAlwaysApproveResubmit: (value) => setState((prevState) => ({ ...prevState, alwaysApproveResubmit: value })),
 		setRequestDelaySeconds: (value) => setState((prevState) => ({ ...prevState, requestDelaySeconds: value })),
 		setCurrentApiConfigName: (value) => setState((prevState) => ({ ...prevState, currentApiConfigName: value })),

@@ -20,6 +20,10 @@
 			"title": "Enable MCP Gateway",
 			"description": "Turn this ON to enable MCP Gateway integration. This allows access to additional file processing tools like OCR."
 		},
+		"alwaysAllow": {
+			"title": "Always Allow Gateway Tools",
+			"description": "When enabled, all tools from MCP Gateway will be automatically allowed without manual approval. When disabled, tool permissions will be managed through saved states."
+		},
 		"url": {
 			"label": "Gateway URL",
 			"placeholder": "https://your-mcp-gateway.com/api"

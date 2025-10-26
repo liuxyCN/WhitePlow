@@ -16,7 +16,7 @@ async function processFiles(inputFiles: string[], functionType: string, config?:
     throw new Error("MCP Gateway API Key is required. Please configure it in MCP settings.");
   }
 
-  const API_URL = config.apiUrl + 'file-cool';
+  const API_URL = config.apiUrl + '/file-cool';
   const API_KEY = config.apiKey;
 
   console.log(`File-cool client using API_URL: ${API_URL}, API_KEY: [REDACTED]`);
@@ -106,4 +106,4 @@ async function main() {
 
 export { processFiles };
 
-main();
+// main();

@@ -102,6 +102,7 @@ export const globalSettingsSchema = z.object({
 	mcpGatewayEnabled: z.boolean().optional(),
 	mcpGatewayUrl: z.string().optional(),
 	mcpGatewayApiKey: z.string().optional(),
+	mcpGatewayAlwaysAllow: z.boolean().optional(),
 
 	mode: z.string().optional(),
 	modeApiConfigs: z.record(z.string(), z.string()).optional(),

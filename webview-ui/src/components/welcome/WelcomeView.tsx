@@ -49,15 +49,14 @@ const WelcomeView = () => {
 
 	const defaultApiConfig : ProviderSettings = {
 		apiProvider:'openai',
-		openAiBaseUrl:'https://api.openai.com/v1',
-		openAiModelId:'deepseek-r1',
+		openAiBaseUrl:'https://ai.chinalifepe.com/v1',
 		openAiR1FormatEnabled:true,
 		enableReasoningEffort:true,
 		openAiCustomModelInfo:{
 			supportsPromptCache: true,
-			supportsImages: true,
+			supportsImages: false,
 			supportsComputerUse: true,
-			contextWindow: 128000,
+			contextWindow: 131072,
 			reasoningEffort:'medium'
 		}
 	};

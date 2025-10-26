@@ -138,7 +138,7 @@ export class McpHub {
 	private refCount: number = 0 // Reference counter for active clients
 	private configChangeDebounceTimers: Map<string, NodeJS.Timeout> = new Map()
 	// Store memory server tool states to persist across refreshes
-	private memoryServerToolStates: Map<string, { alwaysAllow: string[], disabledTools: string[] }> = new Map()
+	private memoryServerToolStates: Map<string, { alwaysAllow: string[]; disabledTools: string[] }> = new Map()
 	// Store memory server enable/disable states to persist across refreshes
 	private memoryServerDisabledStates: Map<string, boolean> = new Map()
 
@@ -159,7 +159,7 @@ export class McpHub {
 	 * Save memory server tool states before refresh
 	 */
 	private async saveMemoryServerToolStates(): Promise<void> {
-		const memoryConnections = this.connections.filter(conn => conn.server.source === "memory")
+		const memoryConnections = this.connections.filter((conn) => conn.server.source === "memory")
 		for (const conn of memoryConnections) {
 			const alwaysAllow: string[] = []
 			const disabledTools: string[] = []
@@ -204,7 +204,9 @@ export class McpHub {
 	private async loadMemoryServerToolStates(): Promise<void> {
 		const provider = this.providerRef.deref()
 		if (provider) {
-			const stateObject = provider.context.globalState.get("mcpMemoryServerToolStates") as Record<string, { alwaysAllow: string[], disabledTools: string[] }> | undefined
+			const stateObject = provider.context.globalState.get("mcpMemoryServerToolStates") as
+				| Record<string, { alwaysAllow: string[]; disabledTools: string[] }>
+				| undefined
 			if (stateObject) {
 				this.memoryServerToolStates = new Map(Object.entries(stateObject))
 			}
@@ -217,7 +219,9 @@ export class McpHub {
 	private async loadMemoryServerDisabledStates(): Promise<void> {
 		const provider = this.providerRef.deref()
 		if (provider) {
-			const stateObject = provider.context.globalState.get("mcpMemoryServerDisabledStates") as Record<string, boolean> | undefined
+			const stateObject = provider.context.globalState.get("mcpMemoryServerDisabledStates") as
+				| Record<string, boolean>
+				| undefined
 			if (stateObject) {
 				this.memoryServerDisabledStates = new Map(Object.entries(stateObject))
 			}
@@ -239,7 +243,7 @@ export class McpHub {
 	 * Restore memory server tool states after refresh
 	 */
 	private restoreMemoryServerToolStates(): void {
-		const memoryConnections = this.connections.filter(conn => conn.server.source === "memory")
+		const memoryConnections = this.connections.filter((conn) => conn.server.source === "memory")
 		for (const conn of memoryConnections) {
 			const savedState = this.memoryServerToolStates.get(conn.server.name)
 			if (savedState && conn.server.tools) {
@@ -680,14 +684,16 @@ export class McpHub {
 				if (mcpGatewayUrl && mcpGatewayUrl.trim() && mcpGatewayApiKey && mcpGatewayApiKey.trim()) {
 					config = {
 						apiUrl: mcpGatewayUrl.trim(),
-						apiKey: mcpGatewayApiKey.trim()
+						apiKey: mcpGatewayApiKey.trim(),
 					}
 					console.log("MCP Gateway configuration found, initializing file-cool server with custom settings")
 
 					// Also initialize streamable-http gateway servers
 					await this.initializeStreamableHttpGatewayServers(mcpGatewayUrl.trim(), mcpGatewayApiKey.trim())
 				} else {
-					console.log("MCP Gateway configuration not complete - URL or API Key missing. File-cool server will require configuration.")
+					console.log(
+						"MCP Gateway configuration not complete - URL or API Key missing. File-cool server will require configuration.",
+					)
 				}
 			}
 
@@ -720,7 +726,7 @@ export class McpHub {
 			console.log("Connection added to connections list")
 
 			// Add a small delay to ensure everything is ready
-			await new Promise(resolve => setTimeout(resolve, 100))
+			await new Promise((resolve) => setTimeout(resolve, 100))
 
 			// Fetch tools and resources
 			console.log("Fetching tools for in-memory server...")
@@ -740,7 +746,11 @@ export class McpHub {
 
 			await this.notifyWebviewOfServerChanges()
 
-			console.log("In-memory file-cool server initialized successfully with", connection.server.tools?.length || 0, "tools")
+			console.log(
+				"In-memory file-cool server initialized successfully with",
+				connection.server.tools?.length || 0,
+				"tools",
+			)
 		} catch (error) {
 			console.error("Failed to initialize in-memory file-cool server:", error)
 		}
@@ -752,14 +762,14 @@ export class McpHub {
 			console.log("Initializing streamable-http MCP gateway servers...")
 
 			// Fetch server list from gateway URL
-			const serverListUrl = gatewayUrl.endsWith('/') ? gatewayUrl + 'server-list' : gatewayUrl + '/server-list'
+			const serverListUrl = gatewayUrl.endsWith("/") ? gatewayUrl + "server-list" : gatewayUrl + "/server-list"
 			console.log(`Fetching server list from: ${serverListUrl}`)
 
 			const response = await axios.get(serverListUrl, {
 				headers: {
-					"API_KEY": apiKey
+					API_KEY: apiKey,
 				},
-				timeout: 10000 // 10 seconds timeout
+				timeout: 10000, // 10 seconds timeout
 			})
 
 			if (!response.data || !Array.isArray(response.data)) {
@@ -768,14 +778,17 @@ export class McpHub {
 			}
 
 			const serverList = response.data
-			console.log(`Found ${serverList.length} servers to initialize:`, serverList.map((s: any) => s.name || s))
+			console.log(
+				`Found ${serverList.length} servers to initialize:`,
+				serverList.map((s: any) => s.name || s),
+			)
 
 			// Loop through each server and initialize
 			for (const serverInfo of serverList) {
 				try {
 					// Handle both string and object formats
-					const serverName = typeof serverInfo === 'string' ? serverInfo : serverInfo.name
-					const serverPath = typeof serverInfo === 'string' ? serverInfo : (serverInfo.path || serverInfo.name)
+					const serverName = typeof serverInfo === "string" ? serverInfo : serverInfo.name
+					const serverPath = typeof serverInfo === "string" ? serverInfo : serverInfo.path || serverInfo.name
 
 					if (!serverName) {
 						console.warn("Skipping server with missing name:", serverInfo)
@@ -787,21 +800,24 @@ export class McpHub {
 
 					const serverConfig = {
 						type: "streamable-http" as const,
-						url: gatewayUrl.endsWith('/') ? gatewayUrl + serverPath : gatewayUrl + '/' + serverPath,
+						url: gatewayUrl.endsWith("/") ? gatewayUrl + serverPath : gatewayUrl + "/" + serverPath,
 						headers: {
-							"API_KEY": apiKey
+							API_KEY: apiKey,
 						},
 						disabled: savedDisabledState, // Apply saved disabled state or default to disabled
 						timeout: 600,
 						alwaysAllow: [],
-						disabledTools: []
+						disabledTools: [],
 					}
 
 					console.log(`Connecting to server: ${serverName} at ${serverConfig.url}`)
 					await this.connectToServer(serverName, serverConfig, "memory")
 					console.log(`Successfully connected to server: ${serverName}`)
 				} catch (serverError) {
-					console.error(`Failed to connect to server ${typeof serverInfo === 'string' ? serverInfo : serverInfo.name}:`, serverError)
+					console.error(
+						`Failed to connect to server ${typeof serverInfo === "string" ? serverInfo : serverInfo.name}:`,
+						serverError,
+					)
 					// Continue with other servers even if one fails
 				}
 			}
@@ -1090,9 +1106,7 @@ export class McpHub {
 		if (globalConn) return globalConn
 
 		// Finally, look for memory servers
-		return this.connections.find(
-			(conn) => conn.server.name === serverName && conn.server.source === "memory",
-		)
+		return this.connections.find((conn) => conn.server.name === serverName && conn.server.source === "memory")
 	}
 
 	private async fetchToolsList(serverName: string, source?: "global" | "project" | "memory"): Promise<McpTool[]> {
@@ -1120,54 +1134,73 @@ export class McpHub {
 				// Read from the appropriate config file based on the actual source
 				try {
 					let serverConfigData: Record<string, any> = {}
-				if (actualSource === "project") {
+					if (actualSource === "project") {
 						// Get project MCP config path
 						const projectMcpPath = await this.getProjectMcpPath()
 						if (projectMcpPath) {
 							configPath = projectMcpPath
 							const content = await fs.readFile(configPath, "utf-8")
 							serverConfigData = JSON.parse(content)
-							}
+						}
 					} else {
 						// Get global MCP settings path
 						configPath = await this.getMcpSettingsFilePath()
 						const content = await fs.readFile(configPath, "utf-8")
 						serverConfigData = JSON.parse(content)
 					}
-				if (serverConfigData) {
-					alwaysAllowConfig = serverConfigData.mcpServers?.[serverName]?.alwaysAllow || []
+					if (serverConfigData) {
+						alwaysAllowConfig = serverConfigData.mcpServers?.[serverName]?.alwaysAllow || []
 						disabledToolsList = serverConfigData.mcpServers?.[serverName]?.disabledTools || []
-				}
+					}
 				} catch (error) {
 					console.error(`Failed to read tool configuration for ${serverName}:`, error)
 					// Continue with empty configs
 				}
 			} else {
-				// For memory servers, try to restore from saved states first, then from existing tools
+				// For memory servers, try to restore from saved states first, then apply defaults
 				const savedState = this.memoryServerToolStates.get(serverName)
 				if (savedState) {
 					alwaysAllowConfig = [...savedState.alwaysAllow]
 					disabledToolsList = [...savedState.disabledTools]
-				} else {
-					// Fallback: preserve existing tool states if they exist
-					const existingTools = connection.server.tools || []
-					for (const existingTool of existingTools) {
-						if (existingTool.alwaysAllow) {
-							alwaysAllowConfig.push(existingTool.name)
-						}
-						if (!existingTool.enabledForPrompt) {
-							disabledToolsList.push(existingTool.name)
-						}
-					}
 				}
 			}
 
 			// Mark tools as always allowed and enabled for prompt based on settings
-			const tools = (response?.tools || []).map((tool) => ({
-				...tool,
-				alwaysAllow: alwaysAllowConfig.includes(tool.name),
-				enabledForPrompt: !disabledToolsList.includes(tool.name),
-			}))
+			const tools = (response?.tools || []).map((tool) => {
+				// Determine if tool should be always allowed
+				let shouldAlwaysAllow: boolean
+
+				if (actualSource === "memory") {
+					// For memory servers: check gateway always allow setting
+					let gatewayAlwaysAllow = false
+					try {
+						const provider = this.providerRef.deref()
+						if (provider) {
+							const globalSettings = provider.contextProxy.getGlobalSettings()
+							gatewayAlwaysAllow = globalSettings.mcpGatewayAlwaysAllow ?? false
+						}
+					} catch (error) {
+						console.error("Failed to get gateway always allow setting:", error)
+					}
+
+					if (gatewayAlwaysAllow) {
+						// If gateway always allow is enabled, use it
+						shouldAlwaysAllow = true
+					} else {
+						// If gateway always allow is disabled, use saved state configuration
+						shouldAlwaysAllow = alwaysAllowConfig.includes(tool.name)
+					}
+				} else {
+					// For non-memory servers: use the alwaysAllowConfig from settings
+					shouldAlwaysAllow = alwaysAllowConfig.includes(tool.name)
+				}
+
+				return {
+					...tool,
+					alwaysAllow: shouldAlwaysAllow,
+					enabledForPrompt: !disabledToolsList.includes(tool.name),
+				}
+			})
 
 			return tools
 		} catch (error) {
@@ -1176,7 +1209,10 @@ export class McpHub {
 		}
 	}
 
-	private async fetchResourcesList(serverName: string, source?: "global" | "project" | "memory"): Promise<McpResource[]> {
+	private async fetchResourcesList(
+		serverName: string,
+		source?: "global" | "project" | "memory",
+	): Promise<McpResource[]> {
 		try {
 			const connection = this.findConnection(serverName, source)
 			if (!connection) {
@@ -1426,7 +1462,7 @@ export class McpHub {
 			this.saveMemoryServerToolStates()
 
 			// Find and remove existing in-memory connections
-			const inMemoryConnections = this.connections.filter(conn => conn.server.source === "memory")
+			const inMemoryConnections = this.connections.filter((conn) => conn.server.source === "memory")
 			for (const conn of inMemoryConnections) {
 				await this.deleteConnection(conn.server.name, conn.server.source)
 			}
@@ -1440,6 +1476,50 @@ export class McpHub {
 			await this.notifyWebviewOfServerChanges()
 		} catch (error) {
 			console.error("Error refreshing in-memory servers:", error)
+		}
+	}
+
+	/**
+	 * Update all memory server tools' alwaysAllow status based on gateway setting
+	 */
+	public async updateMemoryServerToolsAlwaysAllow(): Promise<void> {
+		try {
+			// Get current gateway always allow setting
+			const provider = this.providerRef.deref()
+			if (!provider) {
+				console.error("Provider not available for updating memory server tools")
+				return
+			}
+
+			const globalSettings = provider.contextProxy.getGlobalSettings()
+			const gatewayAlwaysAllow = globalSettings.mcpGatewayAlwaysAllow ?? false
+
+			// Update all memory server connections
+			const memoryConnections = this.connections.filter((conn) => conn.server.source === "memory")
+			
+			for (const connection of memoryConnections) {
+				if (connection.server.tools) {
+					for (const tool of connection.server.tools) {
+						if (gatewayAlwaysAllow) {
+							// If gateway always allow is enabled, set all tools to alwaysAllow = true
+							tool.alwaysAllow = true
+						} else {
+							// If gateway always allow is disabled, use saved state configuration
+							const savedState = this.memoryServerToolStates.get(connection.server.name)
+							if (savedState) {
+								tool.alwaysAllow = savedState.alwaysAllow.includes(tool.name)
+							} else {
+								tool.alwaysAllow = false
+							}
+						}
+					}
+				}
+			}
+
+			// Notify webview of changes
+			await this.notifyWebviewOfServerChanges()
+		} catch (error) {
+			console.error("Error updating memory server tools alwaysAllow status:", error)
 		}
 	}
 
@@ -1551,7 +1631,7 @@ export class McpHub {
 		nameB: string,
 		source: string,
 		globalOrder: string[],
-		projectOrder: string[]
+		projectOrder: string[],
 	): number {
 		const getOrderIndex = (name: string, order: string[]) => {
 			const index = order.indexOf(name)
@@ -1851,7 +1931,11 @@ export class McpHub {
 		}
 	}
 
-	async readResource(serverName: string, uri: string, source?: "global" | "project" | "memory"): Promise<McpResourceResponse> {
+	async readResource(
+		serverName: string,
+		uri: string,
+		source?: "global" | "project" | "memory",
+	): Promise<McpResourceResponse> {
 		const connection = this.findConnection(serverName, source)
 		if (!connection) {
 			throw new Error(`No connection found for server: ${serverName}${source ? ` with source ${source}` : ""}`)
@@ -1933,7 +2017,7 @@ export class McpHub {
 			const connection = this.findConnection(serverName, source)
 			if (connection) {
 				// Find the tool and update its properties based on the list name
-				const tool = connection.server.tools?.find(t => t.name === toolName)
+				const tool = connection.server.tools?.find((t) => t.name === toolName)
 				if (tool) {
 					if (listName === "alwaysAllow") {
 						tool.alwaysAllow = addTool

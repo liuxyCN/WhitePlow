@@ -118,7 +118,7 @@ export class InMemoryFileCoolServer {
 		}
 
 		try {
-			const url = `${this.config.apiUrl}file-cool/tools`
+			const url = `${this.config.apiUrl}/file-cool/tools`
 			const response = await axios.get(url, {
 				headers: {
 					"API_KEY": this.config.apiKey,

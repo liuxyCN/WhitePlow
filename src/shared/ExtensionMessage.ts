@@ -108,6 +108,7 @@ export interface ExtensionMessage {
 		| "mcpGatewayEnabled"
 		| "mcpGatewayUrl"
 		| "mcpGatewayApiKey"
+		| "mcpGatewayAlwaysAllow"
 	text?: string
 	payload?: any // Add a generic payload for now, can refine later
 	action?:
@@ -257,6 +258,7 @@ export type ExtensionState = Pick<
 	mcpGatewayEnabled?: boolean
 	mcpGatewayUrl?: string
 	mcpGatewayApiKey?: string
+	mcpGatewayAlwaysAllow?: boolean
 
 	mode: Mode
 	customModes: ModeConfig[]

@@ -197,6 +197,7 @@ export interface WebviewMessage {
 		| "mcpGatewayEnabled"
 		| "mcpGatewayUrl"
 		| "mcpGatewayApiKey"
+		| "mcpGatewayAlwaysAllow"
 	text?: string
 	editedMessageContent?: string
 	tab?: "settings" | "history" | "mcp" | "modes" | "chat" | "marketplace" | "account"

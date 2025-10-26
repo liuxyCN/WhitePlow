@@ -52,6 +52,8 @@ const McpView = ({ onDone }: McpViewProps) => {
 		setMcpGatewayUrl,
 		mcpGatewayApiKey,
 		setMcpGatewayApiKey,
+		mcpGatewayAlwaysAllow,
+		setMcpGatewayAlwaysAllow,
 	} = useExtensionState()
 
 	const { t } = useAppTranslation()
@@ -172,6 +174,26 @@ const McpView = ({ onDone }: McpViewProps) => {
 										style={{ width: "100%" }}>
 										<label style={{ fontWeight: "500" }}>{t("mcp:gateway.apiKey.label")}</label>
 									</VSCodeTextField>
+									
+									{/* MCP Gateway Always Allow Toggle */}
+									<div style={{ marginTop: 10 }}>
+										<VSCodeCheckbox
+											checked={mcpGatewayAlwaysAllow}
+											onChange={(e: any) => {
+												setMcpGatewayAlwaysAllow(e.target.checked)
+												vscode.postMessage({ type: "mcpGatewayAlwaysAllow", bool: e.target.checked })
+											}}>
+											<span style={{ fontWeight: "500" }}>{t("mcp:gateway.alwaysAllow.title")}</span>
+										</VSCodeCheckbox>
+										<div
+											style={{
+												fontSize: "12px",
+												marginTop: "5px",
+												color: "var(--vscode-descriptionForeground)",
+											}}>
+											{t("mcp:gateway.alwaysAllow.description")}
+										</div>
+									</div>
 								</div>
 							)}
 						</div>
