@@ -337,10 +337,10 @@ export class ClineProvider
 			return
 		}
 
-		const { customSupportPrompts } = await visibleProvider.getState()
+		const { customSupportPrompts, language } = await visibleProvider.getState()
 
 		// TODO: Improve type safety for promptType.
-		const prompt = supportPrompt.create(promptType, params, customSupportPrompts)
+		const prompt = supportPrompt.create(promptType, { ...params, language }, customSupportPrompts)
 
 		if (command === "addToContext") {
 			await visibleProvider.postMessageToWebview({ type: "invoke", invoke: "setChatBoxMessage", text: prompt })
@@ -363,8 +363,8 @@ export class ClineProvider
 			return
 		}
 
-		const { customSupportPrompts } = await visibleProvider.getState()
-		const prompt = supportPrompt.create(promptType, params, customSupportPrompts)
+		const { customSupportPrompts, language } = await visibleProvider.getState()
+		const prompt = supportPrompt.create(promptType, { ...params, language }, customSupportPrompts)
 
 		if (command === "terminalAddToContext") {
 			await visibleProvider.postMessageToWebview({ type: "invoke", invoke: "setChatBoxMessage", text: prompt })

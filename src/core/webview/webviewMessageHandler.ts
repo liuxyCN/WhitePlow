@@ -1339,7 +1339,7 @@ export const webviewMessageHandler = async (
 		case "enhancePrompt":
 			if (message.text) {
 				try {
-					const { apiConfiguration, customSupportPrompts, listApiConfigMeta, enhancementApiConfigId } =
+					const { apiConfiguration, customSupportPrompts, listApiConfigMeta, enhancementApiConfigId, language } =
 						await provider.getState()
 
 					// Try to get enhancement config first, fall back to current config.
@@ -1357,7 +1357,7 @@ export const webviewMessageHandler = async (
 
 					const enhancedPrompt = await singleCompletionHandler(
 						configToUse,
-						supportPrompt.create("ENHANCE", { userInput: message.text }, customSupportPrompts),
+						supportPrompt.create("ENHANCE", { userInput: message.text, language }, customSupportPrompts),
 					)
 
 					// Capture telemetry for prompt enhancement.

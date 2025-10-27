@@ -12,6 +12,9 @@ export const createPrompt = (template: string, params: PromptParams): string => 
 	return template.replace(/\${(.*?)}/g, (_, key) => {
 		if (key === "diagnosticText") {
 			return generateDiagnosticText(params["diagnostics"] as any[])
+		} else if (key === "languageInstruction") {
+			const language = params["language"] as string
+			return language ? `Please respond in ${language}.` : ""
 			// eslint-disable-next-line no-prototype-builtins
 		} else if (params.hasOwnProperty(key)) {
 			// Ensure the value is treated as a string for replacement
@@ -48,7 +51,9 @@ const supportPromptConfigs: Record<SupportPromptType, SupportPromptConfig> = {
 	ENHANCE: {
 		template: `Generate an enhanced version of this prompt (reply with only the enhanced prompt - no conversation, explanations, lead-in, bullet points, placeholders, or surrounding quotes):
 
-\${userInput}`,
+\${userInput}
+
+\${languageInstruction}`,
 	},
 	EXPLAIN: {
 		template: `Explain the following code from file path \${filePath}:\${startLine}-\${endLine}
