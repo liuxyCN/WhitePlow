@@ -63,9 +63,9 @@ export class InMemoryFileCoolServer {
 
 			// 统一的 inputSchema，所有工具都使用相同的结构
 			const commonInputSchema = {
-				inputFiles: z
+				inputs: z
 					.array(z.string())
-					.describe("Path to the files, absolute file path"),
+					.describe("File paths or URLs - 文件路径或URL地址。支持绝对文件路径字符串数组或URL字符串数组 / Supports absolute file path string array or URL string array"),
 			}
 
 			// 动态注册工具
@@ -76,9 +76,9 @@ export class InMemoryFileCoolServer {
 						description: tool.description,
 						inputSchema: commonInputSchema,
 					},
-					async ({ inputFiles }) => {
+					async ({ inputs }) => {
 						try {
-							const result = await processFiles(inputFiles, tool.name, this.config)
+							const result = await processFiles(inputs, tool.name, this.config)
 							return {
 								content: [
 									{
