@@ -1525,12 +1525,14 @@ export class McpHub {
 
 	public async refreshAllConnections(): Promise<void> {
 		if (this.isConnecting) {
-			vscode.window.showInformationMessage(t("mcp:info.already_refreshing"))
+			// 使用状态栏消息，3秒后自动消失
+			vscode.window.setStatusBarMessage(t("mcp:info.already_refreshing"), 3000)
 			return
 		}
 
 		this.isConnecting = true
-		vscode.window.showInformationMessage(t("mcp:info.refreshing_all"))
+		// 显示刷新中的状态栏消息，会在刷新完成后被最终消息替换
+		const refreshingStatus = vscode.window.setStatusBarMessage(t("mcp:info.refreshing_all"), 3000)
 
 		try {
 			// Save current memory server tool states before refresh
@@ -1543,10 +1545,12 @@ export class McpHub {
 				const globalConfig = JSON.parse(globalContent)
 				globalServers = globalConfig.mcpServers || {}
 				const globalServerNames = Object.keys(globalServers)
-				vscode.window.showInformationMessage(
+				// 使用状态栏消息，3秒后自动消失
+				vscode.window.setStatusBarMessage(
 					t("mcp:info.global_servers_active", {
 						mcpServers: `${globalServerNames.join(", ") || "none"}`,
 					}),
+					3000,
 				)
 			} catch (error) {
 				console.log("Error reading global MCP config:", error)
@@ -1560,10 +1564,12 @@ export class McpHub {
 					const projectConfig = JSON.parse(projectContent)
 					projectServers = projectConfig.mcpServers || {}
 					const projectServerNames = Object.keys(projectServers)
-					vscode.window.showInformationMessage(
+					// 使用状态栏消息，3秒后自动消失
+					vscode.window.setStatusBarMessage(
 						t("mcp:info.project_servers_active", {
 							mcpServers: `${projectServerNames.join(", ") || "none"}`,
 						}),
+						3000,
 					)
 				} catch (error) {
 					console.log("Error reading project MCP config:", error)
@@ -1591,8 +1597,13 @@ export class McpHub {
 
 			await this.notifyWebviewOfServerChanges()
 
-			vscode.window.showInformationMessage(t("mcp:info.all_refreshed"))
+			// 清除刷新中的状态消息
+			refreshingStatus.dispose()
+			// 显示最终成功消息，5秒后自动消失
+			vscode.window.setStatusBarMessage(t("mcp:info.all_refreshed"), 5000)
 		} catch (error) {
+			// 清除刷新中的状态消息
+			refreshingStatus.dispose()
 			this.showErrorMessage("Failed to refresh MCP servers", error)
 		} finally {
 			this.isConnecting = false

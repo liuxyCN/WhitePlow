@@ -8,6 +8,54 @@ interface FileCoolConfig {
   apiKey?: string;
 }
 
+// URL和文件路径判断的正则表达式
+const urlPatternWithProtocol = /^https?:\/\//i;
+const urlPatternWithoutProtocol = /^([a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z]{2,}|^([0-9]{1,3}\.){3}[0-9]{1,3}(:[0-9]+)?/i;
+const filePathIndicators = /^[./\\]|\\|^[A-Z]:\\/i;
+const fileExtensions = /\.(pdf|txt|doc|docx|xls|xlsx|ppt|pptx|jpg|jpeg|png|gif|bmp|svg|zip|rar|tar|gz|json|xml|csv|html|htm|js|ts|jsx|tsx|py|java|cpp|c|h|md|yml|yaml|ini|conf|log|sql|db|sqlite|dll|exe|bin|sh|bat|cmd|ps1)$/i;
+
+// 判断是否为文件路径的辅助函数
+function isFilePath(input: string): boolean {
+  // 如果包含协议，肯定不是文件路径
+  if (urlPatternWithProtocol.test(input)) {
+    return false;
+  }
+  
+  // 如果以路径分隔符开头或包含反斜杠，肯定是文件路径
+  if (filePathIndicators.test(input)) {
+    return true;
+  }
+  
+  // 如果包含常见文件扩展名，且不是以协议开头，可能是文件路径
+  if (fileExtensions.test(input)) {
+    // 如果包含斜杠或反斜杠，肯定是文件路径
+    if (input.includes('/') || input.includes('\\')) {
+      return true;
+    }
+    // 如果只是文件名（如 test.com.pdf），也认为是文件路径
+    // 因为扩展名是已知的文件扩展名，优先认为是文件
+    return true;
+  }
+  
+  return false;
+}
+
+// 判断是否为URL
+function isUrl(input: string): boolean {
+  // 如果包含协议，肯定是URL
+  if (urlPatternWithProtocol.test(input)) {
+    return true;
+  }
+  
+  // 如果是文件路径，肯定不是URL
+  if (isFilePath(input)) {
+    return false;
+  }
+  
+  // 如果看起来像URL（域名或IP地址格式），且不是文件路径，则是URL
+  return urlPatternWithoutProtocol.test(input);
+}
+
 async function processFiles(inputs: string[], functionType: string, config?: FileCoolConfig) {
   if (!config?.apiUrl) {
     throw new Error("MCP Gateway URL is required. Please configure it in MCP settings.");
@@ -28,19 +76,16 @@ async function processFiles(inputs: string[], functionType: string, config?: Fil
     // 添加 functionType
     formData.append("functionType", functionType);
 
-    // 判断是否为URL的正则表达式
-    const urlPattern = /^https?:\/\//i;
-
     // 分别处理文件路径和URL
     const filePaths: string[] = [];
     const urls: string[] = [];
 
     for (const input of inputs) {
-      if (urlPattern.test(input)) {
-        // 如果是URL，直接添加到URL数组
-        urls.push(input);
+      if (isUrl(input)) {
+        // 如果是URL，添加 https:// 前缀（如果还没有协议）
+        urls.push(urlPatternWithProtocol.test(input) ? input : `https://${input}`);
       } else {
-        // 如果是文件路径，添加到文件路径数组
+        // 其他情况默认为文件路径
         filePaths.push(input);
       }
     }
@@ -79,9 +124,8 @@ async function processFiles(inputs: string[], functionType: string, config?: Fil
         const _files = _data.result;
 
         // 查找对应的输入文件路径（仅处理本地文件路径）
-        const urlPattern = /^https?:\/\//i;
-        const localInputs = inputs.filter(input => !urlPattern.test(input));
-        const urlInputs = inputs.filter(input => urlPattern.test(input));
+        const localInputs = inputs.filter(input => !isUrl(input));
+        const urlInputs = inputs.filter(input => isUrl(input));
         
         const correspondingInputFile = localInputs.find((inputFile) => {
           const inputFileName = path.basename(
@@ -117,6 +161,7 @@ async function processFiles(inputs: string[], functionType: string, config?: Fil
 
           await fs.promises.writeFile(fullPath, _fileBuffer);
         }
+        await new Promise(resolve => setTimeout(resolve, 1000));
       }
     }
 
