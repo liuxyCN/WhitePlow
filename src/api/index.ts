@@ -8,15 +8,17 @@ import {
 	GlamaHandler,
 	AnthropicHandler,
 	AwsBedrockHandler,
+	CerebrasHandler,
+	ChinalifePEHandler,
 	OpenRouterHandler,
 	VertexHandler,
 	AnthropicVertexHandler,
 	OpenAiHandler,
-	OllamaHandler,
 	LmStudioHandler,
 	GeminiHandler,
 	OpenAiNativeHandler,
 	DeepSeekHandler,
+	MoonshotHandler,
 	MistralHandler,
 	VsCodeLmHandler,
 	UnboundHandler,
@@ -25,10 +27,23 @@ import {
 	FakeAIHandler,
 	XAIHandler,
 	GroqHandler,
+	HuggingFaceHandler,
 	ChutesHandler,
 	LiteLLMHandler,
 	ClaudeCodeHandler,
+	QwenCodeHandler,
+	SambaNovaHandler,
+	IOIntelligenceHandler,
+	DoubaoHandler,
+	ZAiHandler,
+	FireworksHandler,
+	RooHandler,
+	FeatherlessHandler,
+	VercelAiGatewayHandler,
+	DeepInfraHandler,
+	MiniMaxHandler,
 } from "./providers"
+import { NativeOllamaHandler } from "./providers/native-ollama"
 
 export interface SingleCompletionHandler {
 	completePrompt(prompt: string): Promise<string>
@@ -37,6 +52,21 @@ export interface SingleCompletionHandler {
 export interface ApiHandlerCreateMessageMetadata {
 	mode?: string
 	taskId: string
+	previousResponseId?: string
+	/**
+	 * When true, the provider must NOT fall back to internal continuity state
+	 * (e.g., lastResponseId) if previousResponseId is absent.
+	 * Used to enforce "skip once" after a condense operation.
+	 */
+	suppressPreviousResponseId?: boolean
+	/**
+	 * Controls whether the response should be stored for 30 days in OpenAI's Responses API.
+	 * When true (default), responses are stored and can be referenced in future requests
+	 * using the previous_response_id for efficient conversation continuity.
+	 * Set to false to opt out of response storage for privacy or compliance reasons.
+	 * @default true
+	 */
+	store?: boolean
 }
 
 export interface ApiHandler {
@@ -80,7 +110,7 @@ export function buildApiHandler(configuration: ProviderSettings): ApiHandler {
 		case "openai":
 			return new OpenAiHandler(options)
 		case "ollama":
-			return new OllamaHandler(options)
+			return new NativeOllamaHandler(options)
 		case "lmstudio":
 			return new LmStudioHandler(options)
 		case "gemini":
@@ -89,6 +119,12 @@ export function buildApiHandler(configuration: ProviderSettings): ApiHandler {
 			return new OpenAiNativeHandler(options)
 		case "deepseek":
 			return new DeepSeekHandler(options)
+		case "doubao":
+			return new DoubaoHandler(options)
+		case "qwen-code":
+			return new QwenCodeHandler(options)
+		case "moonshot":
+			return new MoonshotHandler(options)
 		case "vscode-lm":
 			return new VsCodeLmHandler(options)
 		case "mistral":
@@ -105,11 +141,38 @@ export function buildApiHandler(configuration: ProviderSettings): ApiHandler {
 			return new XAIHandler(options)
 		case "groq":
 			return new GroqHandler(options)
+		case "deepinfra":
+			return new DeepInfraHandler(options)
+		case "huggingface":
+			return new HuggingFaceHandler(options)
 		case "chutes":
 			return new ChutesHandler(options)
 		case "litellm":
 			return new LiteLLMHandler(options)
+		case "cerebras":
+			return new CerebrasHandler(options)
+		case "chinalifepe":
+			return new ChinalifePEHandler(options)
+		case "sambanova":
+			return new SambaNovaHandler(options)
+		case "zai":
+			return new ZAiHandler(options)
+		case "fireworks":
+			return new FireworksHandler(options)
+		case "io-intelligence":
+			return new IOIntelligenceHandler(options)
+		case "roo":
+			// Never throw exceptions from provider constructors
+			// The provider-proxy server will handle authentication and return appropriate error codes
+			return new RooHandler(options)
+		case "featherless":
+			return new FeatherlessHandler(options)
+		case "vercel-ai-gateway":
+			return new VercelAiGatewayHandler(options)
+		case "minimax":
+			return new MiniMaxHandler(options)
 		default:
+			apiProvider satisfies "gemini-cli" | undefined
 			return new AnthropicHandler(options)
 	}
 }

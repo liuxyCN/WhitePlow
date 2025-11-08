@@ -1,12 +1,11 @@
-import { render, fireEvent, screen } from "@/utils/test-utils"
-
 import { defaultModeSlug } from "@roo/modes"
 
+import { render, fireEvent, screen } from "@src/utils/test-utils"
 import { useExtensionState } from "@src/context/ExtensionStateContext"
 import { vscode } from "@src/utils/vscode"
 import * as pathMentions from "@src/utils/path-mentions"
 
-import ChatTextArea from "../ChatTextArea"
+import { ChatTextArea } from "../ChatTextArea"
 
 vi.mock("@src/utils/vscode", () => ({
 	vscode: {
@@ -77,7 +76,7 @@ describe("ChatTextArea", () => {
 	})
 
 	describe("enhance prompt button", () => {
-		it("should be disabled when sendingDisabled is true", () => {
+		it("should be enabled even when sendingDisabled is true (for message queueing)", () => {
 			;(useExtensionState as ReturnType<typeof vi.fn>).mockReturnValue({
 				filePaths: [],
 				openedTabs: [],
@@ -86,7 +85,7 @@ describe("ChatTextArea", () => {
 			})
 			render(<ChatTextArea {...defaultProps} sendingDisabled={true} />)
 			const enhanceButton = getEnhancePromptButton()
-			expect(enhanceButton).toHaveClass("cursor-not-allowed")
+			expect(enhanceButton).toHaveClass("cursor-pointer")
 		})
 	})
 
@@ -184,10 +183,27 @@ describe("ChatTextArea", () => {
 	})
 
 	describe("enhanced prompt response", () => {
-		it("should update input value when receiving enhanced prompt", () => {
+		it("should update input value using native browser methods when receiving enhanced prompt", () => {
 			const setInputValue = vi.fn()
 
-			render(<ChatTextArea {...defaultProps} setInputValue={setInputValue} />)
+			// Mock document.execCommand
+			const mockExecCommand = vi.fn().mockReturnValue(true)
+			Object.defineProperty(document, "execCommand", {
+				value: mockExecCommand,
+				writable: true,
+			})
+
+			const { container } = render(
+				<ChatTextArea {...defaultProps} setInputValue={setInputValue} inputValue="Original prompt" />,
+			)
+
+			const textarea = container.querySelector("textarea")!
+
+			// Mock textarea methods
+			const mockSelect = vi.fn()
+			const mockFocus = vi.fn()
+			textarea.select = mockSelect
+			textarea.focus = mockFocus
 
 			// Simulate receiving enhanced prompt message
 			window.dispatchEvent(
@@ -199,7 +215,53 @@ describe("ChatTextArea", () => {
 				}),
 			)
 
+			// Verify native browser methods were used
+			expect(mockFocus).toHaveBeenCalled()
+			expect(mockSelect).toHaveBeenCalled()
+			expect(mockExecCommand).toHaveBeenCalledWith("insertText", false, "Enhanced test prompt")
+		})
+
+		it("should fallback to setInputValue when execCommand is not available", () => {
+			const setInputValue = vi.fn()
+
+			// Mock document.execCommand to be undefined (not available)
+			Object.defineProperty(document, "execCommand", {
+				value: undefined,
+				writable: true,
+			})
+
+			render(<ChatTextArea {...defaultProps} setInputValue={setInputValue} inputValue="Original prompt" />)
+
+			// Simulate receiving enhanced prompt message
+			window.dispatchEvent(
+				new MessageEvent("message", {
+					data: {
+						type: "enhancedPrompt",
+						text: "Enhanced test prompt",
+					},
+				}),
+			)
+
+			// Verify fallback to setInputValue was used
 			expect(setInputValue).toHaveBeenCalledWith("Enhanced test prompt")
+		})
+
+		it("should not crash when textarea ref is not available", () => {
+			const setInputValue = vi.fn()
+
+			render(<ChatTextArea {...defaultProps} setInputValue={setInputValue} />)
+
+			// Simulate receiving enhanced prompt message when textarea ref might not be ready
+			expect(() => {
+				window.dispatchEvent(
+					new MessageEvent("message", {
+						data: {
+							type: "enhancedPrompt",
+							text: "Enhanced test prompt",
+						},
+					}),
+				)
+			}).not.toThrow()
 		})
 	})
 
@@ -841,6 +903,144 @@ describe("ChatTextArea", () => {
 		})
 	})
 
+	describe("slash command highlighting", () => {
+		const mockCommands = [
+			{ name: "setup", source: "project", description: "Setup the project" },
+			{ name: "deploy", source: "global", description: "Deploy the application" },
+			{ name: "test-command", source: "project", description: "Test command with dash" },
+		]
+
+		beforeEach(() => {
+			;(useExtensionState as ReturnType<typeof vi.fn>).mockReturnValue({
+				filePaths: [],
+				openedTabs: [],
+				taskHistory: [],
+				cwd: "/test/workspace",
+				commands: mockCommands,
+			})
+		})
+
+		it("should highlight valid slash commands", () => {
+			const { getByTestId } = render(<ChatTextArea {...defaultProps} inputValue="/setup the project" />)
+
+			const highlightLayer = getByTestId("highlight-layer")
+			expect(highlightLayer).toBeInTheDocument()
+
+			// The highlighting is applied via innerHTML, so we need to check the content
+			// The valid command "/setup" should be highlighted
+			expect(highlightLayer.innerHTML).toContain('<mark class="mention-context-textarea-highlight">/setup</mark>')
+		})
+
+		it("should not highlight invalid slash commands", () => {
+			const { getByTestId } = render(<ChatTextArea {...defaultProps} inputValue="/invalid command" />)
+
+			const highlightLayer = getByTestId("highlight-layer")
+			expect(highlightLayer).toBeInTheDocument()
+
+			// The invalid command "/invalid" should not be highlighted
+			expect(highlightLayer.innerHTML).not.toContain(
+				'<mark class="mention-context-textarea-highlight">/invalid</mark>',
+			)
+			// But it should still contain the text without highlighting
+			expect(highlightLayer.innerHTML).toContain("/invalid")
+		})
+
+		it("should highlight only the command portion, not arguments", () => {
+			const { getByTestId } = render(<ChatTextArea {...defaultProps} inputValue="/deploy to production" />)
+
+			const highlightLayer = getByTestId("highlight-layer")
+			expect(highlightLayer).toBeInTheDocument()
+
+			// Only "/deploy" should be highlighted, not "to production"
+			expect(highlightLayer.innerHTML).toContain(
+				'<mark class="mention-context-textarea-highlight">/deploy</mark>',
+			)
+			expect(highlightLayer.innerHTML).not.toContain(
+				'<mark class="mention-context-textarea-highlight">/deploy to production</mark>',
+			)
+		})
+
+		it("should handle commands with dashes and underscores", () => {
+			const { getByTestId } = render(<ChatTextArea {...defaultProps} inputValue="/test-command with args" />)
+
+			const highlightLayer = getByTestId("highlight-layer")
+			expect(highlightLayer).toBeInTheDocument()
+
+			// The command with dash should be highlighted
+			expect(highlightLayer.innerHTML).toContain(
+				'<mark class="mention-context-textarea-highlight">/test-command</mark>',
+			)
+		})
+
+		it("should be case-sensitive when matching commands", () => {
+			const { getByTestId } = render(<ChatTextArea {...defaultProps} inputValue="/Setup the project" />)
+
+			const highlightLayer = getByTestId("highlight-layer")
+			expect(highlightLayer).toBeInTheDocument()
+
+			// "/Setup" (capital S) should not be highlighted since the command is "setup" (lowercase)
+			expect(highlightLayer.innerHTML).not.toContain(
+				'<mark class="mention-context-textarea-highlight">/Setup</mark>',
+			)
+			expect(highlightLayer.innerHTML).toContain("/Setup")
+		})
+
+		it("should highlight multiple valid commands in the same text", () => {
+			const { getByTestId } = render(<ChatTextArea {...defaultProps} inputValue="/setup first then /deploy" />)
+
+			const highlightLayer = getByTestId("highlight-layer")
+			expect(highlightLayer).toBeInTheDocument()
+
+			// Both valid commands should be highlighted
+			expect(highlightLayer.innerHTML).toContain('<mark class="mention-context-textarea-highlight">/setup</mark>')
+			expect(highlightLayer.innerHTML).toContain(
+				'<mark class="mention-context-textarea-highlight">/deploy</mark>',
+			)
+		})
+
+		it("should handle mixed valid and invalid commands", () => {
+			const { getByTestId } = render(
+				<ChatTextArea {...defaultProps} inputValue="/setup first then /invalid then /deploy" />,
+			)
+
+			const highlightLayer = getByTestId("highlight-layer")
+			expect(highlightLayer).toBeInTheDocument()
+
+			// Valid commands should be highlighted
+			expect(highlightLayer.innerHTML).toContain('<mark class="mention-context-textarea-highlight">/setup</mark>')
+			expect(highlightLayer.innerHTML).toContain(
+				'<mark class="mention-context-textarea-highlight">/deploy</mark>',
+			)
+
+			// Invalid command should not be highlighted
+			expect(highlightLayer.innerHTML).not.toContain(
+				'<mark class="mention-context-textarea-highlight">/invalid</mark>',
+			)
+			expect(highlightLayer.innerHTML).toContain("/invalid")
+		})
+
+		it("should work when no commands are available", () => {
+			;(useExtensionState as ReturnType<typeof vi.fn>).mockReturnValue({
+				filePaths: [],
+				openedTabs: [],
+				taskHistory: [],
+				cwd: "/test/workspace",
+				commands: undefined,
+			})
+
+			const { getByTestId } = render(<ChatTextArea {...defaultProps} inputValue="/setup the project" />)
+
+			const highlightLayer = getByTestId("highlight-layer")
+			expect(highlightLayer).toBeInTheDocument()
+
+			// No commands should be highlighted when commands array is undefined
+			expect(highlightLayer.innerHTML).not.toContain(
+				'<mark class="mention-context-textarea-highlight">/setup</mark>',
+			)
+			expect(highlightLayer.innerHTML).toContain("/setup")
+		})
+	})
+
 	describe("selectApiConfig", () => {
 		// Helper function to get the API config dropdown
 		const getApiConfigDropdown = () => {
@@ -855,6 +1055,88 @@ describe("ChatTextArea", () => {
 			render(<ChatTextArea {...defaultProps} sendingDisabled={true} selectApiConfigDisabled={true} />)
 			const apiConfigDropdown = getApiConfigDropdown()
 			expect(apiConfigDropdown).toHaveAttribute("disabled")
+		})
+	})
+
+	describe("send button visibility", () => {
+		it("should show send button when there are images but no text", () => {
+			const { container } = render(
+				<ChatTextArea
+					{...defaultProps}
+					inputValue=""
+					selectedImages={["data:image/png;base64,test1", "data:image/png;base64,test2"]}
+				/>,
+			)
+
+			// Find the send button by looking for the button with SendHorizontal icon
+			const buttons = container.querySelectorAll("button")
+			const sendButton = Array.from(buttons).find(
+				(button) => button.querySelector(".lucide-send-horizontal") !== null,
+			)
+
+			expect(sendButton).toBeInTheDocument()
+
+			// Check that the button is visible (has opacity-100 class when content exists)
+			expect(sendButton).toHaveClass("opacity-100")
+			expect(sendButton).toHaveClass("pointer-events-auto")
+			expect(sendButton).not.toHaveClass("opacity-0")
+			expect(sendButton).not.toHaveClass("pointer-events-none")
+		})
+
+		it("should hide send button when there is no text and no images", () => {
+			const { container } = render(<ChatTextArea {...defaultProps} inputValue="" selectedImages={[]} />)
+
+			// Find the send button by looking for the button with SendHorizontal icon
+			const buttons = container.querySelectorAll("button")
+			const sendButton = Array.from(buttons).find(
+				(button) => button.querySelector(".lucide-send-horizontal") !== null,
+			)
+
+			expect(sendButton).toBeInTheDocument()
+
+			// Check that the button is hidden (has opacity-0 class when no content)
+			expect(sendButton).toHaveClass("opacity-0")
+			expect(sendButton).toHaveClass("pointer-events-none")
+			expect(sendButton).not.toHaveClass("opacity-100")
+			expect(sendButton).not.toHaveClass("pointer-events-auto")
+		})
+
+		it("should show send button when there is text but no images", () => {
+			const { container } = render(<ChatTextArea {...defaultProps} inputValue="Some text" selectedImages={[]} />)
+
+			// Find the send button by looking for the button with SendHorizontal icon
+			const buttons = container.querySelectorAll("button")
+			const sendButton = Array.from(buttons).find(
+				(button) => button.querySelector(".lucide-send-horizontal") !== null,
+			)
+
+			expect(sendButton).toBeInTheDocument()
+
+			// Check that the button is visible
+			expect(sendButton).toHaveClass("opacity-100")
+			expect(sendButton).toHaveClass("pointer-events-auto")
+		})
+
+		it("should show send button when there is both text and images", () => {
+			const { container } = render(
+				<ChatTextArea
+					{...defaultProps}
+					inputValue="Some text"
+					selectedImages={["data:image/png;base64,test1"]}
+				/>,
+			)
+
+			// Find the send button by looking for the button with SendHorizontal icon
+			const buttons = container.querySelectorAll("button")
+			const sendButton = Array.from(buttons).find(
+				(button) => button.querySelector(".lucide-send-horizontal") !== null,
+			)
+
+			expect(sendButton).toBeInTheDocument()
+
+			// Check that the button is visible
+			expect(sendButton).toHaveClass("opacity-100")
+			expect(sendButton).toHaveClass("pointer-events-auto")
 		})
 	})
 })

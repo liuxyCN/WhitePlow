@@ -74,16 +74,16 @@ export const registerCommands = (options: RegisterCommandOptions) => {
 
 const getCommandsMap = ({ context, outputChannel, provider }: RegisterCommandOptions): Record<CommandId, any> => ({
 	activationCompleted: () => {},
-	accountButtonClicked: () => {
+	cloudButtonClicked: () => {
 		const visibleProvider = getVisibleProviderOrLog(outputChannel)
 
 		if (!visibleProvider) {
 			return
 		}
 
-		TelemetryService.instance.captureTitleButtonClicked("account")
+		TelemetryService.instance.captureTitleButtonClicked("cloud")
 
-		visibleProvider.postMessageToWebview({ type: "action", action: "accountButtonClicked" })
+		visibleProvider.postMessageToWebview({ type: "action", action: "cloudButtonClicked" })
 	},
 	plusButtonClicked: async () => {
 		const visibleProvider = getVisibleProviderOrLog(outputChannel)
@@ -95,8 +95,11 @@ const getCommandsMap = ({ context, outputChannel, provider }: RegisterCommandOpt
 		TelemetryService.instance.captureTitleButtonClicked("plus")
 
 		await visibleProvider.removeClineFromStack()
-		await visibleProvider.postStateToWebview()
+		await visibleProvider.refreshWorkspace()
 		await visibleProvider.postMessageToWebview({ type: "action", action: "chatButtonClicked" })
+		// Send focusInput action immediately after chatButtonClicked
+		// This ensures the focus happens after the view has switched
+		await visibleProvider.postMessageToWebview({ type: "action", action: "focusInput" })
 	},
 	mcpButtonClicked: () => {
 		const visibleProvider = getVisibleProviderOrLog(outputChannel)
@@ -152,14 +155,14 @@ const getCommandsMap = ({ context, outputChannel, provider }: RegisterCommandOpt
 
 		TelemetryService.instance.captureTitleButtonClicked("history")
 
-		visibleProvider.postMessageToWebview({ type: "action", action: "historyButtonClicked" })
-	},
-	marketplaceButtonClicked: () => {
-		const visibleProvider = getVisibleProviderOrLog(outputChannel)
-		if (!visibleProvider) return
-		visibleProvider.postMessageToWebview({ type: "action", action: "marketplaceButtonClicked" })
-	},
-	showHumanRelayDialog: (params: { requestId: string; promptText: string }) => {
+	visibleProvider.postMessageToWebview({ type: "action", action: "historyButtonClicked" })
+},
+marketplaceButtonClicked: () => {
+	const visibleProvider = getVisibleProviderOrLog(outputChannel)
+	if (!visibleProvider) return
+	visibleProvider.postMessageToWebview({ type: "action", action: "marketplaceButtonClicked" })
+},
+showHumanRelayDialog: (params: { requestId: string; promptText: string }) => {
 		const panel = getPanel()
 
 		if (panel) {
@@ -222,6 +225,18 @@ const getCommandsMap = ({ context, outputChannel, provider }: RegisterCommandOpt
 
 		visibleProvider.postMessageToWebview({ type: "acceptInput" })
 	},
+	toggleAutoApprove: async () => {
+		const visibleProvider = getVisibleProviderOrLog(outputChannel)
+
+		if (!visibleProvider) {
+			return
+		}
+
+		visibleProvider.postMessageToWebview({
+			type: "action",
+			action: "toggleAutoApprove",
+		})
+	},
 })
 
 export const openClineInNewTab = async ({ context, outputChannel }: Omit<RegisterCommandOptions, "provider">) => {
@@ -241,7 +256,7 @@ export const openClineInNewTab = async ({ context, outputChannel }: Omit<Registe
 		mdmService = undefined
 	}
 
-	const tabProvider = new ClineProvider(context, outputChannel, "editor", contextProxy, codeIndexManager, mdmService)
+	const tabProvider = new ClineProvider(context, outputChannel, "editor", contextProxy, mdmService)
 	const lastCol = Math.max(...vscode.window.visibleTextEditors.map((editor) => editor.viewColumn || 0))
 
 	// Check if there are any visible text editors, otherwise open a new group

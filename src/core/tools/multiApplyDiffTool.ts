@@ -2,6 +2,7 @@ import path from "path"
 import fs from "fs/promises"
 
 import { TelemetryService } from "@roo-code/telemetry"
+import { DEFAULT_WRITE_DELAY_MS } from "@roo-code/types"
 
 import { ClineSayTool } from "../../shared/ExtensionMessage"
 import { getReadablePath } from "../../utils/path"
@@ -11,9 +12,10 @@ import { formatResponse } from "../prompts/responses"
 import { fileExistsAtPath } from "../../utils/fs"
 import { RecordSource } from "../context-tracking/FileContextTrackerTypes"
 import { unescapeHtmlEntities } from "../../utils/text-normalization"
-import { parseXml } from "../../utils/xml"
+import { parseXmlForDiff } from "../../utils/xml"
 import { EXPERIMENT_IDS, experiments } from "../../shared/experiments"
 import { applyDiffToolLegacy } from "./applyDiffTool"
+import { computeDiffStats, sanitizeUnifiedDiff } from "../diff/stats"
 
 interface DiffOperation {
 	path: string
@@ -107,7 +109,10 @@ export async function applyDiffTool(
 	if (argsXmlTag) {
 		// Parse file entries from XML (new way)
 		try {
-			const parsed = parseXml(argsXmlTag, ["file.diff.content"]) as ParsedXmlResult
+			// IMPORTANT: We use parseXmlForDiff here instead of parseXml to prevent HTML entity decoding
+			// This ensures exact character matching when comparing parsed content against original file content
+			// Without this, special characters like & would be decoded to &amp; causing diff mismatches
+			const parsed = parseXmlForDiff(argsXmlTag, ["file.diff.content"]) as ParsedXmlResult
 			const files = Array.isArray(parsed.file) ? parsed.file : [parsed.file].filter(Boolean)
 
 			for (const file of files) {
@@ -131,13 +136,17 @@ export async function applyDiffTool(
 					let diffContent: string
 					let startLine: number | undefined
 
-					diffContent = diff.content
+					// Ensure content is a string before storing it
+					diffContent = typeof diff.content === "string" ? diff.content : ""
 					startLine = diff.start_line ? parseInt(diff.start_line) : undefined
 
-					operationsMap[filePath].diff.push({
-						content: diffContent,
-						startLine,
-					})
+					// Only add to operations if we have valid content
+					if (diffContent) {
+						operationsMap[filePath].diff.push({
+							content: diffContent,
+							startLine,
+						})
+					}
 				}
 			}
 		} catch (error) {
@@ -164,6 +173,7 @@ Original error: ${errorMessage}`
 			TelemetryService.instance.captureDiffApplicationError(cline.taskId, cline.consecutiveMistakeCount)
 			await cline.say("diff_error", `Failed to parse apply_diff XML: ${errorMessage}`)
 			pushToolResult(detailedError)
+			cline.processQueuedMessages()
 			return
 		}
 	} else if (legacyPath && typeof legacyDiffContent === "string") {
@@ -187,6 +197,7 @@ Original error: ${errorMessage}`
 			"args (or legacy 'path' and 'diff' parameters)",
 		)
 		pushToolResult(errorMsg)
+		cline.processQueuedMessages()
 		return
 	}
 
@@ -202,6 +213,7 @@ Original error: ${errorMessage}`
 					: "args (must contain at least one valid file element)",
 			),
 		)
+		cline.processQueuedMessages()
 		return
 	}
 
@@ -271,31 +283,70 @@ Original error: ${errorMessage}`
 				(opResult) => cline.rooProtectedController?.isWriteProtected(opResult.path) || false,
 			)
 
-			// Prepare batch diff data
-			const batchDiffs = operationsToApprove.map((opResult) => {
+			// Stream batch diffs progressively for better UX
+			const batchDiffs: Array<{
+				path: string
+				changeCount: number
+				key: string
+				content: string
+				diffStats?: { added: number; removed: number }
+				diffs?: Array<{ content: string; startLine?: number }>
+			}> = []
+
+			for (const opResult of operationsToApprove) {
 				const readablePath = getReadablePath(cline.cwd, opResult.path)
 				const changeCount = opResult.diffItems?.length || 0
 				const changeText = changeCount === 1 ? "1 change" : `${changeCount} changes`
 
-				return {
+				let unified = ""
+				try {
+					const original = await fs.readFile(opResult.absolutePath!, "utf-8")
+					const processed = !cline.api.getModel().id.includes("claude")
+						? (opResult.diffItems || []).map((item) => ({
+								...item,
+								content: item.content ? unescapeHtmlEntities(item.content) : item.content,
+							}))
+						: opResult.diffItems || []
+
+					const applyRes =
+						(await cline.diffStrategy?.applyDiff(original, processed)) ?? ({ success: false } as any)
+					const newContent = applyRes.success && applyRes.content ? applyRes.content : original
+					unified = formatResponse.createPrettyPatch(opResult.path, original, newContent)
+				} catch {
+					unified = ""
+				}
+
+				const unifiedSanitized = sanitizeUnifiedDiff(unified)
+				const stats = computeDiffStats(unifiedSanitized) || undefined
+				batchDiffs.push({
 					path: readablePath,
 					changeCount,
 					key: `${readablePath} (${changeText})`,
-					content: opResult.path, // Full relative path
+					content: unifiedSanitized,
+					diffStats: stats,
 					diffs: opResult.diffItems?.map((item) => ({
 						content: item.content,
 						startLine: item.startLine,
 					})),
-				}
-			})
+				})
 
+				// Send a partial update after each file preview is ready
+				const partialMessage = JSON.stringify({
+					tool: "appliedDiff",
+					batchDiffs,
+					isProtected: hasProtectedFiles,
+				} satisfies ClineSayTool)
+				await cline.ask("tool", partialMessage, true).catch(() => {})
+			}
+
+			// Final approval message (non-partial)
 			const completeMessage = JSON.stringify({
 				tool: "appliedDiff",
 				batchDiffs,
 				isProtected: hasProtectedFiles,
 			} satisfies ClineSayTool)
 
-			const { response, text, images } = await cline.ask("tool", completeMessage, hasProtectedFiles)
+			const { response, text, images } = await cline.ask("tool", completeMessage, false)
 
 			// Process batch response
 			if (response === "yesButtonClicked") {
@@ -407,6 +458,7 @@ Original error: ${errorMessage}`
 
 			try {
 				let originalContent: string | null = await fs.readFile(absolutePath, "utf-8")
+				let beforeContent: string | null = originalContent
 				let successCount = 0
 				let formattedError = ""
 
@@ -450,9 +502,9 @@ Diff ${i + 1} failed for file: ${relPath}
 Error: ${failPart.error}
 
 Suggested fixes:
-1. Verify the search content exactly matches the file content (including whitespace)
+1. Verify the search content exactly matches the file content (including whitespace and case)
 2. Check for correct indentation and line endings
-3. Use <read_file> to see the current file content
+3. Use the read_file tool to verify the file's current contents
 4. Consider breaking complex changes into smaller diffs
 5. Ensure start_line parameter matches the actual content location
 ${errorDetails ? `\nDetailed error information:\n${errorDetails}\n` : ""}
@@ -465,7 +517,7 @@ Unable to apply diffs to file: ${absolutePath}
 Error: ${diffResult.error}
 
 Recovery suggestions:
-1. Use <read_file> to examine the current file content
+1. Use the read_file tool to verify the file's current contents
 2. Verify the diff format matches the expected search/replace pattern
 3. Check that the search content exactly matches what's in the file
 4. Consider using line numbers with start_line parameter
@@ -506,11 +558,15 @@ ${errorDetails ? `\nTechnical details:\n${errorDetails}\n` : ""}
 				cline.consecutiveMistakeCount = 0
 				cline.consecutiveMistakeCountForApplyDiff.delete(relPath)
 
-				// Show diff view before asking for approval (only for single file or after batch approval)
-				cline.diffViewProvider.editType = "modify"
-				await cline.diffViewProvider.open(relPath)
-				await cline.diffViewProvider.update(originalContent!, true)
-				cline.diffViewProvider.scrollToFirstDiff()
+				// Check if preventFocusDisruption experiment is enabled
+				const provider = cline.providerRef.deref()
+				const state = await provider?.getState()
+				const diagnosticsEnabled = state?.diagnosticsEnabled ?? true
+				const writeDelayMs = state?.writeDelayMs ?? DEFAULT_WRITE_DELAY_MS
+				const isPreventFocusDisruptionEnabled = experiments.isEnabled(
+					state?.experiments ?? {},
+					EXPERIMENT_IDS.PREVENT_FOCUS_DISRUPTION,
+				)
 
 				// For batch operations, we've already gotten approval
 				const isWriteProtected = cline.rooProtectedController?.isWriteProtected(relPath) || false
@@ -520,17 +576,21 @@ ${errorDetails ? `\nTechnical details:\n${errorDetails}\n` : ""}
 					isProtected: isWriteProtected,
 				}
 
-				// If single file, ask for approval
+				// If single file, handle based on PREVENT_FOCUS_DISRUPTION setting
 				let didApprove = true
 				if (operationsToApprove.length === 1) {
+					// Prepare common data for single file operation
 					const diffContents = diffItems.map((item) => item.content).join("\n\n")
+					const unifiedPatchRaw = formatResponse.createPrettyPatch(relPath, beforeContent!, originalContent!)
+					const unifiedPatch = sanitizeUnifiedDiff(unifiedPatchRaw)
 					const operationMessage = JSON.stringify({
 						...sharedMessageProps,
 						diff: diffContents,
+						content: unifiedPatch,
+						diffStats: computeDiffStats(unifiedPatch) || undefined,
 					} satisfies ClineSayTool)
 
 					let toolProgressStatus
-
 					if (cline.diffStrategy && cline.diffStrategy.getProgressStatus) {
 						toolProgressStatus = cline.diffStrategy.getProgressStatus(
 							{
@@ -541,19 +601,70 @@ ${errorDetails ? `\nTechnical details:\n${errorDetails}\n` : ""}
 						)
 					}
 
-					// Check if file is write-protected
+					// Set up diff view
+					cline.diffViewProvider.editType = "modify"
+
+					// Show diff view if focus disruption prevention is disabled
+					if (!isPreventFocusDisruptionEnabled) {
+						await cline.diffViewProvider.open(relPath)
+						await cline.diffViewProvider.update(originalContent!, true)
+						cline.diffViewProvider.scrollToFirstDiff()
+					} else {
+						// For direct save, we still need to set originalContent
+						cline.diffViewProvider.originalContent = await fs.readFile(absolutePath, "utf-8")
+					}
+
+					// Ask for approval (same for both flows)
 					const isWriteProtected = cline.rooProtectedController?.isWriteProtected(relPath) || false
 					didApprove = await askApproval("tool", operationMessage, toolProgressStatus, isWriteProtected)
-				}
 
-				if (!didApprove) {
-					await cline.diffViewProvider.revertChanges()
-					results.push(`Changes to ${relPath} were not approved by user`)
-					continue
-				}
+					if (!didApprove) {
+						// Revert changes if diff view was shown
+						if (!isPreventFocusDisruptionEnabled) {
+							await cline.diffViewProvider.revertChanges()
+						}
+						results.push(`Changes to ${relPath} were not approved by user`)
+						continue
+					}
 
-				// Call saveChanges to update the DiffViewProvider properties
-				await cline.diffViewProvider.saveChanges()
+					// Save the changes
+					if (isPreventFocusDisruptionEnabled) {
+						// Direct file write without diff view or opening the file
+						await cline.diffViewProvider.saveDirectly(
+							relPath,
+							originalContent!,
+							false,
+							diagnosticsEnabled,
+							writeDelayMs,
+						)
+					} else {
+						// Call saveChanges to update the DiffViewProvider properties
+						await cline.diffViewProvider.saveChanges(diagnosticsEnabled, writeDelayMs)
+					}
+				} else {
+					// Batch operations - already approved above
+					if (isPreventFocusDisruptionEnabled) {
+						// Direct file write without diff view or opening the file
+						cline.diffViewProvider.editType = "modify"
+						cline.diffViewProvider.originalContent = await fs.readFile(absolutePath, "utf-8")
+						await cline.diffViewProvider.saveDirectly(
+							relPath,
+							originalContent!,
+							false,
+							diagnosticsEnabled,
+							writeDelayMs,
+						)
+					} else {
+						// Original behavior with diff view
+						cline.diffViewProvider.editType = "modify"
+						await cline.diffViewProvider.open(relPath)
+						await cline.diffViewProvider.update(originalContent!, true)
+						cline.diffViewProvider.scrollToFirstDiff()
+
+						// Call saveChanges to update the DiffViewProvider properties
+						await cline.diffViewProvider.saveChanges(diagnosticsEnabled, writeDelayMs)
+					}
+				}
 
 				// Track file edit operation
 				await cline.fileContextTracker.trackFileContext(relPath, "roo_edited" as RecordSource)
@@ -596,12 +707,28 @@ ${errorDetails ? `\nTechnical details:\n${errorDetails}\n` : ""}
 			await cline.say("diff_error", allDiffErrors.join("\n"))
 		}
 
+		// Check for single SEARCH/REPLACE block warning
+		let totalSearchBlocks = 0
+		for (const operation of operations) {
+			for (const diffItem of operation.diff) {
+				const searchBlocks = (diffItem.content.match(/<<<<<<< SEARCH/g) || []).length
+				totalSearchBlocks += searchBlocks
+			}
+		}
+
+		const singleBlockNotice =
+			totalSearchBlocks === 1
+				? "\n<notice>Making multiple related changes in a single apply_diff is more efficient. If other changes are needed in this file, please include them as additional SEARCH/REPLACE blocks.</notice>"
+				: ""
+
 		// Push the final result combining all operation results
-		pushToolResult(results.join("\n\n"))
+		pushToolResult(results.join("\n\n") + singleBlockNotice)
+		cline.processQueuedMessages()
 		return
 	} catch (error) {
 		await handleError("applying diff", error)
 		await cline.diffViewProvider.reset()
+		cline.processQueuedMessages()
 		return
 	}
 }

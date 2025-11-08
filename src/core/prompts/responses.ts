@@ -56,8 +56,7 @@ Otherwise, if you have not completed the task and do not need additional informa
 		}
 
 		existingFileApproaches.push(
-			`${diffStrategyEnabled ? "3" : "2"}. Or use search_and_replace for specific text replacements`,
-			`${diffStrategyEnabled ? "4" : "3"}. Or use insert_content to add specific content at particular lines`,
+			`${diffStrategyEnabled ? "3" : "2"}. Or use insert_content to add specific content at particular lines`,
 		)
 
 		const existingFileGuidance =
@@ -71,6 +70,16 @@ Otherwise, if you have not completed the task and do not need additional informa
 
 	invalidMcpToolArgumentError: (serverName: string, toolName: string) =>
 		`Invalid JSON argument used with ${serverName} for ${toolName}. Please retry with a properly formatted JSON argument.`,
+
+	unknownMcpToolError: (serverName: string, toolName: string, availableTools: string[]) => {
+		const toolsList = availableTools.length > 0 ? availableTools.join(", ") : "No tools available"
+		return `Tool '${toolName}' does not exist on server '${serverName}'.\n\nAvailable tools on this server: ${toolsList}\n\nPlease use one of the available tools or check if the server is properly configured.`
+	},
+
+	unknownMcpServerError: (serverName: string, availableServers: string[]) => {
+		const serversList = availableServers.length > 0 ? availableServers.join(", ") : "No servers available"
+		return `Server '${serverName}' is not configured. Available servers: ${serversList}`
+	},
 
 	toolResult: (
 		text: string,
@@ -168,7 +177,9 @@ Otherwise, if you have not completed the task and do not need additional informa
 
 	createPrettyPatch: (filename = "file", oldStr?: string, newStr?: string) => {
 		// strings cannot be undefined or diff throws exception
-		const patch = diff.createPatch(filename.toPosix(), oldStr || "", newStr || "")
+		const patch = diff.createPatch(filename.toPosix(), oldStr || "", newStr || "", undefined, undefined, {
+			context: 3,
+		})
 		const lines = patch.split("\n")
 		const prettyPatchLines = lines.slice(4)
 		return prettyPatchLines.join("\n")

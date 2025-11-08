@@ -2,14 +2,17 @@ import { useCallback, useState, useEffect } from "react"
 import knuthShuffle from "knuth-shuffle-seeded"
 import { Trans } from "react-i18next"
 import { VSCodeButton, VSCodeLink } from "@vscode/webview-ui-toolkit/react"
+import posthog from "posthog-js"
 
 import type { ProviderSettings } from "@roo-code/types"
+import { TelemetryEventName, chinalifePEDefaultModelId } from "@roo-code/types"
 
 import { useExtensionState } from "@src/context/ExtensionStateContext"
 import { validateApiConfiguration } from "@src/utils/validate"
 import { vscode } from "@src/utils/vscode"
 import { useAppTranslation } from "@src/i18n/TranslationContext"
 import { getRequestyAuthUrl, getOpenRouterAuthUrl } from "@src/oauth/urls"
+import { telemetryClient } from "@src/utils/TelemetryClient"
 
 import ApiOptions from "../settings/ApiOptions"
 import { Tab, TabContent } from "../common/Tab"
@@ -20,6 +23,14 @@ const WelcomeView = () => {
 	const { apiConfiguration, currentApiConfigName, setApiConfiguration, uriScheme, machineId} = useExtensionState()
 	const { t } = useAppTranslation()
 	const [errorMessage, setErrorMessage] = useState<string | undefined>(undefined)
+	const [showRooProvider, setShowRooProvider] = useState(false)
+
+	// Check PostHog feature flag for Roo provider
+	useEffect(() => {
+		posthog.onFeatureFlags(function () {
+			setShowRooProvider(posthog?.getFeatureFlag("roo-provider-featured") === "test")
+		})
+	}, [])
 
 	// Memoize the setApiConfigurationField function to pass to ApiOptions
 	const setApiConfigurationFieldForApiOptions = useCallback(
@@ -47,36 +58,28 @@ const WelcomeView = () => {
 		return w.IMAGES_BASE_URI || ""
 	})
 
-	const defaultApiConfig : ProviderSettings = {
-		apiProvider:'openai',
-		openAiBaseUrl:'https://ai.chinalifepe.com/v1',
-		openAiR1FormatEnabled:true,
-		enableReasoningEffort:true,
-		openAiCustomModelInfo:{
-			supportsPromptCache: true,
-			supportsImages: false,
-			supportsComputerUse: true,
-			contextWindow: 131072,
-			reasoningEffort:'medium'
-		}
-	};
-
 	// Initialize apiConfiguration with defaultApiConfig if it's not set
 	useEffect(() => {
-		setApiConfiguration(defaultApiConfig);
-	}, [apiConfiguration, setApiConfiguration]);
+		if (!apiConfiguration?.apiProvider) {
+			setApiConfiguration({ 
+				apiProvider: 'chinalifepe',
+				openAiModelId: chinalifePEDefaultModelId,
+				openAiBaseUrl: 'https://ai.chinalifepe.com',
+			});
+		}
+	}, []);
 
 	return (
 		<Tab>
-			<TabContent className="flex flex-col gap-5 p-16">
+			<TabContent className="flex flex-col gap-4 p-6 items-center">
 				<RooHero />
-				<h2 className="mt-0 mb-0">{t("welcome:greeting")}</h2>
+				<h2 className="mt-0 mb-4 text-xl text-center">{t("welcome:greeting")}</h2>
 
-				<div className="font-bold">
-					<p>
+				<div className="text-base text-vscode-foreground py-2 px-2 mb-4">
+					<p className="mb-3 leading-relaxed">
 						<Trans i18nKey="welcome:introduction" />
 					</p>
-					<p>
+					<p className="mb-0 leading-relaxed">
 						<Trans i18nKey="welcome:chooseProvider" />
 					</p>
 				</div>
@@ -92,8 +95,8 @@ const WelcomeView = () => {
 					/>
 				</div>
 			</TabContent>
-			<div className="sticky bottom-0 bg-vscode-sideBar-background p-5">
-				<div className="flex flex-col gap-1">
+			<div className="sticky bottom-0 bg-vscode-sideBar-background p-4 border-t border-vscode-panel-border">
+				<div className="flex flex-col gap-2">
 					<div className="flex justify-end">
 						<VSCodeLink
 							href="#"

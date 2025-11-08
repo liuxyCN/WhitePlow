@@ -79,7 +79,7 @@ __setMockImplementation(
 		globalCustomInstructions: string,
 		cwd: string,
 		mode: string,
-		options?: { language?: string },
+		options?: { language?: string; rooIgnoreInstructions?: string; settings?: Record<string, any> },
 	) => {
 		const sections = []
 
@@ -168,9 +168,9 @@ const mockContext = {
 } as unknown as vscode.ExtensionContext
 
 // Instead of extending McpHub, create a mock that implements just what we need
-const createMockMcpHub = (): McpHub =>
+const createMockMcpHub = (withServers: boolean = false): McpHub =>
 	({
-		getServers: () => [],
+		getServers: () => (withServers ? [{ name: "test-server", disabled: false }] : []),
 		getMcpServersPath: async () => "/mock/mcp/path",
 		getMcpSettingsFilePath: async () => "/mock/settings/path",
 		dispose: async () => {},
@@ -207,7 +207,7 @@ describe("SYSTEM_PROMPT", () => {
 		const prompt = await SYSTEM_PROMPT(
 			mockContext,
 			"/test/path",
-			false, // supportsComputerUse
+			false, // supportsImages
 			undefined, // mcpHub
 			undefined, // diffStrategy
 			undefined, // browserViewportSize
@@ -226,11 +226,11 @@ describe("SYSTEM_PROMPT", () => {
 		expect(prompt).toMatchFileSnapshot("./__snapshots__/system-prompt/consistent-system-prompt.snap")
 	})
 
-	it("should include browser actions when supportsComputerUse is true", async () => {
+	it("should include browser actions when supportsImages is true", async () => {
 		const prompt = await SYSTEM_PROMPT(
 			mockContext,
 			"/test/path",
-			true, // supportsComputerUse
+			true, // supportsImages
 			undefined, // mcpHub
 			undefined, // diffStrategy
 			"1280x800", // browserViewportSize
@@ -250,12 +250,12 @@ describe("SYSTEM_PROMPT", () => {
 	})
 
 	it("should include MCP server info when mcpHub is provided", async () => {
-		mockMcpHub = createMockMcpHub()
+		mockMcpHub = createMockMcpHub(true)
 
 		const prompt = await SYSTEM_PROMPT(
 			mockContext,
 			"/test/path",
-			false, // supportsComputerUse
+			false,
 			mockMcpHub, // mcpHub
 			undefined, // diffStrategy
 			undefined, // browserViewportSize
@@ -278,7 +278,7 @@ describe("SYSTEM_PROMPT", () => {
 		const prompt = await SYSTEM_PROMPT(
 			mockContext,
 			"/test/path",
-			false, // supportsComputerUse
+			false,
 			undefined, // explicitly undefined mcpHub
 			undefined, // diffStrategy
 			undefined, // browserViewportSize
@@ -301,7 +301,7 @@ describe("SYSTEM_PROMPT", () => {
 		const prompt = await SYSTEM_PROMPT(
 			mockContext,
 			"/test/path",
-			true, // supportsComputerUse
+			false,
 			undefined, // mcpHub
 			undefined, // diffStrategy
 			"900x600", // different viewport size
@@ -324,7 +324,7 @@ describe("SYSTEM_PROMPT", () => {
 		const prompt = await SYSTEM_PROMPT(
 			mockContext,
 			"/test/path",
-			false, // supportsComputerUse
+			false,
 			undefined, // mcpHub
 			new MultiSearchReplaceDiffStrategy(), // Use actual diff strategy from the codebase
 			undefined, // browserViewportSize
@@ -348,7 +348,7 @@ describe("SYSTEM_PROMPT", () => {
 		const prompt = await SYSTEM_PROMPT(
 			mockContext,
 			"/test/path",
-			false, // supportsComputerUse
+			false, // supportsImages
 			undefined, // mcpHub
 			new MultiSearchReplaceDiffStrategy(), // Use actual diff strategy from the codebase
 			undefined, // browserViewportSize
@@ -372,7 +372,7 @@ describe("SYSTEM_PROMPT", () => {
 		const prompt = await SYSTEM_PROMPT(
 			mockContext,
 			"/test/path",
-			false, // supportsComputerUse
+			false,
 			undefined, // mcpHub
 			new MultiSearchReplaceDiffStrategy(), // Use actual diff strategy from the codebase
 			undefined, // browserViewportSize
@@ -423,7 +423,7 @@ describe("SYSTEM_PROMPT", () => {
 		const prompt = await SYSTEM_PROMPT(
 			mockContext,
 			"/test/path",
-			false, // supportsComputerUse
+			false,
 			undefined, // mcpHub
 			undefined, // diffStrategy
 			undefined, // browserViewportSize
@@ -484,7 +484,7 @@ describe("SYSTEM_PROMPT", () => {
 		const prompt = await SYSTEM_PROMPT(
 			mockContext,
 			"/test/path",
-			false, // supportsComputerUse
+			false,
 			undefined, // mcpHub
 			undefined, // diffStrategy
 			undefined, // browserViewportSize
@@ -522,7 +522,7 @@ describe("SYSTEM_PROMPT", () => {
 		const prompt = await SYSTEM_PROMPT(
 			mockContext,
 			"/test/path",
-			false, // supportsComputerUse
+			false,
 			undefined, // mcpHub
 			undefined, // diffStrategy
 			undefined, // browserViewportSize
@@ -555,7 +555,7 @@ describe("SYSTEM_PROMPT", () => {
 		const prompt = await SYSTEM_PROMPT(
 			mockContext,
 			"/test/path",
-			false, // supportsComputerUse
+			false,
 			undefined, // mcpHub
 			undefined, // diffStrategy
 			undefined, // browserViewportSize
@@ -573,6 +573,103 @@ describe("SYSTEM_PROMPT", () => {
 
 		// Should use the default mode's role definition
 		expect(prompt.indexOf(modes[0].roleDefinition)).toBeLessThan(prompt.indexOf("TOOL USE"))
+	})
+
+	it("should exclude update_todo_list tool when todoListEnabled is false", async () => {
+		const settings = {
+			maxConcurrentFileReads: 5,
+			todoListEnabled: false,
+			useAgentRules: true,
+			newTaskRequireTodos: false,
+		}
+
+		const prompt = await SYSTEM_PROMPT(
+			mockContext,
+			"/test/path",
+			false,
+			undefined, // mcpHub
+			undefined, // diffStrategy
+			undefined, // browserViewportSize
+			defaultModeSlug, // mode
+			undefined, // customModePrompts
+			undefined, // customModes
+			undefined, // globalCustomInstructions
+			undefined, // diffEnabled
+			experiments,
+			true, // enableMcpServerCreation
+			undefined, // language
+			undefined, // rooIgnoreInstructions
+			undefined, // partialReadsEnabled
+			settings, // settings
+		)
+
+		// Should not contain the tool description
+		expect(prompt).not.toContain("## update_todo_list")
+		// Mode instructions will still reference the tool with a fallback to markdown
+	})
+
+	it("should include update_todo_list tool when todoListEnabled is true", async () => {
+		const settings = {
+			maxConcurrentFileReads: 5,
+			todoListEnabled: true,
+			useAgentRules: true,
+			newTaskRequireTodos: false,
+		}
+
+		const prompt = await SYSTEM_PROMPT(
+			mockContext,
+			"/test/path",
+			false,
+			undefined, // mcpHub
+			undefined, // diffStrategy
+			undefined, // browserViewportSize
+			defaultModeSlug, // mode
+			undefined, // customModePrompts
+			undefined, // customModes
+			undefined, // globalCustomInstructions
+			undefined, // diffEnabled
+			experiments,
+			true, // enableMcpServerCreation
+			undefined, // language
+			undefined, // rooIgnoreInstructions
+			undefined, // partialReadsEnabled
+			settings, // settings
+		)
+
+		expect(prompt).toContain("update_todo_list")
+		expect(prompt).toContain("## update_todo_list")
+	})
+
+	it("should include update_todo_list tool when todoListEnabled is undefined", async () => {
+		const settings = {
+			maxConcurrentFileReads: 5,
+			todoListEnabled: true,
+			useAgentRules: true,
+			newTaskRequireTodos: false,
+		}
+
+		const prompt = await SYSTEM_PROMPT(
+			mockContext,
+			"/test/path",
+			false,
+			undefined, // mcpHub
+			undefined, // diffStrategy
+			undefined, // browserViewportSize
+			defaultModeSlug, // mode
+			undefined, // customModePrompts
+			undefined, // customModes
+			undefined, // globalCustomInstructions
+			undefined, // diffEnabled
+			experiments,
+			true, // enableMcpServerCreation
+			undefined, // language
+			undefined, // rooIgnoreInstructions
+			undefined, // partialReadsEnabled
+			settings, // settings
+		)
+
+		expect(prompt).toContain("update_todo_list")
+		expect(prompt).toContain("## update_todo_list")
 	})
 
 	afterAll(() => {

@@ -8,7 +8,7 @@ import { useForm, FormProvider } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import fuzzysort from "fuzzysort"
 import { toast } from "sonner"
-import { X, Rocket, Check, ChevronsUpDown, SlidersHorizontal, Book, CircleCheck } from "lucide-react"
+import { X, Rocket, Check, ChevronsUpDown, SlidersHorizontal, CircleCheck } from "lucide-react"
 
 import { globalSettingsSchema, providerSettingsSchema, EVALS_SETTINGS, getModelId } from "@roo-code/types"
 
@@ -21,6 +21,9 @@ import {
 	CONCURRENCY_MIN,
 	CONCURRENCY_MAX,
 	CONCURRENCY_DEFAULT,
+	TIMEOUT_MIN,
+	TIMEOUT_MAX,
+	TIMEOUT_DEFAULT,
 } from "@/lib/schemas"
 import { cn } from "@/lib/utils"
 import { useOpenRouterModels } from "@/hooks/use-open-router-models"
@@ -46,11 +49,8 @@ import {
 	PopoverContent,
 	PopoverTrigger,
 	ScrollArea,
+	ScrollBar,
 	Slider,
-	Dialog,
-	DialogContent,
-	DialogTitle,
-	DialogFooter,
 } from "@/components/ui"
 
 import { SettingsDiff } from "./settings-diff"
@@ -77,6 +77,7 @@ export function NewRun() {
 			exercises: [],
 			settings: undefined,
 			concurrency: CONCURRENCY_DEFAULT,
+			timeout: TIMEOUT_DEFAULT,
 		},
 	})
 
@@ -89,10 +90,6 @@ export function NewRun() {
 
 	const [model, suite, settings] = watch(["model", "suite", "settings", "concurrency"])
 
-	const [systemPromptDialogOpen, setSystemPromptDialogOpen] = useState(false)
-	const [systemPrompt, setSystemPrompt] = useState("")
-	const systemPromptRef = useRef<HTMLTextAreaElement>(null)
-
 	const onSubmit = useCallback(
 		async (values: CreateRun) => {
 			try {
@@ -100,13 +97,13 @@ export function NewRun() {
 					values.settings = { ...(values.settings || {}), openRouterModelId: model }
 				}
 
-				const { id } = await createRun({ ...values, systemPrompt })
+				const { id } = await createRun(values)
 				router.push(`/runs/${id}`)
 			} catch (e) {
 				toast.error(e instanceof Error ? e.message : "An unknown error occurred.")
 			}
 		},
-		[mode, model, router, systemPrompt],
+		[mode, model, router],
 	)
 
 	const onFilterModels = useCallback(
@@ -265,29 +262,11 @@ export function NewRun() {
 										</div>
 										<SettingsDiff defaultSettings={EVALS_SETTINGS} customSettings={settings} />
 									</>
+									<ScrollBar orientation="horizontal" />
 								</ScrollArea>
 							)}
 							<FormMessage />
 						</FormItem>
-
-						<Button type="button" variant="secondary" onClick={() => setSystemPromptDialogOpen(true)}>
-							<Book />
-							Override System Prompt
-						</Button>
-
-						<Dialog open={systemPromptDialogOpen} onOpenChange={setSystemPromptDialogOpen}>
-							<DialogContent>
-								<DialogTitle>Override System Prompt</DialogTitle>
-								<Textarea
-									ref={systemPromptRef}
-									value={systemPrompt}
-									onChange={(e) => setSystemPrompt(e.target.value)}
-								/>
-								<DialogFooter>
-									<Button onClick={() => setSystemPromptDialogOpen(false)}>Done</Button>
-								</DialogFooter>
-							</DialogContent>
-						</Dialog>
 					</div>
 
 					<FormField
@@ -330,6 +309,29 @@ export function NewRun() {
 											defaultValue={[field.value]}
 											min={CONCURRENCY_MIN}
 											max={CONCURRENCY_MAX}
+											step={1}
+											onValueChange={(value) => field.onChange(value[0])}
+										/>
+										<div>{field.value}</div>
+									</div>
+								</FormControl>
+								<FormMessage />
+							</FormItem>
+						)}
+					/>
+
+					<FormField
+						control={form.control}
+						name="timeout"
+						render={({ field }) => (
+							<FormItem>
+								<FormLabel>Timeout (Minutes)</FormLabel>
+								<FormControl>
+									<div className="flex flex-row items-center gap-2">
+										<Slider
+											defaultValue={[field.value]}
+											min={TIMEOUT_MIN}
+											max={TIMEOUT_MAX}
 											step={1}
 											onValueChange={(value) => field.onChange(value[0])}
 										/>

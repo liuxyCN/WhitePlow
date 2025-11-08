@@ -18,6 +18,7 @@ import { Section } from "./Section"
 
 type TerminalSettingsProps = HTMLAttributes<HTMLDivElement> & {
 	terminalOutputLineLimit?: number
+	terminalOutputCharacterLimit?: number
 	terminalShellIntegrationTimeout?: number
 	terminalShellIntegrationDisabled?: boolean
 	terminalCommandDelay?: number
@@ -29,6 +30,7 @@ type TerminalSettingsProps = HTMLAttributes<HTMLDivElement> & {
 	terminalCompressProgressBar?: boolean
 	setCachedStateField: SetCachedStateField<
 		| "terminalOutputLineLimit"
+		| "terminalOutputCharacterLimit"
 		| "terminalShellIntegrationTimeout"
 		| "terminalShellIntegrationDisabled"
 		| "terminalCommandDelay"
@@ -43,6 +45,7 @@ type TerminalSettingsProps = HTMLAttributes<HTMLDivElement> & {
 
 export const TerminalSettings = ({
 	terminalOutputLineLimit,
+	terminalOutputCharacterLimit,
 	terminalShellIntegrationTimeout,
 	terminalShellIntegrationDisabled,
 	terminalCommandDelay,
@@ -130,6 +133,36 @@ export const TerminalSettings = ({
 							</div>
 						</div>
 						<div>
+							<label className="block font-medium mb-1">
+								{t("settings:terminal.outputCharacterLimit.label")}
+							</label>
+							<div className="flex items-center gap-2">
+								<Slider
+									min={1000}
+									max={100000}
+									step={1000}
+									value={[terminalOutputCharacterLimit ?? 50000]}
+									onValueChange={([value]) =>
+										setCachedStateField("terminalOutputCharacterLimit", value)
+									}
+									data-testid="terminal-output-character-limit-slider"
+								/>
+								<span className="w-16">{terminalOutputCharacterLimit ?? 50000}</span>
+							</div>
+							<div className="text-vscode-descriptionForeground text-sm mt-1">
+								<Trans i18nKey="settings:terminal.outputCharacterLimit.description">
+									<VSCodeLink
+										href={buildDocLink(
+											"features/shell-integration#terminal-output-limit",
+											"settings_terminal_output_character_limit",
+										)}
+										style={{ display: "inline" }}>
+										{" "}
+									</VSCodeLink>
+								</Trans>
+							</div>
+						</div>
+						<div>
 							<VSCodeCheckbox
 								checked={terminalCompressProgressBar ?? true}
 								onChange={(e: any) =>
@@ -168,35 +201,7 @@ export const TerminalSettings = ({
 					<div className="flex flex-col gap-3 pl-3 border-l-2 border-vscode-button-background">
 						<div>
 							<VSCodeCheckbox
-								checked={inheritEnv}
-								onChange={(e: any) => {
-									setInheritEnv(e.target.checked)
-									vscode.postMessage({
-										type: "updateVSCodeSetting",
-										setting: "terminal.integrated.inheritEnv",
-										value: e.target.checked,
-									})
-								}}
-								data-testid="terminal-inherit-env-checkbox">
-								<span className="font-medium">{t("settings:terminal.inheritEnv.label")}</span>
-							</VSCodeCheckbox>
-							<div className="text-vscode-descriptionForeground text-sm mt-1">
-								<Trans i18nKey="settings:terminal.inheritEnv.description">
-									<VSCodeLink
-										href={buildDocLink(
-											"features/shell-integration#inherit-environment-variables",
-											"settings_terminal_inherit_env",
-										)}
-										style={{ display: "inline" }}>
-										{" "}
-									</VSCodeLink>
-								</Trans>
-							</div>
-						</div>
-
-						<div>
-							<VSCodeCheckbox
-								checked={terminalShellIntegrationDisabled ?? false}
+								checked={terminalShellIntegrationDisabled ?? true}
 								onChange={(e: any) =>
 									setCachedStateField("terminalShellIntegrationDisabled", e.target.checked)
 								}>
@@ -208,7 +213,7 @@ export const TerminalSettings = ({
 								<Trans i18nKey="settings:terminal.shellIntegrationDisabled.description">
 									<VSCodeLink
 										href={buildDocLink(
-											"features/shell-integration#disable-terminal-shell-integration",
+											"features/shell-integration#use-inline-terminal-recommended",
 											"settings_terminal_shell_integration_disabled",
 										)}
 										style={{ display: "inline" }}>
@@ -220,6 +225,34 @@ export const TerminalSettings = ({
 
 						{!terminalShellIntegrationDisabled && (
 							<>
+								<div>
+									<VSCodeCheckbox
+										checked={inheritEnv}
+										onChange={(e: any) => {
+											setInheritEnv(e.target.checked)
+											vscode.postMessage({
+												type: "updateVSCodeSetting",
+												setting: "terminal.integrated.inheritEnv",
+												value: e.target.checked,
+											})
+										}}
+										data-testid="terminal-inherit-env-checkbox">
+										<span className="font-medium">{t("settings:terminal.inheritEnv.label")}</span>
+									</VSCodeCheckbox>
+									<div className="text-vscode-descriptionForeground text-sm mt-1">
+										<Trans i18nKey="settings:terminal.inheritEnv.description">
+											<VSCodeLink
+												href={buildDocLink(
+													"features/shell-integration#inherit-environment-variables",
+													"settings_terminal_inherit_env",
+												)}
+												style={{ display: "inline" }}>
+												{" "}
+											</VSCodeLink>
+										</Trans>
+									</div>
+								</div>
+
 								<div>
 									<label className="block font-medium mb-1">
 										{t("settings:terminal.shellIntegrationTimeout.label")}

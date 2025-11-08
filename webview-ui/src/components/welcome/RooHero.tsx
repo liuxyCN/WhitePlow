@@ -7,7 +7,7 @@ const RooHero = () => {
 	})
 
 	return (
-		<div className="flex flex-col items-center justify-center pb-4 forced-color-adjust-none">
+		<div className="pb-4 forced-color-adjust-none group flex justify-center">
 			<div
 				style={{
 					backgroundColor: "var(--vscode-foreground)",
@@ -18,8 +18,8 @@ const RooHero = () => {
 					maskRepeat: "no-repeat",
 					maskSize: "contain",
 				}}
-				className="mx-auto">
-				<img src={imagesBaseUri + "/neontractor-logo.png"} alt="NeonTractor logo" className="h-16" />
+				className="group-hover:animate-bounce translate-y-0 transition-transform duration-500">
+				<img src={imagesBaseUri + "/neontractor-logo.png"} alt="NeonTractor logo" className="h-16 mx-auto" />
 			</div>
 		</div>
 	)

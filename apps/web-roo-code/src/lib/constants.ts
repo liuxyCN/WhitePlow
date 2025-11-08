@@ -1,11 +1,13 @@
 export const EXTERNAL_LINKS = {
 	GITHUB: "https://github.com/RooCodeInc/Roo-Code",
+	GITHUB_DISCUSSIONS: "https://github.com/RooCodeInc/Roo-Code/discussions",
 	DISCORD: "https://discord.gg/roocode",
 	REDDIT: "https://reddit.com/r/RooCode",
-	X: "https://x.com/roo_code",
+	X: "https://x.com/roocode",
 	LINKEDIN: "https://www.linkedin.com/company/roo-code",
 	TIKTOK: "https://www.tiktok.com/@roo.code",
 	BLUESKY: "https://bsky.app/profile/roocode.bsky.social",
+	YOUTUBE: "https://www.youtube.com/@RooCodeYT",
 	DOCUMENTATION: "https://docs.roocode.com",
 	CAREERS: "https://careers.roocode.com",
 	ISSUES: "https://github.com/RooCodeInc/Roo-Code/issues",
@@ -17,6 +19,14 @@ export const EXTERNAL_LINKS = {
 	TUTORIALS: "https://docs.roocode.com/tutorial-videos",
 	MARKETPLACE: "https://marketplace.visualstudio.com/items?itemName=RooVeterinaryInc.roo-cline",
 	SECURITY: "https://trust.roocode.com",
+	EVALS: "https://roocode.com/evals",
+	BLOG: "https://blog.roocode.com",
+	OFFICE_HOURS_PODCAST: "https://www.youtube.com/@RooCodeYT/podcasts",
+	FAQ: "https://roocode.com/#faq",
+	TESTIMONIALS: "https://roocode.com/#testimonials",
+	CLOUD_APP_LOGIN: "https://app.roocode.com/sign-in",
+	CLOUD_APP_SIGNUP: "https://app.roocode.com/sign-up",
+	CLOUD_APP_SIGNUP_PRO: "https://app.roocode.com/sign-up?redirect_url=/cloud-agents/welcome",
 }
 
 export const INTERNAL_LINKS = {

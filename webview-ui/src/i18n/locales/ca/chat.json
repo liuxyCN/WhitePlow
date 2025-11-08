@@ -2,12 +2,15 @@
 	"greeting": "Benvingut a Roo Code",
 	"task": {
 		"title": "Tasca",
+		"expand": "Expandir tasca",
+		"collapse": "Replegar tasca",
 		"seeMore": "Veure més",
 		"seeLess": "Veure menys",
-		"tokens": "Tokens:",
-		"cache": "Caché:",
-		"apiCost": "Cost d'API:",
-		"contextWindow": "Finestra de context:",
+		"tokens": "Tokens",
+		"cache": "Caché",
+		"apiCost": "Cost d'API",
+		"size": "Mida",
+		"contextWindow": "Finestra de context",
 		"closeAndStart": "Tancar tasca i iniciar-ne una de nova",
 		"export": "Exportar historial de tasques",
 		"delete": "Eliminar tasca (Shift + Clic per ometre confirmació)",
@@ -21,7 +24,9 @@
 		"connectToCloudDescription": "Inicia sessió a Roo Code Cloud per compartir tasques",
 		"sharingDisabledByOrganization": "Compartició deshabilitada per l'organització",
 		"shareSuccessOrganization": "Enllaç d'organització copiat al porta-retalls",
-		"shareSuccessPublic": "Enllaç públic copiat al porta-retalls"
+		"shareSuccessPublic": "Enllaç públic copiat al porta-retalls",
+		"openInCloud": "Obrir tasca a Roo Code Cloud",
+		"openInCloudIntro": "Continua monitoritzant o interactuant amb Roo des de qualsevol lloc. Escaneja, fes clic o copia per obrir."
 	},
 	"unpin": "Desfixar",
 	"pin": "Fixar",
@@ -44,7 +49,7 @@
 	},
 	"save": {
 		"title": "Desar",
-		"tooltip": "Desa els canvis del fitxer"
+		"tooltip": "Desa els canvis del missatge"
 	},
 	"reject": {
 		"title": "Rebutjar",
@@ -56,7 +61,7 @@
 		"tooltip": "Aprova aquesta acció"
 	},
 	"runCommand": {
-		"title": "Executar ordre",
+		"title": "Ordre",
 		"tooltip": "Executa aquesta ordre"
 	},
 	"proceedWhileRunning": {
@@ -80,24 +85,17 @@
 		"tooltip": "Cancel·la l'operació actual"
 	},
 	"scrollToBottom": "Desplaça't al final del xat",
-	"about": "Genera, refactoritza i depura codi amb l'ajuda de la IA. Consulta la nostra <DocsLink>documentació</DocsLink> per obtenir més informació.",
-	"onboarding": "<strong> La vostra llista de tasques en aquest espai de treball està buida. </strong> Comença escrivint una tasca a continuació. \nNo esteu segur per on començar? \nMés informació sobre què pot fer Roo als documents.",
+	"about": "Roo Code és tot un equip de desenvolupament d'IA al teu editor.",
+	"docs": "Consulta els nostres <DocsLink>documents</DocsLink> per a més informació.",
+	"onboarding": "La teva llista de tasques en aquest espai de treball està buida.",
 	"rooTips": {
-		"boomerangTasks": {
-			"title": "Orquestració de Tasques",
-			"description": "Divideix les tasques en parts més petites i manejables."
-		},
-		"stickyModels": {
-			"title": "Modes persistents",
-			"description": "Cada mode recorda el vostre darrer model utilitzat"
-		},
-		"tools": {
-			"title": "Eines",
-			"description": "Permet que la IA resolgui problemes navegant per la web, executant ordres i molt més."
-		},
 		"customizableModes": {
 			"title": "Modes personalitzables",
-			"description": "Personalitats especialitzades amb comportaments propis i models assignats"
+			"description": "Persones especialitzades que es mantenen en la tasca i compleixen."
+		},
+		"modelAgnostic": {
+			"title": "Porta el teu propi model",
+			"description": "Fes servir la teva pròpia clau de proveïdor o fins i tot executa inferència local — sense sobrepreus, sense bloquejos, sense restriccions"
 		}
 	},
 	"selectMode": "Selecciona el mode d'interacció",
@@ -108,7 +106,7 @@
 	"stopTts": "Atura la síntesi de veu",
 	"typeMessage": "Escriu un missatge...",
 	"typeTask": "Escriu la teva tasca aquí...",
-	"addContext": "@ per afegir context, / per canviar de mode",
+	"addContext": "@ per afegir context, / per a comandes",
 	"dragFiles": "manté premut shift per arrossegar fitxers",
 	"dragFilesImages": "manté premut shift per arrossegar fitxers/imatges",
 	"enhancePromptDescription": "El botó 'Millora la sol·licitud' ajuda a millorar la teva sol·licitud proporcionant context addicional, aclariments o reformulacions. Prova d'escriure una sol·licitud aquí i fes clic al botó de nou per veure com funciona.",
@@ -116,9 +114,11 @@
 		"title": "Modes",
 		"marketplace": "Marketplace de Modes",
 		"settings": "Configuració de Modes",
-		"description": "Personalitats especialitzades que adapten el comportament de Roo."
+		"description": "Personalitats especialitzades que adapten el comportament de Roo.",
+		"searchPlaceholder": "Cerca modes...",
+		"noResults": "No s'han trobat resultats"
 	},
-	"errorReadingFile": "Error en llegir el fitxer:",
+	"errorReadingFile": "Error en llegir el fitxer",
 	"noValidImages": "No s'ha processat cap imatge vàlida",
 	"separator": "Separador",
 	"edit": "Edita...",
@@ -137,11 +137,13 @@
 		"streamingFailed": "Transmissió API ha fallat"
 	},
 	"checkpoint": {
-		"initial": "Punt de control inicial",
 		"regular": "Punt de control",
 		"initializingWarning": "Encara s'està inicialitzant el punt de control... Si això triga massa, pots desactivar els punts de control a la <settingsLink>configuració</settingsLink> i reiniciar la teva tasca.",
 		"menu": {
 			"viewDiff": "Veure diferències",
+			"more": "Més opcions",
+			"viewDiffFromInit": "Veure tots els canvis",
+			"viewDiffWithCurrent": "Veure els canvis des d'aquest punt de control",
 			"restore": "Restaurar punt de control",
 			"restoreFiles": "Restaurar arxius",
 			"restoreFilesDescription": "Restaura els arxius del teu projecte a una instantània presa en aquest punt.",
@@ -157,46 +159,72 @@
 		"wantsToFetch": "Roo vol obtenir instruccions detallades per ajudar amb la tasca actual."
 	},
 	"fileOperations": {
-		"wantsToRead": "Roo vol llegir aquest fitxer:",
-		"wantsToReadOutsideWorkspace": "Roo vol llegir aquest fitxer fora de l'espai de treball:",
-		"didRead": "Roo ha llegit aquest fitxer:",
-		"wantsToEdit": "Roo vol editar aquest fitxer:",
-		"wantsToEditOutsideWorkspace": "Roo vol editar aquest fitxer fora de l'espai de treball:",
-		"wantsToEditProtected": "Roo vol editar un fitxer de configuració protegit:",
-		"wantsToCreate": "Roo vol crear un nou fitxer:",
-		"wantsToSearchReplace": "Roo vol realitzar cerca i substitució en aquest fitxer:",
-		"didSearchReplace": "Roo ha realitzat cerca i substitució en aquest fitxer:",
-		"wantsToInsert": "Roo vol inserir contingut en aquest fitxer:",
-		"wantsToInsertWithLineNumber": "Roo vol inserir contingut a la línia {{lineNumber}} d'aquest fitxer:",
-		"wantsToInsertAtEnd": "Roo vol afegir contingut al final d'aquest fitxer:",
-		"wantsToReadAndXMore": "En Roo vol llegir aquest fitxer i {{count}} més:",
-		"wantsToReadMultiple": "Roo vol llegir diversos fitxers:",
-		"wantsToApplyBatchChanges": "Roo vol aplicar canvis a múltiples fitxers:"
+		"wantsToRead": "Roo vol llegir aquest fitxer",
+		"wantsToReadOutsideWorkspace": "Roo vol llegir aquest fitxer fora de l'espai de treball",
+		"didRead": "Roo ha llegit aquest fitxer",
+		"wantsToEdit": "Roo vol editar aquest fitxer",
+		"wantsToEditOutsideWorkspace": "Roo vol editar aquest fitxer fora de l'espai de treball",
+		"wantsToEditProtected": "Roo vol editar un fitxer de configuració protegit",
+		"wantsToCreate": "Roo vol crear un nou fitxer",
+		"wantsToSearchReplace": "Roo vol realitzar cerca i substitució en aquest fitxer",
+		"didSearchReplace": "Roo ha realitzat cerca i substitució en aquest fitxer",
+		"wantsToInsert": "Roo vol inserir contingut en aquest fitxer",
+		"wantsToInsertWithLineNumber": "Roo vol inserir contingut a la línia {{lineNumber}} d'aquest fitxer",
+		"wantsToInsertAtEnd": "Roo vol afegir contingut al final d'aquest fitxer",
+		"wantsToReadAndXMore": "En Roo vol llegir aquest fitxer i {{count}} més",
+		"wantsToReadMultiple": "Roo vol llegir diversos fitxers",
+		"wantsToApplyBatchChanges": "Roo vol aplicar canvis a múltiples fitxers",
+		"wantsToGenerateImage": "Roo vol generar una imatge",
+		"wantsToGenerateImageOutsideWorkspace": "Roo vol generar una imatge fora de l'espai de treball",
+		"wantsToGenerateImageProtected": "Roo vol generar una imatge en una ubicació protegida",
+		"didGenerateImage": "Roo ha generat una imatge"
 	},
 	"directoryOperations": {
-		"wantsToViewTopLevel": "Roo vol veure els fitxers de nivell superior en aquest directori:",
-		"didViewTopLevel": "Roo ha vist els fitxers de nivell superior en aquest directori:",
-		"wantsToViewRecursive": "Roo vol veure recursivament tots els fitxers en aquest directori:",
-		"didViewRecursive": "Roo ha vist recursivament tots els fitxers en aquest directori:",
-		"wantsToViewDefinitions": "Roo vol veure noms de definicions de codi font utilitzats en aquest directori:",
-		"didViewDefinitions": "Roo ha vist noms de definicions de codi font utilitzats en aquest directori:",
-		"wantsToSearch": "Roo vol cercar en aquest directori <code>{{regex}}</code>:",
-		"didSearch": "Roo ha cercat en aquest directori <code>{{regex}}</code>:",
-		"wantsToSearchOutsideWorkspace": "Roo vol cercar en aquest directori (fora de l'espai de treball) <code>{{regex}}</code>:",
-		"didSearchOutsideWorkspace": "Roo ha cercat en aquest directori (fora de l'espai de treball) <code>{{regex}}</code>:",
-		"wantsToViewTopLevelOutsideWorkspace": "Roo vol veure els fitxers de nivell superior en aquest directori (fora de l'espai de treball):",
-		"didViewTopLevelOutsideWorkspace": "Roo ha vist els fitxers de nivell superior en aquest directori (fora de l'espai de treball):",
-		"wantsToViewRecursiveOutsideWorkspace": "Roo vol veure recursivament tots els fitxers en aquest directori (fora de l'espai de treball):",
-		"didViewRecursiveOutsideWorkspace": "Roo ha vist recursivament tots els fitxers en aquest directori (fora de l'espai de treball):",
-		"wantsToViewDefinitionsOutsideWorkspace": "Roo vol veure noms de definicions de codi font utilitzats en aquest directori (fora de l'espai de treball):",
-		"didViewDefinitionsOutsideWorkspace": "Roo ha vist noms de definicions de codi font utilitzats en aquest directori (fora de l'espai de treball):"
+		"wantsToViewTopLevel": "Roo vol veure els fitxers de nivell superior en aquest directori",
+		"didViewTopLevel": "Roo ha vist els fitxers de nivell superior en aquest directori",
+		"wantsToViewRecursive": "Roo vol veure recursivament tots els fitxers en aquest directori",
+		"didViewRecursive": "Roo ha vist recursivament tots els fitxers en aquest directori",
+		"wantsToViewDefinitions": "Roo vol veure noms de definicions de codi font utilitzats en aquest directori",
+		"didViewDefinitions": "Roo ha vist noms de definicions de codi font utilitzats en aquest directori",
+		"wantsToSearch": "Roo vol cercar en aquest directori <code>{{regex}}</code>",
+		"didSearch": "Roo ha cercat en aquest directori <code>{{regex}}</code>",
+		"wantsToSearchOutsideWorkspace": "Roo vol cercar en aquest directori (fora de l'espai de treball) <code>{{regex}}</code>",
+		"didSearchOutsideWorkspace": "Roo ha cercat en aquest directori (fora de l'espai de treball) <code>{{regex}}</code>",
+		"wantsToViewTopLevelOutsideWorkspace": "Roo vol veure els fitxers de nivell superior en aquest directori (fora de l'espai de treball)",
+		"didViewTopLevelOutsideWorkspace": "Roo ha vist els fitxers de nivell superior en aquest directori (fora de l'espai de treball)",
+		"wantsToViewRecursiveOutsideWorkspace": "Roo vol veure recursivament tots els fitxers en aquest directori (fora de l'espai de treball)",
+		"didViewRecursiveOutsideWorkspace": "Roo ha vist recursivament tots els fitxers en aquest directori (fora de l'espai de treball)",
+		"wantsToViewDefinitionsOutsideWorkspace": "Roo vol veure noms de definicions de codi font utilitzats en aquest directori (fora de l'espai de treball)",
+		"didViewDefinitionsOutsideWorkspace": "Roo ha vist noms de definicions de codi font utilitzats en aquest directori (fora de l'espai de treball)"
 	},
-	"commandOutput": "Sortida de l'ordre",
+	"commandOutput": "Sortida de la comanda",
+	"commandExecution": {
+		"abort": "Avortar",
+		"running": "En execució",
+		"pid": "PID: {{pid}}",
+		"exitStatus": "S'ha sortit amb l'estat {{exitCode}}",
+		"manageCommands": "Comandes aprovades automàticament",
+		"addToAllowed": "Afegeix a la llista permesa",
+		"removeFromAllowed": "Elimina de la llista permesa",
+		"addToDenied": "Afegeix a la llista denegada",
+		"removeFromDenied": "Elimina de la llista denegada",
+		"abortCommand": "Interrompre l'execució de l'ordre",
+		"expandOutput": "Amplia la sortida",
+		"collapseOutput": "Redueix la sortida",
+		"expandManagement": "Amplia la secció de gestió de comandaments",
+		"collapseManagement": "Redueix la secció de gestió de comandaments"
+	},
 	"response": "Resposta",
 	"arguments": "Arguments",
+	"text": {
+		"rooSaid": "En Roo ha dit"
+	},
+	"feedback": {
+		"youSaid": "Has dit"
+	},
 	"mcp": {
-		"wantsToUseTool": "Roo vol utilitzar una eina al servidor MCP {{serverName}}:",
-		"wantsToAccessResource": "Roo vol accedir a un recurs al servidor MCP {{serverName}}:"
+		"wantsToUseTool": "Roo vol utilitzar una eina al servidor MCP {{serverName}}",
+		"wantsToAccessResource": "Roo vol accedir a un recurs al servidor MCP {{serverName}}"
 	},
 	"modes": {
 		"wantsToSwitch": "Roo vol canviar a mode <code>{{mode}}</code>",
@@ -205,7 +233,7 @@
 		"didSwitchWithReason": "Roo ha canviat a mode <code>{{mode}}</code> perquè: {{reason}}"
 	},
 	"subtasks": {
-		"wantsToCreate": "Roo vol crear una nova subtasca en mode <code>{{mode}}</code>:",
+		"wantsToCreate": "Roo vol crear una nova subtasca en mode <code>{{mode}}</code>",
 		"wantsToFinish": "Roo vol finalitzar aquesta subtasca",
 		"newTaskContent": "Instruccions de la subtasca",
 		"completionContent": "Subtasca completada",
@@ -214,16 +242,29 @@
 		"completionInstructions": "Subtasca completada! Pots revisar els resultats i suggerir correccions o següents passos. Si tot sembla correcte, confirma per tornar el resultat a la tasca principal."
 	},
 	"questions": {
-		"hasQuestion": "Roo té una pregunta:"
+		"hasQuestion": "Roo té una pregunta"
 	},
 	"taskCompleted": "Tasca completada",
 	"powershell": {
 		"issues": "Sembla que estàs tenint problemes amb Windows PowerShell, si us plau consulta aquesta documentació per a més informació."
 	},
 	"autoApprove": {
-		"title": "Aprovació automàtica:",
+		"tooltipManage": "Gestiona la configuració d'aprovació automàtica",
+		"tooltipStatus": "Aprovació automàtica activada per a: {{toggles}}",
+		"title": "Aprovació automàtica",
+		"toggle": "Commuta l'aprovació automàtica",
+		"all": "Tot",
 		"none": "Cap",
-		"description": "L'aprovació automàtica permet a Roo Code realitzar accions sense demanar permís. Activa-la només per a accions en les que confies plenament. Configuració més detallada disponible a la <settingsLink>Configuració</settingsLink>."
+		"description": "Executa aquestes accions sense demanar permís. Activa-ho només per a accions de confiança.",
+		"selectOptionsFirst": "Selecciona almenys una opció a continuació per activar l'aprovació automàtica",
+		"toggleAriaLabel": "Commuta l'aprovació automàtica",
+		"disabledAriaLabel": "Aprovació automàtica desactivada - selecciona primer les opcions",
+		"triggerLabelOff": "Aprovació automàtica desactivada",
+		"triggerLabelOffShort": "Off",
+		"triggerLabel_zero": "0 aprovacions automàtiques",
+		"triggerLabel_one": "1 aprovació automàtica",
+		"triggerLabel_other": "{{count}} aprovacions automàtiques",
+		"triggerLabelAll": "YOLO"
 	},
 	"reasoning": {
 		"thinking": "Pensant",
@@ -242,16 +283,30 @@
 	},
 	"announcement": {
 		"title": "🎉 Roo Code {{version}} Llançat",
-		"description": "Roo Code {{version}} porta noves funcions potents i millores significatives per millorar el vostre flux de treball de desenvolupament.",
-		"whatsNew": "Novetats",
-		"feature1": "<bold>Indexació de Base de Codi Graduada d'Experimental</bold>: La indexació completa de la base de codi ara és estable i està llesta per a ús en producció amb cerca millorada i comprensió del context.",
-		"feature2": "<bold>Nova Funcionalitat de Llista de Tasques Pendents</bold>: Mantingueu les vostres tasques en el bon camí amb gestió integrada de tasques pendents que us ajuda a mantenir-vos organitzats i centrats en els vostres objectius de desenvolupament.",
-		"feature3": "<bold>Transicions Millorades d'Arquitecte a Codi</bold>: Transferències fluides de la planificació en mode Arquitecte a la implementació en mode Codi.",
-		"hideButton": "Amaga l'anunci",
-		"detailsDiscussLinks": "Obtén més detalls i uneix-te a les discussions a <discordLink>Discord</discordLink> i <redditLink>Reddit</redditLink> 🚀"
+		"stealthModel": {
+			"feature": "<bold>Model stealth GRATUÏT per temps limitat</bold> - Code Supernova: Ara actualitzat amb una <bold>finestra de context d'1M tokens</bold>! Un model de codificació agèntica versàtil que suporta entrades d'imatges, disponible a través de Roo Code Cloud.",
+			"note": "(Nota: els prompts i completacions són registrats pel creador del model i utilitzats per millorar-lo)",
+			"connectButton": "Connectar a Roo Code Cloud",
+			"selectModel": "Selecciona <code>roo/code-supernova</code> del proveïdor Roo Code Cloud a Configuració per començar.",
+			"goToSettingsButton": "Anar a Configuració"
+		},
+		"release": {
+			"heading": "Novetats a l'extensió:",
+			"openRouterEmbeddings": "Suport per a models d'incrustació d'OpenRouter",
+			"chutesDynamic": "Chutes ara carrega els últims models de forma dinàmica",
+			"queuedMessagesFix": "Correccions per a missatges en cua que es perden"
+		},
+		"cloudAgents": {
+			"heading": "Novetats al núvol:",
+			"prFixer": "Presentem l'agent al núvol <bold>PR Fixer</bold> per complementar el Revisor de PR.",
+			"prFixerDescription": "El PR Fixer de Roo Code aplica canvis d'alta qualitat a les teves PR directament des de GitHub. Invoca'l mitjançant un comentari a la PR i llegirà tot l'historial de comentaris per entendre el context, els acords i els compromisos, i després implementarà la solució correcta.",
+			"tryPrFixerButton": "Prova el PR Fixer"
+		},
+		"careers": "A més, <careersLink>estem contractant!</careersLink>",
+		"socialLinks": "Uneix-te a nosaltres a <xLink>X</xLink>, <discordLink>Discord</discordLink>, o <redditLink>r/RooCode</redditLink> 🚀"
 	},
 	"browser": {
-		"rooWantsToUse": "Roo vol utilitzar el navegador:",
+		"rooWantsToUse": "Roo vol utilitzar el navegador",
 		"consoleLogs": "Registres de consola",
 		"noNewLogs": "(Cap registre nou)",
 		"screenshot": "Captura de pantalla del navegador",
@@ -276,8 +331,6 @@
 		"tooltips": {
 			"expand": "Expandir bloc de codi",
 			"collapse": "Contraure bloc de codi",
-			"enable_wrap": "Activar ajustament de línia",
-			"disable_wrap": "Desactivar ajustament de línia",
 			"copy_code": "Copiar codi"
 		}
 	},
@@ -293,11 +346,16 @@
 			"title": "S'ha arribat al límit de sol·licituds aprovades automàticament",
 			"description": "Roo ha arribat al límit aprovat automàticament de {{count}} sol·licitud(s) d'API. Vols reiniciar el comptador i continuar amb la tasca?",
 			"button": "Reiniciar i continuar"
+		},
+		"autoApprovedCostLimitReached": {
+			"title": "S'ha arribat al límit de cost d'aprovació automàtica",
+			"button": "Restableix i continua",
+			"description": "Roo ha arribat al límit de cost aprovat automàticament de ${{count}}. Vols restablir el cost i continuar amb la tasca?"
 		}
 	},
 	"codebaseSearch": {
-		"wantsToSearch": "Roo vol cercar a la base de codi <code>{{query}}</code>:",
-		"wantsToSearchWithPath": "Roo vol cercar a la base de codi <code>{{query}}</code> a <code>{{path}}</code>:",
+		"wantsToSearch": "Roo vol cercar a la base de codi <code>{{query}}</code>",
+		"wantsToSearchWithPath": "Roo vol cercar a la base de codi <code>{{query}}</code> a <code>{{path}}</code>",
 		"didSearch_one": "S'ha trobat 1 resultat",
 		"didSearch_other": "S'han trobat {{count}} resultats",
 		"resultTooltip": "Puntuació de similitud: {{score}} (fes clic per obrir el fitxer)"
@@ -319,5 +377,57 @@
 	},
 	"versionIndicator": {
 		"ariaLabel": "Versió {{version}} - Feu clic per veure les notes de llançament"
+	},
+	"rooCloudCTA": {
+		"title": "Roo Code Cloud està evolucionant!",
+		"description": "Executa agents remots al núvol, accedeix a les teves tasques des de qualsevol lloc, col·labora amb altres i molt més.",
+		"joinWaitlist": "Registra't per rebre les últimes actualitzacions."
+	},
+	"editMessage": {
+		"placeholder": "Edita el teu missatge..."
+	},
+	"command": {
+		"triggerDescription": "Activa la comanda {{name}}"
+	},
+	"slashCommands": {
+		"tooltip": "Gestionar ordres de barra",
+		"title": "Ordres de Barra",
+		"description": "Utilitza ordres de barra integrades o crea personalitzades per accedir ràpidament a indicacions i fluxos de treball utilitzats amb freqüència. <DocsLink>Documentació</DocsLink>",
+		"manageCommands": "Gestiona les ordres de barra a la configuració",
+		"builtInCommands": "Ordres Integrades",
+		"globalCommands": "Ordres Globals",
+		"workspaceCommands": "Ordres de l'Espai de Treball",
+		"globalCommand": "Ordre global",
+		"editCommand": "Editar ordre",
+		"deleteCommand": "Eliminar ordre",
+		"newGlobalCommandPlaceholder": "Nova ordre global...",
+		"newWorkspaceCommandPlaceholder": "Nova ordre de l'espai de treball...",
+		"deleteDialog": {
+			"title": "Eliminar Ordre",
+			"description": "Estàs segur que vols eliminar l'ordre \"{{name}}\"? Aquesta acció no es pot desfer.",
+			"cancel": "Cancel·lar",
+			"confirm": "Eliminar"
+		}
+	},
+	"queuedMessages": {
+		"title": "Missatges en cua",
+		"clickToEdit": "Feu clic per editar el missatge"
+	},
+	"slashCommand": {
+		"wantsToRun": "Roo vol executar una comanda slash",
+		"didRun": "Roo ha executat una comanda slash"
+	},
+	"contextMenu": {
+		"noResults": "Sense resultats",
+		"problems": "Problemes",
+		"terminal": "Terminal",
+		"url": "Enganxa la URL per obtenir-ne el contingut"
+	},
+	"todo": {
+		"partial": "{{completed}} de {{total}} tasques pendents fetes",
+		"complete": "{{total}} tasques pendents fetes",
+		"updated": "S'ha actualitzat la llista de tasques pendents",
+		"completed": "Completat",
+		"started": "Iniciat"
 	}
 }

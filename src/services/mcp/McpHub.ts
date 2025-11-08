@@ -32,14 +32,32 @@ import {
 	McpToolCallResponse,
 } from "../../shared/mcp"
 import { fileExistsAtPath } from "../../utils/fs"
-import { arePathsEqual } from "../../utils/path"
+import { arePathsEqual, getWorkspacePath } from "../../utils/path"
 import { injectVariables } from "../../utils/config"
+import { safeWriteJson } from "../../utils/safeWriteJson"
 
-export type McpConnection = {
+// Discriminated union for connection states
+export type ConnectedMcpConnection = {
+	type: "connected"
 	server: McpServer
 	client: Client
 	transport: StdioClientTransport | SSEClientTransport | StreamableHTTPClientTransport
 	inMemoryServer?: InMemoryFileCoolServer // For in-memory connections
+}
+
+export type DisconnectedMcpConnection = {
+	type: "disconnected"
+	server: McpServer
+	client: null
+	transport: null
+}
+
+export type McpConnection = ConnectedMcpConnection | DisconnectedMcpConnection
+
+// Enum for disable reasons
+export enum DisableReason {
+	MCP_DISABLED = "mcpDisabled",
+	SERVER_DISABLED = "serverDisabled",
 }
 
 // Base configuration schema for common settings
@@ -141,6 +159,8 @@ export class McpHub {
 	private memoryServerToolStates: Map<string, { alwaysAllow: string[]; disabledTools: string[] }> = new Map()
 	// Store memory server enable/disable states to persist across refreshes
 	private memoryServerDisabledStates: Map<string, boolean> = new Map()
+	private isProgrammaticUpdate: boolean = false
+	private flagResetTimer?: NodeJS.Timeout
 
 	constructor(provider: ClineProvider) {
 		this.providerRef = new WeakRef(provider)
@@ -261,7 +281,7 @@ export class McpHub {
 	 */
 	public registerClient(): void {
 		this.refCount++
-		console.log(`McpHub: Client registered. Ref count: ${this.refCount}`)
+		// console.log(`McpHub: Client registered. Ref count: ${this.refCount}`)
 	}
 
 	/**
@@ -270,7 +290,9 @@ export class McpHub {
 	 */
 	public async unregisterClient(): Promise<void> {
 		this.refCount--
-		console.log(`McpHub: Client unregistered. Ref count: ${this.refCount}`)
+
+		// console.log(`McpHub: Client unregistered. Ref count: ${this.refCount}`)
+
 		if (this.refCount <= 0) {
 			console.log("McpHub: Last client unregistered. Disposing hub.")
 			await this.dispose()
@@ -371,6 +393,11 @@ export class McpHub {
 	 * Debounced wrapper for handling config file changes
 	 */
 	private debounceConfigChange(filePath: string, source: "global" | "project"): void {
+		// Skip processing if this is a programmatic update to prevent unnecessary server restarts
+		if (this.isProgrammaticUpdate) {
+			return
+		}
+
 		const key = `${source}-${filePath}`
 
 		// Clear existing timer if any
@@ -442,7 +469,7 @@ export class McpHub {
 			return
 		}
 
-		const workspaceFolder = vscode.workspace.workspaceFolders[0]
+		const workspaceFolder = this.providerRef.deref()?.cwd ?? getWorkspacePath()
 		const projectMcpPattern = new vscode.RelativePattern(workspaceFolder, ".roo/mcp.json")
 
 		// Create a file system watcher for the project MCP file pattern
@@ -608,6 +635,7 @@ export class McpHub {
 			const result = McpSettingsSchema.safeParse(config)
 
 			if (result.success) {
+				// Pass all servers including disabled ones - they'll be handled in updateServerConnections
 				await this.updateServerConnections(result.data.mcpServers || {}, source, false)
 			} else {
 				const errorMessages = result.error.errors
@@ -642,12 +670,8 @@ export class McpHub {
 
 	// Get project-level MCP configuration path
 	private async getProjectMcpPath(): Promise<string | null> {
-		if (!vscode.workspace.workspaceFolders?.length) {
-			return null
-		}
-
-		const workspaceFolder = vscode.workspace.workspaceFolders[0]
-		const projectMcpDir = path.join(workspaceFolder.uri.fsPath, ".roo")
+		const workspacePath = this.providerRef.deref()?.cwd ?? getWorkspacePath()
+		const projectMcpDir = path.join(workspacePath, ".roo")
 		const projectMcpPath = path.join(projectMcpDir, "mcp.json")
 
 		try {
@@ -666,84 +690,40 @@ export class McpHub {
 	// Initialize in-memory file-cool server
 	private async initializeInMemoryFileCoolServer(): Promise<void> {
 		try {
-			console.log("Initializing in-memory file-cool server...")
+			const config = await this.getGatewayConfig()
+			if (!config) return
 
-			// Get configuration from GlobalSettings
-			const provider = this.providerRef.deref()
-			let config: { apiUrl?: string; apiKey?: string } | undefined = undefined
-			if (provider) {
-				const { mcpGatewayEnabled, mcpGatewayUrl, mcpGatewayApiKey } = await provider.getState()
+			// Initialize streamable-http gateway servers
+			await this.initializeStreamableHttpGatewayServers(config.apiUrl, config.apiKey)
 
-				// Only initialize if MCP Gateway is enabled
-				if (!mcpGatewayEnabled) {
-					console.log("MCP Gateway is disabled. Skipping file-cool server initialization.")
-					return
-				}
-
-				// Only pass config if both URL and API key are provided and not empty
-				if (mcpGatewayUrl && mcpGatewayUrl.trim() && mcpGatewayApiKey && mcpGatewayApiKey.trim()) {
-					config = {
-						apiUrl: mcpGatewayUrl.trim(),
-						apiKey: mcpGatewayApiKey.trim(),
-					}
-					console.log("MCP Gateway configuration found, initializing file-cool server with custom settings")
-
-					// Also initialize streamable-http gateway servers
-					await this.initializeStreamableHttpGatewayServers(mcpGatewayUrl.trim(), mcpGatewayApiKey.trim())
-				} else {
-					console.log(
-						"MCP Gateway configuration not complete - URL or API Key missing. File-cool server will require configuration.",
-					)
-				}
-			}
-
+			// Create and connect in-memory server
 			const inMemoryServer = new InMemoryFileCoolServer(config)
 			const client = await inMemoryServer.connect()
-			console.log("In-memory server connected successfully")
 
-			// Check if there's a saved disabled state for file-cool server
-			const savedDisabledState = this.memoryServerDisabledStates.get("file-cool") ?? false
-
-			const connection: McpConnection = {
+			// Create connection
+			const connection: ConnectedMcpConnection = {
+				type: "connected",
 				server: {
 					name: "file-cool",
-					config: JSON.stringify({ type: "stdio", command: "in-memory" }), // Valid config for in-memory server
+					config: JSON.stringify({ type: "stdio", command: "in-memory" }),
 					status: "connected",
-					disabled: savedDisabledState, // Apply saved disabled state
-					source: "memory" as any, // Special source to avoid normal validation flows
+					disabled: this.memoryServerDisabledStates.get("file-cool") ?? false,
+					source: "memory" as any,
 					errorHistory: [],
 					tools: [],
 					resources: [],
 					resourceTemplates: [],
 				},
 				client,
-				transport: null as any, // Not used for in-memory connections
+				transport: null as any,
 				inMemoryServer,
 			}
 
-			// Add connection first
 			this.connections.push(connection)
-			console.log("Connection added to connections list")
+			await delay(100) // Ensure everything is ready
 
-			// Add a small delay to ensure everything is ready
-			await new Promise((resolve) => setTimeout(resolve, 100))
-
-			// Fetch tools and resources
-			console.log("Fetching tools for in-memory server...")
-			try {
-				connection.server.tools = await this.fetchToolsList("file-cool", "memory")
-				console.log("In-memory server tools fetched:", connection.server.tools.length)
-			} catch (error) {
-				console.error("Failed to fetch tools:", error)
-			}
-
-			try {
-				connection.server.resources = await this.fetchResourcesList("file-cool", "memory")
-				connection.server.resourceTemplates = await this.fetchResourceTemplatesList("file-cool", "memory")
-			} catch (error) {
-				console.error("Failed to fetch resources:", error)
-			}
-
+			// Fetch capabilities
+			await this.fetchServerCapabilities(connection, "file-cool", "memory")
 			await this.notifyWebviewOfServerChanges()
 
 			console.log(
@@ -756,76 +736,158 @@ export class McpHub {
 		}
 	}
 
+	// Get gateway configuration if enabled and valid
+	private async getGatewayConfig(): Promise<{ apiUrl: string; apiKey: string } | null> {
+		const provider = this.providerRef.deref()
+		if (!provider) return null
+
+		const { mcpGatewayEnabled, mcpGatewayUrl, mcpGatewayApiKey } = await provider.getState()
+
+		if (!mcpGatewayEnabled) {
+			console.log("MCP Gateway is disabled")
+			return null
+		}
+
+		const url = mcpGatewayUrl?.trim()
+		const key = mcpGatewayApiKey?.trim()
+
+		if (!url || !key) {
+			console.log("MCP Gateway configuration incomplete")
+			return null
+		}
+
+		console.log("MCP Gateway configuration found")
+		return { apiUrl: url, apiKey: key }
+	}
+
+	// Fetch all capabilities for a server
+	private async fetchServerCapabilities(
+		connection: McpConnection,
+		serverName: string,
+		source: "global" | "project" | "memory",
+	): Promise<void> {
+		if (connection.type !== "connected") {
+			console.warn(`Cannot fetch capabilities for disconnected server: ${serverName}`)
+			return
+		}
+
+		try {
+			connection.server.tools = await this.fetchToolsList(serverName, source)
+			console.log(`Fetched ${connection.server.tools.length} tools for ${serverName}`)
+		} catch (error) {
+			console.error(`Failed to fetch tools for ${serverName}:`, error)
+		}
+
+		try {
+			connection.server.resources = await this.fetchResourcesList(serverName, source)
+			connection.server.resourceTemplates = await this.fetchResourceTemplatesList(serverName, source)
+		} catch (error) {
+			console.error(`Failed to fetch resources for ${serverName}:`, error)
+		}
+	}
+
 	// Initialize streamable-http gateway servers
 	private async initializeStreamableHttpGatewayServers(gatewayUrl: string, apiKey: string): Promise<void> {
 		try {
-			console.log("Initializing streamable-http MCP gateway servers...")
+			const serverList = await this.fetchGatewayServerList(gatewayUrl, apiKey)
+			console.log(`Found ${serverList.length} servers:`, serverList.map((s: any) => s.name || s))
 
-			// Fetch server list from gateway URL
-			const serverListUrl = gatewayUrl.endsWith("/") ? gatewayUrl + "server-list" : gatewayUrl + "/server-list"
-			console.log(`Fetching server list from: ${serverListUrl}`)
-
-			const response = await axios.get(serverListUrl, {
-				headers: {
-					API_KEY: apiKey,
-				},
-				timeout: 10000, // 10 seconds timeout
-			})
-
-			if (!response.data || !Array.isArray(response.data)) {
-				console.error("Invalid server list response format:", response.data)
-				throw new Error("Invalid server list response format")
-			}
-
-			const serverList = response.data
-			console.log(
-				`Found ${serverList.length} servers to initialize:`,
-				serverList.map((s: any) => s.name || s),
-			)
-
-			// Loop through each server and initialize
+			// Connect to each server
 			for (const serverInfo of serverList) {
-				try {
-					// Handle both string and object formats
-					const serverName = typeof serverInfo === "string" ? serverInfo : serverInfo.name
-					const serverPath = typeof serverInfo === "string" ? serverInfo : serverInfo.path || serverInfo.name
-
-					if (!serverName) {
-						console.warn("Skipping server with missing name:", serverInfo)
-						continue
-					}
-
-					// Check if there's a saved disabled state for this server, default to true (disabled)
-					const savedDisabledState = this.memoryServerDisabledStates.get(serverName) ?? true
-
-					const serverConfig = {
-						type: "streamable-http" as const,
-						url: gatewayUrl.endsWith("/") ? gatewayUrl + serverPath : gatewayUrl + "/" + serverPath,
-						headers: {
-							API_KEY: apiKey,
-						},
-						disabled: savedDisabledState, // Apply saved disabled state or default to disabled
-						timeout: 600,
-						alwaysAllow: [],
-						disabledTools: [],
-					}
-
-					console.log(`Connecting to server: ${serverName} at ${serverConfig.url}`)
-					await this.connectToServer(serverName, serverConfig, "memory")
-					console.log(`Successfully connected to server: ${serverName}`)
-				} catch (serverError) {
-					console.error(
-						`Failed to connect to server ${typeof serverInfo === "string" ? serverInfo : serverInfo.name}:`,
-						serverError,
-					)
-					// Continue with other servers even if one fails
-				}
+				await this.connectGatewayServer(serverInfo, gatewayUrl, apiKey)
 			}
 
 			console.log("Streamable-http MCP gateway servers initialization completed")
 		} catch (error) {
 			console.error("Failed to initialize streamable-http MCP gateway servers:", error)
 		}
+	}
+
+	// Fetch server list from gateway
+	private async fetchGatewayServerList(gatewayUrl: string, apiKey: string): Promise<any[]> {
+		const url = `${gatewayUrl}${gatewayUrl.endsWith("/") ? "" : "/"}server-list`
+		const response = await axios.get(url, {
+			headers: { API_KEY: apiKey },
+			timeout: 10000,
+		})
+
+		if (!response.data || !Array.isArray(response.data)) {
+			throw new Error("Invalid server list response format")
+		}
+
+		return response.data
+	}
+
+	// Connect to a gateway server
+	private async connectGatewayServer(serverInfo: any, gatewayUrl: string, apiKey: string): Promise<void> {
+		try {
+			const serverName = typeof serverInfo === "string" ? serverInfo : serverInfo.name
+			const serverPath = typeof serverInfo === "string" ? serverInfo : serverInfo.path || serverInfo.name
+
+			if (!serverName) {
+				console.warn("Skipping server with missing name:", serverInfo)
+				return
+			}
+
+			const serverConfig = {
+				type: "streamable-http" as const,
+				url: `${gatewayUrl}${gatewayUrl.endsWith("/") ? "" : "/"}${serverPath}`,
+				headers: { API_KEY: apiKey },
+				disabled: this.memoryServerDisabledStates.get(serverName) ?? false,
+				timeout: 600,
+				alwaysAllow: [],
+				disabledTools: [],
+			}
+
+			console.log(`Connecting to server: ${serverName}`)
+			await this.connectToServer(serverName, serverConfig, "memory")
+			console.log(`Successfully connected to server: ${serverName}`)
+		} catch (error) {
+			console.error(`Failed to connect to server ${typeof serverInfo === "string" ? serverInfo : serverInfo.name}:`, error)
+		}
+	}
+
+	/**
+	 * Creates a placeholder connection for disabled servers or when MCP is globally disabled
+	 * @param name The server name
+	 * @param config The server configuration
+	 * @param source The source of the server (global or project)
+	 * @param reason The reason for creating a placeholder (mcpDisabled or serverDisabled)
+	 * @returns A placeholder DisconnectedMcpConnection object
+	 */
+	private createPlaceholderConnection(
+		name: string,
+		config: z.infer<typeof ServerConfigSchema>,
+		source: "global" | "project" | "memory",
+		reason: DisableReason,
+	): DisconnectedMcpConnection {
+		return {
+			type: "disconnected",
+			server: {
+				name,
+				config: JSON.stringify(config),
+				status: "disconnected",
+				disabled: reason === DisableReason.SERVER_DISABLED ? true : config.disabled,
+				source,
+				projectPath: source === "project" ? vscode.workspace.workspaceFolders?.[0]?.uri.fsPath : undefined,
+				errorHistory: [],
+			},
+			client: null,
+			transport: null,
+		}
+	}
+
+	/**
+	 * Checks if MCP is globally enabled
+	 * @returns Promise<boolean> indicating if MCP is enabled
+	 */
+	private async isMcpEnabled(): Promise<boolean> {
+		const provider = this.providerRef.deref()
+		if (!provider) {
+			return true // Default to enabled if provider is not available
+		}
+		const state = await provider.getState()
+		return state.mcpEnabled ?? true
 	}
 
 	private async connectToServer(
@@ -835,6 +897,26 @@ export class McpHub {
 	): Promise<void> {
 		// Remove existing connection if it exists with the same source
 		await this.deleteConnection(name, source)
+
+		// Check if MCP is globally enabled
+		const mcpEnabled = await this.isMcpEnabled()
+		if (!mcpEnabled) {
+			// Still create a connection object to track the server, but don't actually connect
+			const connection = this.createPlaceholderConnection(name, config, source, DisableReason.MCP_DISABLED)
+			this.connections.push(connection)
+			return
+		}
+
+		// Skip connecting to disabled servers
+		if (config.disabled) {
+			// Still create a connection object to track the server, but don't actually connect
+			const connection = this.createPlaceholderConnection(name, config, source, DisableReason.SERVER_DISABLED)
+			this.connections.push(connection)
+			return
+		}
+
+		// Set up file watchers for enabled servers
+		this.setupFileWatcher(name, config, source)
 
 		try {
 			const client = new Client(
@@ -1017,7 +1099,9 @@ export class McpHub {
 				transport.start = async () => {}
 			}
 
-			const connection: McpConnection = {
+			// Create a connected connection
+			const connection: ConnectedMcpConnection = {
+				type: "connected",
 				server: {
 					name,
 					config: JSON.stringify(configInjected),
@@ -1032,16 +1116,14 @@ export class McpHub {
 			}
 			this.connections.push(connection)
 
-			// Connect (this will automatically start the transport)
-			await client.connect(transport)
-			connection.server.status = "connected"
-			connection.server.error = ""
-			connection.server.instructions = client.getInstructions()
+		// Connect (this will automatically start the transport)
+		await client.connect(transport)
+		connection.server.status = "connected"
+		connection.server.error = ""
+		connection.server.instructions = client.getInstructions()
 
-			// Initial fetch of tools and resources
-			connection.server.tools = await this.fetchToolsList(name, source)
-			connection.server.resources = await this.fetchResourcesList(name, source)
-			connection.server.resourceTemplates = await this.fetchResourceTemplatesList(name, source)
+		// Initial fetch of tools and resources
+		await this.fetchServerCapabilities(connection, name, source)
 		} catch (error) {
 			// Update status with error
 			const connection = this.findConnection(name, source)
@@ -1114,9 +1196,8 @@ export class McpHub {
 			// Use the helper method to find the connection
 			const connection = this.findConnection(serverName, source)
 
-			if (!connection) {
-				console.error(`Server ${serverName} with source ${source} not found`)
-				throw new Error(`Server ${serverName} not found`)
+			if (!connection || connection.type !== "connected") {
+				return []
 			}
 
 			console.log(`Fetching tools for ${serverName} (source: ${source})...`)
@@ -1215,7 +1296,7 @@ export class McpHub {
 	): Promise<McpResource[]> {
 		try {
 			const connection = this.findConnection(serverName, source)
-			if (!connection) {
+			if (!connection || connection.type !== "connected") {
 				return []
 			}
 			const response = await connection.client.request({ method: "resources/list" }, ListResourcesResultSchema)
@@ -1232,7 +1313,7 @@ export class McpHub {
 	): Promise<McpResourceTemplate[]> {
 		try {
 			const connection = this.findConnection(serverName, source)
-			if (!connection) {
+			if (!connection || connection.type !== "connected") {
 				return []
 			}
 			const response = await connection.client.request(
@@ -1247,6 +1328,8 @@ export class McpHub {
 	}
 
 	async deleteConnection(name: string, source?: "global" | "project" | "memory"): Promise<void> {
+		// Clean up file watchers for this server
+		this.removeFileWatchersForServer(name)
 		// If source is provided, only delete connections from that source
 		const connections = source
 			? this.connections.filter((conn) => conn.server.name === name && conn.server.source === source)
@@ -1255,9 +1338,9 @@ export class McpHub {
 		for (const connection of connections) {
 			try {
 				// Handle in-memory servers
-				if (connection.inMemoryServer) {
+				if (connection.type === "connected" && connection.inMemoryServer) {
 					await connection.inMemoryServer.disconnect()
-				} else {
+				} else if (connection.type === "connected") {
 					await connection.transport.close()
 					await connection.client.close()
 				}
@@ -1316,7 +1399,10 @@ export class McpHub {
 			if (!currentConnection) {
 				// New server
 				try {
-					this.setupFileWatcher(name, validatedConfig, source)
+					// Only setup file watcher for enabled servers
+					if (!validatedConfig.disabled) {
+						this.setupFileWatcher(name, validatedConfig, source)
+					}
 					await this.connectToServer(name, validatedConfig, source)
 				} catch (error) {
 					this.showErrorMessage(`Failed to connect to new MCP server ${name}`, error)
@@ -1324,7 +1410,10 @@ export class McpHub {
 			} else if (!deepEqual(JSON.parse(currentConnection.server.config), config)) {
 				// Existing server with changed config
 				try {
-					this.setupFileWatcher(name, validatedConfig, source)
+					// Only setup file watcher for enabled servers
+					if (!validatedConfig.disabled) {
+						this.setupFileWatcher(name, validatedConfig, source)
+					}
 					await this.deleteConnection(name, source)
 					await this.connectToServer(name, validatedConfig, source)
 				} catch (error) {
@@ -1412,15 +1501,62 @@ export class McpHub {
 		this.fileWatchers.clear()
 	}
 
+	private removeFileWatchersForServer(serverName: string) {
+		const watchers = this.fileWatchers.get(serverName)
+		if (watchers) {
+			watchers.forEach((watcher) => watcher.close())
+			this.fileWatchers.delete(serverName)
+		}
+	}
+
 	async restartConnection(serverName: string, source?: "global" | "project" | "memory"): Promise<void> {
-		// Skip restart for memory servers
+		// For memory servers, just refresh the tools and resources
 		if (source === "memory") {
+			const connection = this.findConnection(serverName, source)
+			if (!connection) {
+				console.error(`Memory server ${serverName} not found`)
+				return
+			}
+
+			// Check if server is disabled
+			if (connection.server.disabled) {
+				vscode.window.showWarningMessage(`Server ${serverName} is disabled. Please enable it first.`)
+				return
+			}
+
+			// Handle both connected and disconnected states
+			if (connection.type === "disconnected") {
+				try {
+					// Re-read the config and reconnect
+					const config = JSON.parse(connection.server.config)
+					config.disabled = false
+					await this.deleteConnection(serverName, source)
+					await this.connectToServer(serverName, config, source)
+					await this.notifyWebviewOfServerChanges()
+					vscode.window.showInformationMessage(t("mcp:info.server_connected", { serverName }))
+				} catch (error) {
+					console.error(`Failed to reconnect ${serverName}:`, error)
+					vscode.window.showErrorMessage(`Failed to refresh server ${serverName}`)
+				}
+			} else if (connection.type === "connected" && connection.client) {
+				try {
+					await this.fetchServerCapabilities(connection, serverName, source)
+					await this.notifyWebviewOfServerChanges()
+					vscode.window.showInformationMessage(t("mcp:info.server_connected", { serverName }))
+				} catch (error) {
+					console.error(`Failed to refresh memory server ${serverName}:`, error)
+					vscode.window.showErrorMessage(`Failed to refresh server ${serverName}`)
+				}
+			}
 			return
 		}
-
+		
 		this.isConnecting = true
-		const provider = this.providerRef.deref()
-		if (!provider) {
+
+		// Check if MCP is globally enabled
+		const mcpEnabled = await this.isMcpEnabled()
+		if (!mcpEnabled) {
+			this.isConnecting = false
 			return
 		}
 
@@ -1527,6 +1663,23 @@ export class McpHub {
 		if (this.isConnecting) {
 			// 使用状态栏消息，3秒后自动消失
 			vscode.window.setStatusBarMessage(t("mcp:info.already_refreshing"), 3000)
+			return
+		}
+
+		// Check if MCP is globally enabled
+		const mcpEnabled = await this.isMcpEnabled()
+		if (!mcpEnabled) {
+			// Clear all existing connections
+			const existingConnections = [...this.connections]
+			for (const conn of existingConnections) {
+				await this.deleteConnection(conn.server.name, conn.server.source)
+			}
+
+			// Still initialize servers to track them, but they won't connect
+			await this.initializeMcpServers("global")
+			await this.initializeMcpServers("project")
+
+			await this.notifyWebviewOfServerChanges()
 			return
 		}
 
@@ -1718,7 +1871,6 @@ export class McpHub {
 		source?: "global" | "project" | "memory",
 	): Promise<void> {
 		try {
-			// Find the connection to determine if it's a global or project server
 			const connection = this.findConnection(serverName, source)
 			if (!connection) {
 				throw new Error(`Server ${serverName}${source ? ` with source ${source}` : ""} not found`)
@@ -1726,36 +1878,28 @@ export class McpHub {
 
 			const serverSource = connection.server.source || "global"
 
-			// For memory servers, update the in-memory state and persist to globalState
+			// Handle memory servers
 			if (serverSource === "memory") {
-				connection.server.disabled = disabled
-				// Save the disabled state to globalState for persistence
-				this.memoryServerDisabledStates.set(serverName, disabled)
-				await this.persistMemoryServerDisabledStates()
-				await this.notifyWebviewOfServerChanges()
+				await this.toggleMemoryServerDisabled(connection, serverName, disabled, serverSource)
 				return
 			}
 
-			// Update the server config in the appropriate file
+			// Handle file-based servers (global/project)
 			await this.updateServerConfig(serverName, { disabled }, serverSource)
+			connection.server.disabled = disabled
 
-			// Update the connection object
-			if (connection) {
-				try {
-					connection.server.disabled = disabled
-
-					// Only refresh capabilities if connected
-					if (connection.server.status === "connected") {
-						connection.server.tools = await this.fetchToolsList(serverName, serverSource)
-						connection.server.resources = await this.fetchResourcesList(serverName, serverSource)
-						connection.server.resourceTemplates = await this.fetchResourceTemplatesList(
-							serverName,
-							serverSource,
-						)
-					}
-				} catch (error) {
-					console.error(`Failed to refresh capabilities for ${serverName}:`, error)
-				}
+			// Reconnect based on status change
+			if (disabled && connection.server.status === "connected") {
+				this.removeFileWatchersForServer(serverName)
+				await this.deleteConnection(serverName, serverSource)
+				const updatedConfig = await this.readServerConfigFromFile(serverName, serverSource)
+				await this.connectToServer(serverName, updatedConfig, serverSource)
+			} else if (!disabled && connection.server.status === "disconnected") {
+				const updatedConfig = await this.readServerConfigFromFile(serverName, serverSource)
+				await this.deleteConnection(serverName, serverSource)
+				await this.connectToServer(serverName, updatedConfig, serverSource)
+			} else if (connection.type === "connected" && connection.server.status === "connected") {
+				await this.fetchServerCapabilities(connection, serverName, serverSource)
 			}
 
 			await this.notifyWebviewOfServerChanges()
@@ -1763,6 +1907,95 @@ export class McpHub {
 			this.showErrorMessage(`Failed to update server ${serverName} state`, error)
 			throw error
 		}
+	}
+
+	// Toggle memory server disabled state
+	private async toggleMemoryServerDisabled(
+		connection: McpConnection,
+		serverName: string,
+		disabled: boolean,
+		serverSource: "global" | "project" | "memory",
+	): Promise<void> {
+		this.memoryServerDisabledStates.set(serverName, disabled)
+		await this.persistMemoryServerDisabledStates()
+
+		if (disabled) {
+			// When disabling, clear tools and resources
+			connection.server.disabled = disabled
+			connection.server.tools = []
+			connection.server.resources = []
+			connection.server.resourceTemplates = []
+		} else {
+			// When enabling, need to reconnect if currently disconnected
+			if (connection.type === "disconnected") {
+				try {
+					// Re-read the config and reconnect
+					const config = JSON.parse(connection.server.config)
+					config.disabled = false
+					await this.deleteConnection(serverName, serverSource)
+					await this.connectToServer(serverName, config, serverSource)
+				} catch (error) {
+					console.error(`Failed to reconnect ${serverName}:`, error)
+				}
+			} else if (connection.type === "connected" && connection.client) {
+				// Already connected, just fetch tools
+				connection.server.disabled = disabled
+				await this.fetchServerCapabilities(connection, serverName, serverSource)
+			}
+		}
+
+		await this.notifyWebviewOfServerChanges()
+	}
+
+	/**
+	 * Helper method to read a server's configuration from the appropriate settings file
+	 * @param serverName The name of the server to read
+	 * @param source Whether to read from the global or project config
+	 * @returns The validated server configuration
+	 */
+	private async readServerConfigFromFile(
+		serverName: string,
+		source: "global" | "project" = "global",
+	): Promise<z.infer<typeof ServerConfigSchema>> {
+		// Determine which config file to read
+		let configPath: string
+		if (source === "project") {
+			const projectMcpPath = await this.getProjectMcpPath()
+			if (!projectMcpPath) {
+				throw new Error("Project MCP configuration file not found")
+			}
+			configPath = projectMcpPath
+		} else {
+			configPath = await this.getMcpSettingsFilePath()
+		}
+
+		// Ensure the settings file exists and is accessible
+		try {
+			await fs.access(configPath)
+		} catch (error) {
+			console.error("Settings file not accessible:", error)
+			throw new Error("Settings file not accessible")
+		}
+
+		// Read and parse the config file
+		const content = await fs.readFile(configPath, "utf-8")
+		const config = JSON.parse(content)
+
+		// Validate the config structure
+		if (!config || typeof config !== "object") {
+			throw new Error("Invalid config structure")
+		}
+
+		if (!config.mcpServers || typeof config.mcpServers !== "object") {
+			throw new Error("No mcpServers section in config")
+		}
+
+		if (!config.mcpServers[serverName]) {
+			throw new Error(`Server ${serverName} not found in config`)
+		}
+
+		// Validate and return the server config
+		return this.validateServerConfig(config.mcpServers[serverName], serverName)
 	}
 
 	/**
@@ -1835,7 +2068,20 @@ export class McpHub {
 			mcpServers: config.mcpServers,
 		}
 
-		await fs.writeFile(configPath, JSON.stringify(updatedConfig, null, 2))
+		// Set flag to prevent file watcher from triggering server restart
+		if (this.flagResetTimer) {
+			clearTimeout(this.flagResetTimer)
+		}
+		this.isProgrammaticUpdate = true
+		try {
+			await safeWriteJson(configPath, updatedConfig)
+		} finally {
+			// Reset flag after watcher debounce period (non-blocking)
+			this.flagResetTimer = setTimeout(() => {
+				this.isProgrammaticUpdate = false
+				this.flagResetTimer = undefined
+			}, 600)
+		}
 	}
 
 	public async updateServerTimeout(
@@ -1927,7 +2173,7 @@ export class McpHub {
 					mcpServers: config.mcpServers,
 				}
 
-				await fs.writeFile(configPath, JSON.stringify(updatedConfig, null, 2))
+				await safeWriteJson(configPath, updatedConfig)
 
 				// Update server connections with the correct source
 				await this.updateServerConnections(config.mcpServers, serverSource)
@@ -1948,7 +2194,7 @@ export class McpHub {
 		source?: "global" | "project" | "memory",
 	): Promise<McpResourceResponse> {
 		const connection = this.findConnection(serverName, source)
-		if (!connection) {
+		if (!connection || connection.type !== "connected") {
 			throw new Error(`No connection found for server: ${serverName}${source ? ` with source ${source}` : ""}`)
 		}
 		if (connection.server.disabled) {
@@ -1972,7 +2218,7 @@ export class McpHub {
 		source?: "global" | "project" | "memory",
 	): Promise<McpToolCallResponse> {
 		const connection = this.findConnection(serverName, source)
-		if (!connection) {
+		if (!connection || connection.type !== "connected") {
 			throw new Error(
 				`No connection found for server: ${serverName}${source ? ` with source ${source}` : ""}. Please make sure to use MCP servers available under 'Connected MCP Servers'.`,
 			)
@@ -2067,74 +2313,76 @@ export class McpHub {
 				// Persist the updated state
 				await this.persistMemoryServerToolStates()
 			}
-			await this.notifyWebviewOfServerChanges()
 			return
 		}
-		try {
-			// Find the connection with matching name and source
-			const connection = this.findConnection(serverName, source)
 
-			if (!connection) {
-				throw new Error(`Server ${serverName} with source ${source} not found`)
+		// For non-memory servers, update the config file
+		let configPath: string
+		if (source === "project") {
+			// Get project MCP config path
+			const projectMcpPath = await this.getProjectMcpPath()
+			if (!projectMcpPath) {
+				throw new Error("Project MCP configuration file not found")
 			}
-
-			// Determine the correct config path based on the source
-			let configPath: string
-			if (source === "project") {
-				// Get project MCP config path
-				const projectMcpPath = await this.getProjectMcpPath()
-				if (!projectMcpPath) {
-					throw new Error("Project MCP configuration file not found")
-				}
-				configPath = projectMcpPath
-			} else {
-				// Get global MCP settings path
-				configPath = await this.getMcpSettingsFilePath()
-			}
-
-			// Normalize path for cross-platform compatibility
-			// Use a consistent path format for both reading and writing
-			const normalizedPath = process.platform === "win32" ? configPath.replace(/\\/g, "/") : configPath
-
-			// Read the appropriate config file
-			const content = await fs.readFile(normalizedPath, "utf-8")
-			const config = JSON.parse(content)
-
-			if (!config.mcpServers) {
-				config.mcpServers = {}
-			}
-
-			if (!config.mcpServers[serverName]) {
-				config.mcpServers[serverName] = {
-					type: "stdio",
-					command: "node",
-					args: [], // Default to an empty array; can be set later if needed
-				}
-			}
-
-			if (!config.mcpServers[serverName][listName]) {
-				config.mcpServers[serverName][listName] = []
-			}
-
-			const targetList = config.mcpServers[serverName][listName]
-			const toolIndex = targetList.indexOf(toolName)
-
-			if (addTool && toolIndex === -1) {
-				targetList.push(toolName)
-			} else if (!addTool && toolIndex !== -1) {
-				targetList.splice(toolIndex, 1)
-			}
-
-			await fs.writeFile(normalizedPath, JSON.stringify(config, null, 2))
-
-			if (connection) {
-				connection.server.tools = await this.fetchToolsList(serverName, source)
-				await this.notifyWebviewOfServerChanges()
-			}
-		} catch (error) {
-			console.error(`Failed to update server tool list for ${serverName}:`, error)
-			throw error
+			configPath = projectMcpPath
+		} else {
+			// Get global MCP settings path
+			configPath = await this.getMcpSettingsFilePath()
 		}
+
+		// Normalize path for cross-platform compatibility
+		// Use a consistent path format for both reading and writing
+		const normalizedPath = process.platform === "win32" ? configPath.replace(/\\/g, "/") : configPath
+
+		// Read the appropriate config file
+		const content = await fs.readFile(normalizedPath, "utf-8")
+		const config = JSON.parse(content)
+
+		if (!config.mcpServers) {
+			config.mcpServers = {}
+		}
+
+		if (!config.mcpServers[serverName]) {
+			config.mcpServers[serverName] = {
+				type: "stdio",
+				command: "node",
+				args: [], // Default to an empty array; can be set later if needed
+			}
+		}
+
+		if (!config.mcpServers[serverName][listName]) {
+			config.mcpServers[serverName][listName] = []
+		}
+
+		const targetList = config.mcpServers[serverName][listName]
+		const toolIndex = targetList.indexOf(toolName)
+
+		if (addTool && toolIndex === -1) {
+			targetList.push(toolName)
+		} else if (!addTool && toolIndex !== -1) {
+			targetList.splice(toolIndex, 1)
+		}
+
+		// Set flag to prevent file watcher from triggering server restart
+		if (this.flagResetTimer) {
+			clearTimeout(this.flagResetTimer)
+		}
+		this.isProgrammaticUpdate = true
+		try {
+			await safeWriteJson(normalizedPath, config)
+		} finally {
+			// Reset flag after watcher debounce period (non-blocking)
+			this.flagResetTimer = setTimeout(() => {
+				this.isProgrammaticUpdate = false
+				this.flagResetTimer = undefined
+			}, 600)
+		}
+
+		const connection = this.findConnection(serverName, source)
+		if (connection) {
+			connection.server.tools = await this.fetchToolsList(serverName, source)
+		}
+		await this.notifyWebviewOfServerChanges()
 	}
 
 	async toggleToolAlwaysAllow(
@@ -2171,6 +2419,59 @@ export class McpHub {
 		}
 	}
 
+	/**
+	 * Handles enabling/disabling MCP globally
+	 * @param enabled Whether MCP should be enabled or disabled
+	 * @returns Promise<void>
+	 */
+	async handleMcpEnabledChange(enabled: boolean): Promise<void> {
+		if (!enabled) {
+			// If MCP is being disabled, disconnect all servers with error handling
+			const existingConnections = [...this.connections]
+			const disconnectionErrors: Array<{ serverName: string; error: string }> = []
+
+			for (const conn of existingConnections) {
+				try {
+					await this.deleteConnection(conn.server.name, conn.server.source)
+				} catch (error) {
+					const errorMessage = error instanceof Error ? error.message : String(error)
+					disconnectionErrors.push({
+						serverName: conn.server.name,
+						error: errorMessage,
+					})
+					console.error(`Failed to disconnect MCP server ${conn.server.name}: ${errorMessage}`)
+				}
+			}
+
+			// If there were errors, notify the user
+			if (disconnectionErrors.length > 0) {
+				const errorSummary = disconnectionErrors.map((e) => `${e.serverName}: ${e.error}`).join("\n")
+				vscode.window.showWarningMessage(
+					t("mcp:errors.disconnect_servers_partial", {
+						count: disconnectionErrors.length,
+						errors: errorSummary,
+					}),
+				)
+			}
+
+			// Re-initialize servers to track them in disconnected state
+			try {
+				await this.refreshAllConnections()
+			} catch (error) {
+				console.error(`Failed to refresh MCP connections after disabling: ${error}`)
+				vscode.window.showErrorMessage(t("mcp:errors.refresh_after_disable"))
+			}
+		} else {
+			// If MCP is being enabled, reconnect all servers
+			try {
+				await this.refreshAllConnections()
+			} catch (error) {
+				console.error(`Failed to refresh MCP connections after enabling: ${error}`)
+				vscode.window.showErrorMessage(t("mcp:errors.refresh_after_enable"))
+			}
+		}
+	}
+
 	async dispose(): Promise<void> {
 		// Prevent multiple disposals
 		if (this.isDisposed) {
@@ -2185,6 +2486,13 @@ export class McpHub {
 			clearTimeout(timer)
 		}
 		this.configChangeDebounceTimers.clear()
+
+		// Clear flag reset timer and reset programmatic update flag
+		if (this.flagResetTimer) {
+			clearTimeout(this.flagResetTimer)
+			this.flagResetTimer = undefined
+		}
+		this.isProgrammaticUpdate = false
 
 		this.removeAllFileWatchers()
 		for (const connection of this.connections) {

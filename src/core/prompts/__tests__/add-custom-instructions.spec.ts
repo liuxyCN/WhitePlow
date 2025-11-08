@@ -168,9 +168,9 @@ const mockContext = {
 } as unknown as vscode.ExtensionContext
 
 // Instead of extending McpHub, create a mock that implements just what we need
-const createMockMcpHub = (): McpHub =>
+const createMockMcpHub = (withServers: boolean = false): McpHub =>
 	({
-		getServers: () => [],
+		getServers: () => (withServers ? [{ name: "test-server", disabled: false }] : []),
 		getMcpServersPath: async () => "/mock/mcp/path",
 		getMcpSettingsFilePath: async () => "/mock/settings/path",
 		dispose: async () => {},
@@ -193,7 +193,7 @@ describe("addCustomInstructions", () => {
 		const prompt = await SYSTEM_PROMPT(
 			mockContext,
 			"/test/path",
-			false, // supportsComputerUse
+			false, // supportsImages
 			undefined, // mcpHub
 			undefined, // diffStrategy
 			undefined, // browserViewportSize
@@ -216,7 +216,7 @@ describe("addCustomInstructions", () => {
 		const prompt = await SYSTEM_PROMPT(
 			mockContext,
 			"/test/path",
-			false, // supportsComputerUse
+			false, // supportsImages
 			undefined, // mcpHub
 			undefined, // diffStrategy
 			undefined, // browserViewportSize
@@ -236,12 +236,12 @@ describe("addCustomInstructions", () => {
 	})
 
 	it("should include MCP server creation info when enabled", async () => {
-		const mockMcpHub = createMockMcpHub()
+		const mockMcpHub = createMockMcpHub(true)
 
 		const prompt = await SYSTEM_PROMPT(
 			mockContext,
 			"/test/path",
-			false, // supportsComputerUse
+			false, // supportsImages
 			mockMcpHub, // mcpHub
 			undefined, // diffStrategy
 			undefined, // browserViewportSize
@@ -262,12 +262,12 @@ describe("addCustomInstructions", () => {
 	})
 
 	it("should exclude MCP server creation info when disabled", async () => {
-		const mockMcpHub = createMockMcpHub()
+		const mockMcpHub = createMockMcpHub(false)
 
 		const prompt = await SYSTEM_PROMPT(
 			mockContext,
 			"/test/path",
-			false, // supportsComputerUse
+			false, // supportsImages
 			mockMcpHub, // mcpHub
 			undefined, // diffStrategy
 			undefined, // browserViewportSize
@@ -291,7 +291,7 @@ describe("addCustomInstructions", () => {
 		const prompt = await SYSTEM_PROMPT(
 			mockContext,
 			"/test/path",
-			false, // supportsComputerUse
+			false, // supportsImages
 			undefined, // mcpHub
 			undefined, // diffStrategy
 			undefined, // browserViewportSize

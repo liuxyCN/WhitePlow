@@ -21,11 +21,14 @@ import {
 	BEDROCK_MAX_TOKENS,
 	BEDROCK_DEFAULT_CONTEXT,
 	AWS_INFERENCE_PROFILE_MAPPING,
+	BEDROCK_1M_CONTEXT_MODEL_IDS,
+	BEDROCK_GLOBAL_INFERENCE_MODEL_IDS,
 } from "@roo-code/types"
 
 import { ApiStream } from "../transform/stream"
 import { BaseProvider } from "./base-provider"
 import { logger } from "../../utils/logging"
+import { Package } from "../../shared/package"
 import { MultiPointStrategy } from "../transform/cache-strategy/multi-point-strategy"
 import { ModelInfo as CacheModelInfo } from "../transform/cache-strategy/types"
 import { convertToBedrockConverseMessages as sharedConverter } from "../transform/bedrock-converse-format"
@@ -43,15 +46,16 @@ import type { SingleCompletionHandler, ApiHandlerCreateMessageMetadata } from ".
 interface BedrockInferenceConfig {
 	maxTokens: number
 	temperature?: number
-	topP?: number
 }
 
-// Define interface for Bedrock thinking configuration
-interface BedrockThinkingConfig {
-	thinking: {
+// Define interface for Bedrock additional model request fields
+// This includes thinking configuration, 1M context beta, and other model-specific parameters
+interface BedrockAdditionalModelFields {
+	thinking?: {
 		type: "enabled"
 		budget_tokens: number
 	}
+	anthropic_beta?: string[]
 	[key: string]: any // Add index signature to be compatible with DocumentType
 }
 
@@ -62,7 +66,7 @@ interface BedrockPayload {
 	system?: SystemContentBlock[]
 	inferenceConfig: BedrockInferenceConfig
 	anthropic_version?: string
-	additionalModelRequestFields?: BedrockThinkingConfig
+	additionalModelRequestFields?: BedrockAdditionalModelFields
 }
 
 // Define specific types for content block events to avoid 'as any' usage
@@ -216,13 +220,23 @@ export class AwsBedrockHandler extends BaseProvider implements SingleCompletionH
 		this.costModelConfig = this.getModel()
 
 		const clientConfig: BedrockRuntimeClientConfig = {
+			userAgentAppId: `RooCode#${Package.version}`,
 			region: this.options.awsRegion,
 			// Add the endpoint configuration when specified and enabled
 			...(this.options.awsBedrockEndpoint &&
 				this.options.awsBedrockEndpointEnabled && { endpoint: this.options.awsBedrockEndpoint }),
 		}
 
-		if (this.options.awsUseProfile && this.options.awsProfile) {
+		if (this.options.awsUseApiKey && this.options.awsApiKey) {
+			// Use API key/token-based authentication if enabled and API key is set
+			clientConfig.token = { token: this.options.awsApiKey }
+			clientConfig.authSchemePreference = ["httpBearerAuth"] // Otherwise there's no end of credential problems.
+			clientConfig.requestHandler = {
+				// This should be the default anyway, but without setting something
+				// this provider fails to work with LiteLLM passthrough.
+				requestTimeout: 0,
+			}
+		} else if (this.options.awsUseProfile && this.options.awsProfile) {
 			// Use profile-based credentials if enabled and profile is set
 			clientConfig.credentials = fromIni({
 				profile: this.options.awsProfile,
@@ -330,7 +344,7 @@ export class AwsBedrockHandler extends BaseProvider implements SingleCompletionH
 			conversationId,
 		)
 
-		let additionalModelRequestFields: BedrockThinkingConfig | undefined
+		let additionalModelRequestFields: BedrockAdditionalModelFields | undefined
 		let thinkingEnabled = false
 
 		// Determine if thinking should be enabled
@@ -362,8 +376,18 @@ export class AwsBedrockHandler extends BaseProvider implements SingleCompletionH
 			temperature: modelConfig.temperature ?? (this.options.modelTemperature as number),
 		}
 
-		if (!thinkingEnabled) {
-			inferenceConfig.topP = 0.1
+		// Check if 1M context is enabled for Claude Sonnet 4
+		// Use parseBaseModelId to handle cross-region inference prefixes
+		const baseModelId = this.parseBaseModelId(modelConfig.id)
+		const is1MContextEnabled =
+			BEDROCK_1M_CONTEXT_MODEL_IDS.includes(baseModelId as any) && this.options.awsBedrock1MContext
+
+		// Add anthropic_beta for 1M context to additionalModelRequestFields
+		if (is1MContextEnabled) {
+			if (!additionalModelRequestFields) {
+				additionalModelRequestFields = {} as BedrockAdditionalModelFields
+			}
+			additionalModelRequestFields.anthropic_beta = ["context-1m-2025-08-07"]
 		}
 
 		const payload: BedrockPayload = {
@@ -372,7 +396,7 @@ export class AwsBedrockHandler extends BaseProvider implements SingleCompletionH
 			system: formatted.system,
 			inferenceConfig,
 			...(additionalModelRequestFields && { additionalModelRequestFields }),
-			// Add anthropic_version when using thinking features
+			// Add anthropic_version at top level when using thinking features
 			...(thinkingEnabled && { anthropic_version: "bedrock-2023-05-31" }),
 		}
 
@@ -622,7 +646,6 @@ export class AwsBedrockHandler extends BaseProvider implements SingleCompletionH
 			const inferenceConfig: BedrockInferenceConfig = {
 				maxTokens: modelConfig.maxTokens || (modelConfig.info.maxTokens as number),
 				temperature: modelConfig.temperature ?? (this.options.modelTemperature as number),
-				...(thinkingEnabled ? {} : { topP: 0.1 }), // Only set topP when thinking is NOT enabled
 			}
 
 			// For completePrompt, use a unique conversation ID based on the prompt
@@ -865,6 +888,11 @@ export class AwsBedrockHandler extends BaseProvider implements SingleCompletionH
 			}
 		}
 
+		// Also strip Global Inference profile prefix if present
+		if (modelId.startsWith("global.")) {
+			return modelId.substring("global.".length)
+		}
+
 		// Return the model ID as-is for all other cases
 		return modelId
 	}
@@ -942,12 +970,31 @@ export class AwsBedrockHandler extends BaseProvider implements SingleCompletionH
 			//a model was selected from the drop down
 			modelConfig = this.getModelById(this.options.apiModelId as string)
 
-			// Add cross-region inference prefix if enabled
-			if (this.options.awsUseCrossRegionInference && this.options.awsRegion) {
+			// Apply Global Inference prefix if enabled and supported (takes precedence over cross-region)
+			const baseIdForGlobal = this.parseBaseModelId(modelConfig.id)
+			if (
+				this.options.awsUseGlobalInference &&
+				BEDROCK_GLOBAL_INFERENCE_MODEL_IDS.includes(baseIdForGlobal as any)
+			) {
+				modelConfig.id = `global.${baseIdForGlobal}`
+			}
+			// Otherwise, add cross-region inference prefix if enabled
+			else if (this.options.awsUseCrossRegionInference && this.options.awsRegion) {
 				const prefix = AwsBedrockHandler.getPrefixForRegion(this.options.awsRegion)
 				if (prefix) {
 					modelConfig.id = `${prefix}${modelConfig.id}`
 				}
+			}
+		}
+
+		// Check if 1M context is enabled for Claude Sonnet 4 / 4.5
+		// Use parseBaseModelId to handle cross-region inference prefixes
+		const baseModelId = this.parseBaseModelId(modelConfig.id)
+		if (BEDROCK_1M_CONTEXT_MODEL_IDS.includes(baseModelId as any) && this.options.awsBedrock1MContext) {
+			// Update context window to 1M tokens when 1M context beta is enabled
+			modelConfig.info = {
+				...modelConfig.info,
+				contextWindow: 1_000_000,
 			}
 		}
 
@@ -1078,7 +1125,7 @@ Please verify:
 				"throttl",
 				"rate",
 				"limit",
-				"bedrock is unable to process your request", // AWS Bedrock specific throttling message
+				"bedrock is unable to process your request", // Amazon Bedrock specific throttling message
 				"please wait",
 				"quota exceeded",
 				"service unavailable",
@@ -1124,7 +1171,7 @@ Suggestions:
 Please try:
 1. Contact AWS support to request a quota increase
 2. Reduce request frequency temporarily
-3. Check your AWS Bedrock quotas in the AWS console
+3. Check your Amazon Bedrock quotas in the AWS console
 4. Consider using a different model or region with available capacity
 
 `,
@@ -1139,7 +1186,7 @@ Please try:
 
 Please try:
 1. Wait a few minutes and retry
-2. Check the model status in AWS Bedrock console
+2. Check the model status in Amazon Bedrock console
 3. Verify the model is properly provisioned
 
 `,
@@ -1147,7 +1194,7 @@ Please try:
 		},
 		INTERNAL_SERVER_ERROR: {
 			patterns: ["internal server error", "internal error", "server error", "service error"],
-			messageTemplate: `AWS Bedrock internal server error. This is a temporary service issue.
+			messageTemplate: `Amazon Bedrock internal server error. This is a temporary service issue.
 
 Please try:
 1. Retry the request after a brief delay
@@ -1184,7 +1231,7 @@ Please try:
 			],
 			messageTemplate: `Parameter validation error: {errorMessage}
 
-This error indicates that the request parameters don't match AWS Bedrock's expected format.
+This error indicates that the request parameters don't match Amazon Bedrock's expected format.
 
 Common causes:
 1. Extended thinking parameter format is incorrect
@@ -1193,7 +1240,7 @@ Common causes:
 
 Please check:
 - Model supports the requested features (extended thinking, etc.)
-- Parameter format matches AWS Bedrock specification
+- Parameter format matches Amazon Bedrock specification
 - Model ID is correct for the requested features`,
 			logLevel: "error",
 		},
@@ -1218,7 +1265,7 @@ Please check:
 			return "THROTTLING"
 		}
 
-		// Check for AWS Bedrock specific throttling exception names
+		// Check for Amazon Bedrock specific throttling exception names
 		if ((error as any).name === "ThrottlingException" || (error as any).__type === "ThrottlingException") {
 			return "THROTTLING"
 		}

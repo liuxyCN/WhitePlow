@@ -2,7 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { createInMemoryTransportPair, InMemoryTransport } from "./InMemoryTransport.js"
 import { processFiles } from "../file-cool/client.js"
-import { z } from "zod"
+import { z, type ZodRawShape } from "zod"
 import axios from "axios"
 
 interface FileCoolConfig {
@@ -58,82 +58,87 @@ export class InMemoryFileCoolServer {
 
 	private async setupServer(): Promise<void> {
 		try {
-			// 获取工具列表
 			const tools = await this.fetchToolsList()
+			const inputSchema = this.createInputSchema()
 
-			// 统一的 inputSchema，所有工具都使用相同的结构
-			const commonInputSchema = {
-				inputs: z
-					.array(z.string())
-					.describe("File paths or URLs - 文件路径或URL地址。支持绝对文件路径字符串数组或URL字符串数组 / Supports absolute file path string array or URL string array"),
-			}
-
-			// 动态注册工具
 			for (const tool of tools) {
-				this.server.registerTool(
-					tool.name,
-					{
-						description: tool.description,
-						inputSchema: commonInputSchema,
-					},
-					async ({ inputs }) => {
-						try {
-							const result = await processFiles(inputs, tool.name, this.config)
-							return {
-								content: [
-									{
-										type: "text",
-										text: `${tool.name} result: ${result}`,
-									},
-								],
-							}
-						} catch (error: any) {
-							// Provide more helpful error messages for configuration issues
-							if (error.message.includes("MCP Gateway URL is required")) {
-								throw new Error(`${tool.name} failed: MCP Gateway URL is not configured. Please set the Gateway URL in MCP settings.`)
-							}
-							if (error.message.includes("MCP Gateway API Key is required")) {
-								throw new Error(`${tool.name} failed: MCP Gateway API Key is not configured. Please set the API Key in MCP settings.`)
-							}
-							throw new Error(`${tool.name} failed: ${error.message}`)
-						}
-					}
-				)
+				this.registerTool(tool.name, tool.description, inputSchema)
 			}
 		} catch (error) {
 			console.error("Failed to setup server with dynamic tools:", error)
+			throw error
 		}
 	}
 
-	/**
-	 * 从 API URL 获取工具列表
-	 */
-	private async fetchToolsList(): Promise<ToolInfo[]> {
-		if (!this.config.apiUrl) {
-			throw new Error("API URL is required to fetch tools list")
+	// Create common input schema for all tools
+	private createInputSchema(): ZodRawShape {
+		return {
+			inputs: z
+				.array(z.string())
+				.describe("File paths or URLs - 文件路径或URL地址。支持绝对文件路径字符串数组或URL字符串数组 / Supports absolute file path string array or URL string array"),
+		} as ZodRawShape
+	}
+
+	// Register a single tool
+	private registerTool(toolName: string, toolDescription: string, inputSchema: ZodRawShape): void {
+		// eslint-disable-next-line @typescript-eslint/no-explicit-any
+		const toolHandler = async (args: any): Promise<any> => {
+			try {
+				const inputs = args.inputs as string[]
+				if (!Array.isArray(inputs)) {
+					throw new Error(`Expected inputs to be an array, got ${typeof inputs}`)
+				}
+
+				const result = await processFiles(inputs, toolName, this.config)
+				return {
+					content: [{ type: "text", text: `${toolName} result: ${result}` }],
+				}
+			} catch (error: any) {
+				throw new Error(this.formatToolError(toolName, error))
+			}
 		}
 
-		if (!this.config.apiKey) {
-			throw new Error("API Key is required to fetch tools list")
+		// Register tool with correct context
+		(this.server.registerTool as any).call(
+			this.server,
+			toolName,
+			{ description: toolDescription, inputSchema },
+			toolHandler
+		)
+	}
+
+	// Format tool error messages
+	private formatToolError(toolName: string, error: any): string {
+		const message = error.message || String(error)
+		if (message.includes("MCP Gateway URL is required")) {
+			return `${toolName} failed: MCP Gateway URL is not configured. Please set the Gateway URL in MCP settings.`
+		}
+		if (message.includes("MCP Gateway API Key is required")) {
+			return `${toolName} failed: MCP Gateway API Key is not configured. Please set the API Key in MCP settings.`
+		}
+		return `${toolName} failed: ${message}`
+	}
+
+	// Fetch tools list from API
+	private async fetchToolsList(): Promise<ToolInfo[]> {
+		if (!this.config.apiUrl || !this.config.apiKey) {
+			throw new Error("API URL and API Key are required to fetch tools list")
 		}
 
 		try {
-			const url = `${this.config.apiUrl}/file-cool/tools`
-			const response = await axios.get(url, {
-				headers: {
-					"API_KEY": this.config.apiKey,
-				},
-				timeout: 10000, // 10秒超时
+			const response = await axios.get(`${this.config.apiUrl}/file-cool/tools`, {
+				headers: { API_KEY: this.config.apiKey },
+				timeout: 10000,
 			})
 
-			if (response.data && Array.isArray(response.data)) {
-				return response.data.map((tool: any) => ({
-					name: tool.name,
-					description: tool.description || `Execute ${tool.name} function`,
-				}))
-			} else {
+			if (!response.data || !Array.isArray(response.data)) {
 				throw new Error("Invalid response format from tools API")
 			}
+
+			return response.data.map((tool: any) => ({
+				name: tool.name,
+				description: tool.description || `Execute ${tool.name} function`,
+			}))
 		} catch (error: any) {
 			console.error("Failed to fetch tools list from API:", error)
 			throw new Error(`Failed to fetch tools list: ${error.message}`)
