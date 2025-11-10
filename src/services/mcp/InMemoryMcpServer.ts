@@ -13,6 +13,12 @@ interface FileCoolConfig {
 interface ToolInfo {
 	name: string;
 	description: string;
+	options?: Record<string, {
+		type: "boolean" | "string" | "number";
+		description: string;
+		default?: any;
+		required?: boolean;
+	}>;
 }
 
 /**
@@ -59,9 +65,9 @@ export class InMemoryFileCoolServer {
 	private async setupServer(): Promise<void> {
 		try {
 			const tools = await this.fetchToolsList()
-			const inputSchema = this.createInputSchema()
 
 			for (const tool of tools) {
+				const inputSchema = this.createInputSchema(tool)
 				this.registerTool(tool.name, tool.description, inputSchema)
 			}
 		} catch (error) {
@@ -71,12 +77,48 @@ export class InMemoryFileCoolServer {
 	}
 
 	// Create common input schema for all tools
-	private createInputSchema(): ZodRawShape {
-		return {
+	private createInputSchema(tool: ToolInfo): ZodRawShape {
+		const result = {
 			inputs: z
 				.array(z.string())
-				.describe("File paths or URLs - 文件路径或URL地址。支持绝对文件路径字符串数组或URL字符串数组 / Supports absolute file path string array or URL string array"),
+				.describe("File paths or URLs - 使用文件完整的绝对路径或URL地址，字符串数组。/ Use the complete absolute path or URL address of the file, string array."),
 		} as ZodRawShape
+
+		// 根据 tool.options 动态添加 options 字段
+		if (tool.options && Object.keys(tool.options).length > 0) {
+			for (const [key, option] of Object.entries(tool.options)) {
+				let fieldSchema: z.ZodTypeAny
+				
+				switch (option.type) {
+					case "boolean":
+						fieldSchema = z.boolean()
+						break
+					case "string":
+						fieldSchema = z.string()
+						break
+					case "number":
+						fieldSchema = z.number()
+						break
+					default:
+						fieldSchema = z.any()
+				}
+				
+				// 添加描述
+				if (option.description) {
+					fieldSchema = fieldSchema.describe(option.description)
+				}
+				
+				// 处理默认值和必需性
+				if (option.default !== undefined) {
+					fieldSchema = fieldSchema.default(option.default)
+				} else if (!option.required) {
+					fieldSchema = fieldSchema.optional()
+				}
+				result[key] = fieldSchema
+			}
+		}
+		
+		return result
 	}
 
 	// Register a single tool
@@ -89,7 +131,7 @@ export class InMemoryFileCoolServer {
 					throw new Error(`Expected inputs to be an array, got ${typeof inputs}`)
 				}
 
-				const result = await processFiles(inputs, toolName, this.config)
+				const result = await processFiles(args, toolName, this.config)
 				return {
 					content: [{ type: "text", text: `${toolName} result: ${result}` }],
 				}
@@ -138,6 +180,7 @@ export class InMemoryFileCoolServer {
 			return response.data.map((tool: any) => ({
 				name: tool.name,
 				description: tool.description || `Execute ${tool.name} function`,
+				options: tool.options,
 			}))
 		} catch (error: any) {
 			console.error("Failed to fetch tools list from API:", error)

@@ -1205,7 +1205,16 @@ export class McpHub {
 			const response = await connection.client.request({ method: "tools/list" }, ListToolsResultSchema)
 
 			// Determine the actual source of the server
-			const actualSource = connection.server.source || "global"
+			// Priority: use the passed source parameter first, then connection.server.source, finally default to "global"
+			// But never use "global" if the connection is actually a memory server (to prevent writing memory tools to global settings)
+			let actualSource = source || connection.server.source || "global"
+			
+			// Additional safety check: if connection is from memory but source parameter suggests otherwise, use memory
+			// This prevents memory servers from being treated as global/project servers when gateway errors occur
+			if (connection.server.source === "memory" && actualSource !== "memory") {
+				console.warn(`Source mismatch detected for ${serverName}: connection source is "memory" but actualSource is "${actualSource}". Using "memory" to prevent writing to global settings.`)
+				actualSource = "memory"
+			}
 			let configPath: string
 			let alwaysAllowConfig: string[] = []
 			let disabledToolsList: string[] = []
@@ -2009,6 +2018,16 @@ export class McpHub {
 		configUpdate: Record<string, any>,
 		source: "global" | "project" | "memory" = "global",
 	): Promise<void> {
+		// Additional safety check: verify the connection's actual source to prevent writing memory servers to global settings
+		// This prevents memory servers from being written to global settings even if source parameter is incorrectly passed
+		// IMPORTANT: Don't pass source parameter to findConnection here, so it can find the connection regardless of source
+		// This is critical because if source is incorrectly passed as "global", findConnection(serverName, "global") won't find memory servers
+		const connectionCheck = this.findConnection(serverName)
+		if (connectionCheck && connectionCheck.server.source === "memory") {
+			// Force use memory source to prevent writing to global settings
+			source = "memory"
+		}
+		
 		// Skip config updates for memory servers
 		if (source === "memory") {
 			return
@@ -2268,6 +2287,16 @@ export class McpHub {
 		listName: "alwaysAllow" | "disabledTools",
 		addTool: boolean,
 	): Promise<void> {
+		// Additional safety check: verify the connection's actual source to prevent writing memory servers to global settings
+		// This prevents memory servers from being written to global settings even if source parameter is incorrectly passed
+		// IMPORTANT: Don't pass source parameter to findConnection here, so it can find the connection regardless of source
+		// This is critical because if source is incorrectly passed as "global", findConnection(serverName, "global") won't find memory servers
+		const connectionCheck = this.findConnection(serverName)
+		if (connectionCheck && connectionCheck.server.source === "memory") {
+			// Force use memory source to prevent writing to global settings
+			source = "memory"
+		}
+		
 		// Skip config file updates for memory servers
 		if (source === "memory") {
 			// For memory servers, just update the in-memory tool configuration
