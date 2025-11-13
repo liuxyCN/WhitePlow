@@ -824,7 +824,7 @@ const ApiOptions = ({
 						/>
 						{selectedModelInfo?.supportsTemperature !== false && (
 							<TemperatureControl
-								value={apiConfiguration.modelTemperature}
+								value={apiConfiguration.modelTemperature || selectedModelInfo?.defaultTemperature}
 								onChange={handleInputChange("modelTemperature", noTransform)}
 								maxValue={2}
 								defaultValue={selectedModelInfo?.defaultTemperature}
