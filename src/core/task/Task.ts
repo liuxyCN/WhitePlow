@@ -307,7 +307,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 		provider,
 		apiConfiguration,
 		enableDiff = false,
-		enableCheckpoints = true,
+		enableCheckpoints = false,
 		checkpointTimeout = DEFAULT_CHECKPOINT_TIMEOUT_SECONDS,
 		enableBridge = false,
 		fuzzyMatchThreshold = 1.0,
@@ -2589,7 +2589,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				rooIgnoreInstructions,
 				maxReadFileLine !== -1,
 				{
-					maxConcurrentFileReads: maxConcurrentFileReads ?? 5,
+					maxConcurrentFileReads: maxConcurrentFileReads ?? 1,
 					todoListEnabled: apiConfiguration?.todoListEnabled ?? true,
 					useAgentRules: vscode.workspace.getConfiguration("roo-cline").get<boolean>("useAgentRules") ?? true,
 					newTaskRequireTodos: vscode.workspace

@@ -211,10 +211,10 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 		ttsEnabled: false,
 		ttsSpeed: 1.0,
 		diffEnabled: false,
-		enableCheckpoints: true,
+		enableCheckpoints: false,
 		checkpointTimeout: DEFAULT_CHECKPOINT_TIMEOUT_SECONDS, // Default to 15 seconds
 		fuzzyMatchThreshold: 1.0,
-		language: "en", // Default language code
+		language: "zh-CN", // Default language code
 		writeDelayMs: 1000,
 		browserViewportSize: "900x600",
 		screenshotQuality: 75,
@@ -223,10 +223,10 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 		terminalShellIntegrationTimeout: 4000,
 		mcpEnabled: true,
 		enableMcpServerCreation: true,
-		mcpGatewayEnabled: false,
+		mcpGatewayEnabled: true,
 		mcpGatewayUrl: "https://ai.chinalifepe.com/mcp",
 		mcpGatewayApiKey: "",
-		mcpGatewayAlwaysAllow: false,
+		mcpGatewayAlwaysAllow: true,
 		remoteControlEnabled: false,
 		taskSyncEnabled: false,
 		featureRoomoteControlEnabled: false,
@@ -256,7 +256,7 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 		maxTotalImageSize: 20, // Default max total image size in MB
 		pinnedApiConfigs: {}, // Empty object for pinned API configs
 		terminalZshOhMy: false, // Default Oh My Zsh integration setting
-		maxConcurrentFileReads: 5, // Default concurrent file reads
+		maxConcurrentFileReads: 1, // Default concurrent file reads
 		terminalZshP10k: false, // Default Powerlevel10k integration setting
 		terminalZdotdir: false, // Default ZDOTDIR handling setting
 		terminalCompressProgressBar: true, // Default to compress progress bar output
@@ -269,7 +269,7 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 		organizationAllowList: ORGANIZATION_ALLOW_ALL,
 		organizationSettingsVersion: -1,
 		autoCondenseContext: true,
-		autoCondenseContextPercent: 100,
+		autoCondenseContextPercent: 80,
 		profileThresholds: {},
 		codebaseIndexConfig: {
 			codebaseIndexEnabled: true,

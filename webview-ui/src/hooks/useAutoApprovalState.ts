@@ -19,7 +19,7 @@ export function useAutoApprovalState(toggles: AutoApprovalToggles, autoApprovalE
 	}, [toggles])
 
 	const effectiveAutoApprovalEnabled = useMemo(() => {
-		return autoApprovalEnabled ?? false
+		return autoApprovalEnabled ?? true
 	}, [autoApprovalEnabled])
 
 	return {

@@ -129,7 +129,7 @@ export const AutoApproveSettings = ({
 						checked={effectiveAutoApprovalEnabled}
 						aria-label={t("settings:autoApprove.toggleAriaLabel")}
 						onChange={() => {
-							const newValue = !(autoApprovalEnabled ?? false)
+							const newValue = !(autoApprovalEnabled ?? true)
 							setAutoApprovalEnabled(newValue)
 							vscode.postMessage({ type: "autoApprovalEnabled", bool: newValue })
 						}}>

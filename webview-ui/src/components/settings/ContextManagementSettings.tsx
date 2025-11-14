@@ -157,11 +157,11 @@ export const ContextManagementSettings = ({
 							min={1}
 							max={100}
 							step={1}
-							value={[Math.max(1, maxConcurrentFileReads ?? 5)]}
+							value={[Math.max(1, maxConcurrentFileReads ?? 1)]}
 							onValueChange={([value]) => setCachedStateField("maxConcurrentFileReads", value)}
 							data-testid="max-concurrent-file-reads-slider"
 						/>
-						<span className="w-10 text-sm">{Math.max(1, maxConcurrentFileReads ?? 5)}</span>
+						<span className="w-10 text-sm">{Math.max(1, maxConcurrentFileReads ?? 1)}</span>
 					</div>
 					<div className="text-vscode-descriptionForeground text-sm mt-1 mb-3">
 						{t("settings:contextManagement.maxConcurrentFileReads.description")}

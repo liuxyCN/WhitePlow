@@ -1291,7 +1291,7 @@ export const webviewMessageHandler = async (
 			await provider.postStateToWebview()
 			break
 		case "mcpGatewayAlwaysAllow":
-			await updateGlobalState("mcpGatewayAlwaysAllow", message.bool ?? false)
+			await updateGlobalState("mcpGatewayAlwaysAllow", message.bool ?? true)
 			// Update memory server tools' alwaysAllow status immediately
 			const mcpHubForAlwaysAllow = provider.getMcpHub()
 			if (mcpHubForAlwaysAllow) {
@@ -1372,7 +1372,7 @@ export const webviewMessageHandler = async (
 			await provider.postStateToWebview()
 			break
 		case "enableCheckpoints":
-			const enableCheckpoints = message.bool ?? true
+			const enableCheckpoints = message.bool ?? false
 			await updateGlobalState("enableCheckpoints", enableCheckpoints)
 			await provider.postStateToWebview()
 			break
@@ -1949,6 +1949,13 @@ export const webviewMessageHandler = async (
 		case "upsertApiConfiguration":
 			if (message.text && message.apiConfiguration) {
 				await provider.upsertProviderProfile(message.text, message.apiConfiguration)
+				// Refresh MCP tools after profile update, especially in-memory servers
+				// since gateway configuration may have changed based on the new profile
+				const mcpHub = provider.getMcpHub()
+				if (mcpHub) {
+					await mcpHub.refreshInMemoryServers()
+				}
+				await provider.postStateToWebview()
 			}
 			break
 		case "renameApiConfiguration":

@@ -61,7 +61,7 @@ if (!isTestEnv) {
 
 // Initialize i18next with configuration
 i18next.init({
-	lng: "en",
+	lng: "zh-CN",
 	fallbackLng: "en",
 	debug: false,
 	resources: translations,

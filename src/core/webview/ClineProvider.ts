@@ -58,6 +58,32 @@ import { Mode, defaultModeSlug, getModeBySlug } from "../../shared/modes"
  */
 const DEFAULT_MCP_GATEWAY_URL = "https://ai.chinalifepe.com/mcp"
 import { experimentDefault } from "../../shared/experiments"
+
+/**
+ * Get baseUrl and apiKey from apiConfiguration based on the provider.
+ */
+function getProfileBaseUrlAndApiKey(apiConfiguration: ProviderSettings | undefined): {
+	baseUrl: string | undefined
+	apiKey: string | undefined
+} {
+	if (!apiConfiguration) {
+		return { baseUrl: undefined, apiKey: undefined }
+	}
+
+	const provider = apiConfiguration.apiProvider
+
+	// Map provider to their baseUrl and apiKey field names
+	switch (provider) {
+		case "openai":
+		case "chinalifepe":
+			return {
+				baseUrl: apiConfiguration.openAiBaseUrl,
+				apiKey: apiConfiguration.openAiApiKey,
+			}
+		default:
+			return { baseUrl: undefined, apiKey: undefined }
+	}
+}
 import { formatLanguage } from "../../shared/language"
 import { WebviewMessage } from "../../shared/WebviewMessage"
 import { EMBEDDING_MODEL_PROFILES } from "../../shared/embeddingModels"
@@ -680,7 +706,7 @@ export class ClineProvider
 		const { customSupportPrompts, language } = await visibleProvider.getState()
 
 		// TODO: Improve type safety for promptType.
-		const prompt = supportPrompt.create(promptType, { ...params, language: language ?? "en" }, customSupportPrompts)
+		const prompt = supportPrompt.create(promptType, { ...params, language: language ?? "zh-CN" }, customSupportPrompts)
 
 		if (command === "addToContext") {
 			await visibleProvider.postMessageToWebview({
@@ -709,7 +735,7 @@ export class ClineProvider
 		}
 
 		const { customSupportPrompts, language } = await visibleProvider.getState()
-		const prompt = supportPrompt.create(promptType, { ...params, language: language ?? "en" }, customSupportPrompts)
+		const prompt = supportPrompt.create(promptType, { ...params, language: language ?? "zh-CN" }, customSupportPrompts)
 
 		if (command === "terminalAddToContext") {
 			await visibleProvider.postMessageToWebview({
@@ -1943,7 +1969,7 @@ export class ClineProvider
 			allowedMaxRequests,
 			allowedMaxCost,
 			autoCondenseContext: autoCondenseContext ?? true,
-			autoCondenseContextPercent: autoCondenseContextPercent ?? 95,
+			autoCondenseContextPercent: autoCondenseContextPercent ?? 80,
 			uriScheme: vscode.env.uriScheme,
 			currentTaskItem: this.getCurrentTask()?.taskId
 				? (taskHistory || []).find((item: HistoryItem) => item.id === this.getCurrentTask()?.taskId)
@@ -1958,7 +1984,7 @@ export class ClineProvider
 			ttsEnabled: ttsEnabled ?? false,
 			ttsSpeed: ttsSpeed ?? 1.0,
 			diffEnabled: diffEnabled ?? true,
-			enableCheckpoints: enableCheckpoints ?? true,
+			enableCheckpoints: enableCheckpoints ?? false,
 			checkpointTimeout: checkpointTimeout ?? DEFAULT_CHECKPOINT_TIMEOUT_SECONDS,
 			shouldShowAnnouncement:
 				false && telemetrySetting !== "unset" && lastShownAnnouncementId !== this.latestAnnouncementId,
@@ -1984,10 +2010,22 @@ export class ClineProvider
 			fuzzyMatchThreshold: fuzzyMatchThreshold ?? 1.0,
 			mcpEnabled: mcpEnabled ?? true,
 			enableMcpServerCreation: enableMcpServerCreation ?? true,
-			mcpGatewayEnabled: mcpGatewayEnabled ?? false,
-			mcpGatewayUrl: mcpGatewayUrl ?? DEFAULT_MCP_GATEWAY_URL,
-			mcpGatewayApiKey: mcpGatewayApiKey ?? "",
-			mcpGatewayAlwaysAllow: mcpGatewayAlwaysAllow ?? false,
+			mcpGatewayEnabled: mcpGatewayEnabled ?? true,
+			mcpGatewayUrl: (() => {
+				if (mcpGatewayUrl) return mcpGatewayUrl
+				const { baseUrl } = getProfileBaseUrlAndApiKey(apiConfiguration)
+				if (baseUrl) {
+					// Remove trailing slash if present, then append '/mcp'
+					return baseUrl.replace(/\/$/, "") + "/mcp"
+				}
+				return DEFAULT_MCP_GATEWAY_URL
+			})(),
+			mcpGatewayApiKey: (() => {
+				if (mcpGatewayApiKey) return mcpGatewayApiKey
+				const { apiKey } = getProfileBaseUrlAndApiKey(apiConfiguration)
+				return apiKey ?? ""
+			})(),
+			mcpGatewayAlwaysAllow: mcpGatewayAlwaysAllow ?? true,
 			alwaysApproveResubmit: alwaysApproveResubmit ?? false,
 			requestDelaySeconds: requestDelaySeconds ?? 10,
 			currentApiConfigName: currentApiConfigName ?? "default",
@@ -2014,7 +2052,7 @@ export class ClineProvider
 			maxReadFileLine: maxReadFileLine ?? -1,
 			maxImageFileSize: maxImageFileSize ?? 5,
 			maxTotalImageSize: maxTotalImageSize ?? 20,
-			maxConcurrentFileReads: maxConcurrentFileReads ?? 5,
+			maxConcurrentFileReads: maxConcurrentFileReads ?? 1,
 			settingsImportedAt: this.settingsImportedAt,
 			terminalCompressProgressBar: terminalCompressProgressBar ?? true,
 			hasSystemPromptOverride,
@@ -2162,24 +2200,24 @@ export class ClineProvider
 			lastShownAnnouncementId: stateValues.lastShownAnnouncementId,
 			customInstructions: stateValues.customInstructions,
 			apiModelId: stateValues.apiModelId,
-			alwaysAllowReadOnly: stateValues.alwaysAllowReadOnly ?? false,
+			alwaysAllowReadOnly: stateValues.alwaysAllowReadOnly ?? true,
 			alwaysAllowReadOnlyOutsideWorkspace: stateValues.alwaysAllowReadOnlyOutsideWorkspace ?? false,
 			alwaysAllowWrite: stateValues.alwaysAllowWrite ?? false,
 			alwaysAllowWriteOutsideWorkspace: stateValues.alwaysAllowWriteOutsideWorkspace ?? false,
 			alwaysAllowWriteProtected: stateValues.alwaysAllowWriteProtected ?? false,
 			alwaysAllowExecute: stateValues.alwaysAllowExecute ?? false,
 			alwaysAllowBrowser: stateValues.alwaysAllowBrowser ?? false,
-			alwaysAllowMcp: stateValues.alwaysAllowMcp ?? false,
+			alwaysAllowMcp: stateValues.alwaysAllowMcp ?? true,
 			alwaysAllowModeSwitch: stateValues.alwaysAllowModeSwitch ?? false,
-			alwaysAllowSubtasks: stateValues.alwaysAllowSubtasks ?? false,
+			alwaysAllowSubtasks: stateValues.alwaysAllowSubtasks ?? true,
 			alwaysAllowFollowupQuestions: stateValues.alwaysAllowFollowupQuestions ?? false,
-			alwaysAllowUpdateTodoList: stateValues.alwaysAllowUpdateTodoList ?? false,
+			alwaysAllowUpdateTodoList: stateValues.alwaysAllowUpdateTodoList ?? true,
 			followupAutoApproveTimeoutMs: stateValues.followupAutoApproveTimeoutMs ?? 60000,
 			diagnosticsEnabled: stateValues.diagnosticsEnabled ?? true,
 			allowedMaxRequests: stateValues.allowedMaxRequests,
 			allowedMaxCost: stateValues.allowedMaxCost,
 			autoCondenseContext: stateValues.autoCondenseContext ?? true,
-			autoCondenseContextPercent: stateValues.autoCondenseContextPercent ?? 95,
+			autoCondenseContextPercent: stateValues.autoCondenseContextPercent ?? 80,
 			taskHistory: stateValues.taskHistory ?? [],
 			allowedCommands: stateValues.allowedCommands,
 			deniedCommands: stateValues.deniedCommands,
@@ -2187,7 +2225,7 @@ export class ClineProvider
 			ttsEnabled: stateValues.ttsEnabled ?? false,
 			ttsSpeed: stateValues.ttsSpeed ?? 1.0,
 			diffEnabled: stateValues.diffEnabled ?? true,
-			enableCheckpoints: stateValues.enableCheckpoints ?? true,
+			enableCheckpoints: stateValues.enableCheckpoints ?? false,
 			checkpointTimeout: stateValues.checkpointTimeout ?? DEFAULT_CHECKPOINT_TIMEOUT_SECONDS,
 			soundVolume: stateValues.soundVolume,
 			browserViewportSize: stateValues.browserViewportSize ?? "900x600",
@@ -2214,10 +2252,22 @@ export class ClineProvider
 			language: stateValues.language ?? formatLanguage(vscode.env.language),
 			mcpEnabled: stateValues.mcpEnabled ?? true,
 			enableMcpServerCreation: stateValues.enableMcpServerCreation ?? true,
-			mcpGatewayEnabled: stateValues.mcpGatewayEnabled ?? false,
-			mcpGatewayUrl: stateValues.mcpGatewayUrl ?? DEFAULT_MCP_GATEWAY_URL,
-			mcpGatewayApiKey: stateValues.mcpGatewayApiKey ?? "",
-			mcpGatewayAlwaysAllow: stateValues.mcpGatewayAlwaysAllow ?? false,
+			mcpGatewayEnabled: stateValues.mcpGatewayEnabled ?? true,
+			mcpGatewayUrl: (() => {
+				if (stateValues.mcpGatewayUrl) return stateValues.mcpGatewayUrl
+				const { baseUrl } = getProfileBaseUrlAndApiKey(providerSettings)
+				if (baseUrl) {
+					// Remove trailing slash if present, then append '/mcp'
+					return baseUrl.replace(/\/$/, "") + "/mcp"
+				}
+				return DEFAULT_MCP_GATEWAY_URL
+			})(),
+			mcpGatewayApiKey: (() => {
+				if (stateValues.mcpGatewayApiKey) return stateValues.mcpGatewayApiKey
+				const { apiKey } = getProfileBaseUrlAndApiKey(providerSettings)
+				return apiKey ?? ""
+			})(),
+			mcpGatewayAlwaysAllow: stateValues.mcpGatewayAlwaysAllow ?? true,
 			alwaysApproveResubmit: stateValues.alwaysApproveResubmit ?? false,
 			requestDelaySeconds: Math.max(5, stateValues.requestDelaySeconds ?? 10),
 			currentApiConfigName: stateValues.currentApiConfigName ?? "default",
@@ -2228,12 +2278,12 @@ export class ClineProvider
 			customSupportPrompts: stateValues.customSupportPrompts ?? {},
 			enhancementApiConfigId: stateValues.enhancementApiConfigId,
 			experiments: stateValues.experiments ?? experimentDefault,
-			autoApprovalEnabled: stateValues.autoApprovalEnabled ?? false,
+			autoApprovalEnabled: stateValues.autoApprovalEnabled ?? true,
 			customModes,
 			maxOpenTabsContext: stateValues.maxOpenTabsContext ?? 20,
 			maxWorkspaceFiles: stateValues.maxWorkspaceFiles ?? 200,
 			openRouterUseMiddleOutTransform: stateValues.openRouterUseMiddleOutTransform,
-			browserToolEnabled: stateValues.browserToolEnabled ?? true,
+			browserToolEnabled: stateValues.browserToolEnabled ?? false,
 			telemetrySetting: stateValues.telemetrySetting || "disabled",
 			showRooIgnoredFiles: stateValues.showRooIgnoredFiles ?? true,
 			maxReadFileLine: stateValues.maxReadFileLine ?? -1,
@@ -2842,7 +2892,7 @@ export class ClineProvider
 	}
 
 	private async getTaskProperties(): Promise<DynamicAppProperties & TaskProperties> {
-		const { language = "en", mode, apiConfiguration } = await this.getState()
+		const { language = "zh-CN", mode, apiConfiguration } = await this.getState()
 
 		const task = this.getCurrentTask()
 		const todoList = task?.todoList

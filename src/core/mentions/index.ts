@@ -125,7 +125,7 @@ export async function parseMentions(
 			const mentionPath = mention.slice(1)
 			return mentionPath.endsWith("/")
 				? `'${mentionPath}' (see below for folder content)`
-				: `'${mentionPath}' (see below for file content)`
+				: `'${mentionPath}'`
 		} else if (mention === "problems") {
 			return `Workspace Problems (see below for diagnostics)`
 		} else if (mention === "git-changes") {
@@ -180,30 +180,12 @@ export async function parseMentions(
 			}
 			parsedText += `\n\n<url_content url="${mention}">\n${result}\n</url_content>`
 		} else if (mention.startsWith("/")) {
+			// Skip reading file content - only track file context if needed
 			const mentionPath = mention.slice(1)
-			try {
-				const content = await getFileOrFolderContent(
-					mentionPath,
-					cwd,
-					rooIgnoreController,
-					showRooIgnoredFiles,
-					maxReadFileLine,
-				)
-				if (mention.endsWith("/")) {
-					parsedText += `\n\n<folder_content path="${mentionPath}">\n${content}\n</folder_content>`
-				} else {
-					parsedText += `\n\n<file_content path="${mentionPath}">\n${content}\n</file_content>`
-					if (fileContextTracker) {
-						await fileContextTracker.trackFileContext(mentionPath, "file_mentioned")
-					}
-				}
-			} catch (error) {
-				if (mention.endsWith("/")) {
-					parsedText += `\n\n<folder_content path="${mentionPath}">\nError fetching content: ${error.message}\n</folder_content>`
-				} else {
-					parsedText += `\n\n<file_content path="${mentionPath}">\nError fetching content: ${error.message}\n</file_content>`
-				}
+			if (fileContextTracker && !mention.endsWith("/")) {
+				await fileContextTracker.trackFileContext(mentionPath, "file_mentioned")
 			}
+			// File content is not read and added to context
 		} else if (mention === "problems") {
 			try {
 				const problems = await getWorkspaceProblems(cwd, includeDiagnosticMessages, maxDiagnosticMessages)

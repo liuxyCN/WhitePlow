@@ -833,7 +833,7 @@ export class McpHub {
 				type: "streamable-http" as const,
 				url: `${gatewayUrl}${gatewayUrl.endsWith("/") ? "" : "/"}${serverPath}`,
 				headers: { API_KEY: apiKey },
-				disabled: this.memoryServerDisabledStates.get(serverName) ?? false,
+				disabled: this.memoryServerDisabledStates.get(serverName) ?? (serverName === "file-cool" ? false : true),
 				timeout: 600,
 				alwaysAllow: [],
 				disabledTools: [],
@@ -1262,12 +1262,12 @@ export class McpHub {
 
 				if (actualSource === "memory") {
 					// For memory servers: check gateway always allow setting
-					let gatewayAlwaysAllow = false
+					let gatewayAlwaysAllow = true
 					try {
 						const provider = this.providerRef.deref()
 						if (provider) {
 							const globalSettings = provider.contextProxy.getGlobalSettings()
-							gatewayAlwaysAllow = globalSettings.mcpGatewayAlwaysAllow ?? false
+							gatewayAlwaysAllow = globalSettings.mcpGatewayAlwaysAllow ?? true
 						}
 					} catch (error) {
 						console.error("Failed to get gateway always allow setting:", error)
@@ -1637,7 +1637,7 @@ export class McpHub {
 			}
 
 			const globalSettings = provider.contextProxy.getGlobalSettings()
-			const gatewayAlwaysAllow = globalSettings.mcpGatewayAlwaysAllow ?? false
+			const gatewayAlwaysAllow = globalSettings.mcpGatewayAlwaysAllow ?? true
 
 			// Update all memory server connections
 			const memoryConnections = this.connections.filter((conn) => conn.server.source === "memory")

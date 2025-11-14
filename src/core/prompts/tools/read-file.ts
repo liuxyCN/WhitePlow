@@ -1,7 +1,7 @@
 import { ToolArgs } from "./types"
 
 export function getReadFileDescription(args: ToolArgs): string {
-	const maxConcurrentReads = args.settings?.maxConcurrentFileReads ?? 5
+	const maxConcurrentReads = args.settings?.maxConcurrentFileReads ?? 1
 	const isMultipleReadsEnabled = maxConcurrentReads > 1
 
 	return `## read_file
