@@ -224,6 +224,8 @@ export interface WebviewMessage {
 		| "mcpGatewayUrl"
 		| "mcpGatewayApiKey"
 		| "mcpGatewayAlwaysAllow"
+		| "saveMcpServerAuthKey"
+		| "saveMcpServerExtraField"
 		| "requestCommands"
 		| "openCommandFile"
 		| "deleteCommand"
@@ -268,6 +270,9 @@ export interface WebviewMessage {
 	payload?: WebViewMessagePayload
 	source?: "global" | "project" | "memory"
 	requestId?: string
+	authKey?: string
+	extraFieldName?: string
+	extraFieldValue?: string
 	ids?: string[]
 	hasSystemPromptOverride?: boolean
 	terminalOperation?: "continue" | "abort"

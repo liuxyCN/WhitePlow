@@ -841,9 +841,93 @@ export class McpHub {
 
 			console.log(`Connecting to server: ${serverName}`)
 			await this.connectToServer(serverName, serverConfig, "memory")
+			
+			// Add configStatus and serverConfig to the server object if available
+			const connection = this.findConnection(serverName, "memory")
+			if (connection && typeof serverInfo === "object" && serverInfo !== null) {
+				connection.server.configStatus = serverInfo.configStatus
+				
+				// Use serverConfig from API response if it exists
+				if (serverInfo.serverConfig && typeof serverInfo.serverConfig === "object") {
+					connection.server.serverConfig = {
+						moduleName: serverInfo.serverConfig.moduleName,
+						fieldLabel: serverInfo.serverConfig.fieldLabel,
+						extraFields: serverInfo.serverConfig.extraFields || [],
+					}
+				}
+				// Notify webview of the changes
+				await this.notifyWebviewOfServerChanges()
+			}
+			
 			console.log(`Successfully connected to server: ${serverName}`)
 		} catch (error) {
 			console.error(`Failed to connect to server ${typeof serverInfo === "string" ? serverInfo : serverInfo.name}:`, error)
+		}
+	}
+
+	// Save only authKey for a gateway server
+	async saveGatewayServerAuthKey(serverName: string, authKey: string): Promise<void> {
+		const gatewayConfig = await this.getGatewayConfig()
+		if (!gatewayConfig) {
+			throw new Error("MCP Gateway is not configured or enabled")
+		}
+
+		const { apiUrl, apiKey } = gatewayConfig
+		const baseUrl = apiUrl.endsWith("/") ? apiUrl.slice(0, -1) : apiUrl
+
+		try {
+			const authKeyUrl = `${baseUrl}/${serverName}/authKey`
+			await axios.post(
+				authKeyUrl,
+				{ authKey },
+				{
+					headers: { API_KEY: apiKey },
+					timeout: 10000,
+				},
+			)
+			console.log(`Successfully saved authKey for server: ${serverName}`)
+		} catch (error) {
+			const errorMessage = error instanceof Error ? error.message : String(error)
+			console.error(`Failed to save authKey for gateway server ${serverName}:`, errorMessage)
+			throw new Error(`Failed to save authKey: ${errorMessage}`)
+		}
+	}
+
+	// Save only a single extraField for a gateway server
+	async saveGatewayServerExtraField(serverName: string, fieldName: string, fieldValue: string): Promise<void> {
+		const gatewayConfig = await this.getGatewayConfig()
+		if (!gatewayConfig) {
+			throw new Error("MCP Gateway is not configured or enabled")
+		}
+
+		const { apiUrl, apiKey } = gatewayConfig
+		const baseUrl = apiUrl.endsWith("/") ? apiUrl.slice(0, -1) : apiUrl
+
+		try {
+			const connection = this.findConnection(serverName, "memory")
+			if (!connection?.server.serverConfig?.extraFields) {
+				throw new Error(`No extraFields configuration found for server: ${serverName}`)
+			}
+
+			const field = connection.server.serverConfig.extraFields.find((f) => f.fieldName === fieldName)
+			if (!field) {
+				throw new Error(`ExtraField ${fieldName} not found in server configuration`)
+			}
+
+			const routeUrl = `${baseUrl}/${serverName}${field.routePath}`
+			await axios.post(
+				routeUrl,
+				{ [fieldName]: fieldValue },
+				{
+					headers: { API_KEY: apiKey },
+					timeout: 10000,
+				},
+			)
+			console.log(`Successfully saved ${fieldName} for server: ${serverName}`)
+		} catch (error) {
+			const errorMessage = error instanceof Error ? error.message : String(error)
+			console.error(`Failed to save extraField ${fieldName} for gateway server ${serverName}:`, errorMessage)
+			throw new Error(`Failed to save extraField: ${errorMessage}`)
 		}
 	}
 

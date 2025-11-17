@@ -292,6 +292,9 @@ const ServerRow = ({ server, alwaysAllowMcp }: { server: McpServer; alwaysAllowM
 	const { t } = useAppTranslation()
 	const [isExpanded, setIsExpanded] = useState(false)
 	const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+	const [showConfigDialog, setShowConfigDialog] = useState(false)
+	const [authKey, setAuthKey] = useState("")
+	const [extraFieldValues, setExtraFieldValues] = useState<Record<string, string>>({})
 	const [timeoutValue, setTimeoutValue] = useState(() => {
 		const configTimeout = JSON.parse(server.config)?.timeout
 		return configTimeout ?? 600 // Default 10 minutes (600 seconds)
@@ -324,6 +327,43 @@ const ServerRow = ({ server, alwaysAllowMcp }: { server: McpServer; alwaysAllowM
 				return "var(--vscode-charts-yellow)"
 			case "disconnected":
 				return "var(--vscode-testing-iconFailed)"
+		}
+	}
+
+	const getSourceBadgeStyle = () => {
+		const source = server.source || "global"
+		const baseStyle = {
+			marginLeft: "8px",
+			padding: "1px 6px",
+			fontSize: "11px",
+			borderRadius: "4px",
+		}
+
+		switch (source) {
+			case "global":
+				return {
+					...baseStyle,
+					background: "var(--vscode-charts-blue)",
+					color: "var(--vscode-editor-background)",
+				}
+			case "project":
+				return {
+					...baseStyle,
+					background: "var(--vscode-testing-iconPassed)",
+					color: "var(--vscode-editor-background)",
+				}
+			case "memory":
+				return {
+					...baseStyle,
+					background: "var(--vscode-charts-purple)",
+					color: "var(--vscode-editor-background)",
+				}
+			default:
+				return {
+					...baseStyle,
+					background: "var(--vscode-badge-background)",
+					color: "var(--vscode-badge-foreground)",
+				}
 		}
 	}
 
@@ -362,6 +402,46 @@ const ServerRow = ({ server, alwaysAllowMcp }: { server: McpServer; alwaysAllowM
 		setShowDeleteConfirm(false)
 	}
 
+	const handleConfigClick = () => {
+		setShowConfigDialog(true)
+		setAuthKey("")
+		// Initialize extra field values
+		const initialValues: Record<string, string> = {}
+		if (server.serverConfig?.extraFields) {
+			server.serverConfig.extraFields.forEach((field) => {
+				initialValues[field.fieldName] = ""
+			})
+		}
+		setExtraFieldValues(initialValues)
+	}
+
+	const handleSaveAuthKey = () => {
+		if (!authKey.trim()) {
+			return
+		}
+		vscode.postMessage({
+			type: "saveMcpServerAuthKey",
+			serverName: server.name,
+			authKey: authKey,
+		})
+	}
+
+	const handleSaveExtraField = (fieldName: string, fieldValue: string) => {
+		if (!fieldValue.trim()) {
+			return
+		}
+		vscode.postMessage({
+			type: "saveMcpServerExtraField",
+			serverName: server.name,
+			extraFieldName: fieldName,
+			extraFieldValue: fieldValue,
+		})
+	}
+
+	// Check if server needs configuration
+	const needsConfiguration =
+		server.configStatus === "configured" || server.configStatus === "not_configured"
+
 	return (
 		<div style={{ marginBottom: "10px" }}>
 			<div
@@ -384,15 +464,7 @@ const ServerRow = ({ server, alwaysAllowMcp }: { server: McpServer; alwaysAllowM
 				<span style={{ flex: 1 }}>
 					{server.name}
 					{server.source && (
-						<span
-							style={{
-								marginLeft: "8px",
-								padding: "1px 6px",
-								fontSize: "11px",
-								borderRadius: "4px",
-								background: "var(--vscode-badge-background)",
-								color: "var(--vscode-badge-foreground)",
-							}}>
+						<span style={getSourceBadgeStyle()}>
 							{server.source}
 						</span>
 					)}
@@ -400,6 +472,15 @@ const ServerRow = ({ server, alwaysAllowMcp }: { server: McpServer; alwaysAllowM
 				<div
 					style={{ display: "flex", alignItems: "center", marginRight: "8px" }}
 					onClick={(e) => e.stopPropagation()}>
+					{needsConfiguration && (
+						<Button
+							variant="ghost"
+							size="icon"
+							onClick={handleConfigClick}
+							style={{ marginRight: "8px" }}>
+							<span className="codicon codicon-settings-gear" style={{ fontSize: "14px" }}></span>
+						</Button>
+					)}
 					<Button
 						variant="ghost"
 						size="icon"
@@ -647,6 +728,71 @@ const ServerRow = ({ server, alwaysAllowMcp }: { server: McpServer; alwaysAllowM
 						</Button>
 						<Button variant="default" onClick={handleDelete}>
 							{t("mcp:deleteDialog.delete")}
+						</Button>
+					</DialogFooter>
+				</DialogContent>
+			</Dialog>
+
+			{/* Configuration Dialog */}
+			<Dialog open={showConfigDialog} onOpenChange={setShowConfigDialog}>
+				<DialogContent style={{ maxWidth: "500px" }}>
+					<DialogHeader>
+						<DialogTitle>
+							{server.serverConfig?.fieldLabel || t("mcp:configDialog.title", { serverName: server.name })}
+						</DialogTitle>
+						<DialogDescription>
+							{t("mcp:configDialog.description", { serverName: server.name })}
+						</DialogDescription>
+					</DialogHeader>
+					<div style={{ display: "flex", flexDirection: "column", gap: "15px", marginTop: "15px" }}>
+						<div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+							<VSCodeTextField
+								value={authKey}
+								type="password"
+								onInput={(e: any) => {
+									setAuthKey(e.target.value)
+								}}
+								placeholder={server.serverConfig?.fieldLabel || t("mcp:configDialog.authKey.placeholder")}
+								style={{ width: "100%" }}>
+							</VSCodeTextField>
+							<Button
+								variant="default"
+								size="sm"
+								onClick={handleSaveAuthKey}
+								disabled={!authKey.trim()}
+								style={{ alignSelf: "flex-end", width: "auto" }}>
+								{t("mcp:configDialog.save")}
+							</Button>
+						</div>
+
+						{server.serverConfig?.extraFields &&
+							server.serverConfig.extraFields.map((field) => (
+								<div key={field.fieldName} style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+									<VSCodeTextField
+										value={extraFieldValues[field.fieldName] || ""}
+										onInput={(e: any) => {
+											setExtraFieldValues({
+												...extraFieldValues,
+												[field.fieldName]: e.target.value,
+											})
+										}}
+										placeholder={t("mcp:configDialog.extraField.placeholder", { fieldLabel: field.fieldLabel })}
+										style={{ width: "100%" }}>
+									</VSCodeTextField>
+									<Button
+										variant="default"
+										size="sm"
+										onClick={() => handleSaveExtraField(field.fieldName, extraFieldValues[field.fieldName] || "")}
+										disabled={!extraFieldValues[field.fieldName]?.trim()}
+										style={{ alignSelf: "flex-end", width: "auto" }}>
+										{t("mcp:configDialog.save")}
+									</Button>
+								</div>
+							))}
+					</div>
+					<DialogFooter>
+						<Button variant="secondary" onClick={() => setShowConfigDialog(false)}>
+							{t("mcp:configDialog.cancel")}
 						</Button>
 					</DialogFooter>
 				</DialogContent>

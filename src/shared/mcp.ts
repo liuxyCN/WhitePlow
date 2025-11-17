@@ -4,6 +4,18 @@ export type McpErrorEntry = {
 	level: "error" | "warn" | "info"
 }
 
+export type McpExtraField = {
+	fieldName: string
+	fieldLabel: string
+	routePath: string
+}
+
+export type McpServerConfig = {
+	moduleName?: string
+	fieldLabel?: string
+	extraFields?: McpExtraField[]
+}
+
 export type McpServer = {
 	name: string
 	config: string
@@ -18,6 +30,8 @@ export type McpServer = {
 	source?: "global" | "project" | "memory"
 	projectPath?: string
 	instructions?: string
+	configStatus?: "configured" | "not_configured" | "none"
+	serverConfig?: McpServerConfig
 }
 
 export type McpTool = {

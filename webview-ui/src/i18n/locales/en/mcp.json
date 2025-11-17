@@ -77,6 +77,19 @@
 		"retrying": "Retrying...",
 		"retryConnection": "Retry Connection"
 	},
+	"configDialog": {
+		"title": "Configure {{serverName}}",
+		"description": "Enter the configuration details for this MCP server",
+		"authKey": {
+			"label": "API Key",
+			"placeholder": "Enter API key"
+		},
+		"extraField": {
+			"placeholder": "{{fieldLabel}}"
+		},
+		"cancel": "Cancel",
+		"save": "Save"
+	},
 	"execution": {
 		"running": "Running",
 		"completed": "Completed",

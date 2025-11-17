@@ -1299,6 +1299,46 @@ export const webviewMessageHandler = async (
 			}
 			await provider.postStateToWebview()
 			break
+		case "saveMcpServerAuthKey":
+			try {
+				if (!message.serverName || !message.authKey) {
+					break
+				}
+				const mcpHubForAuthKey = provider.getMcpHub()
+				if (mcpHubForAuthKey) {
+					await mcpHubForAuthKey.saveGatewayServerAuthKey(message.serverName, message.authKey)
+					// Refresh servers after saving
+					await mcpHubForAuthKey.refreshInMemoryServers()
+				}
+				await provider.postStateToWebview()
+			} catch (error) {
+				const errorMessage = error instanceof Error ? error.message : String(error)
+				provider.log(`Failed to save authKey for MCP server: ${errorMessage}`)
+				vscode.window.showErrorMessage(t("mcp:errors.configFailed", { error: errorMessage }))
+			}
+			break
+		case "saveMcpServerExtraField":
+			try {
+				if (!message.serverName || !message.extraFieldName || !message.extraFieldValue) {
+					break
+				}
+				const mcpHubForExtraField = provider.getMcpHub()
+				if (mcpHubForExtraField) {
+					await mcpHubForExtraField.saveGatewayServerExtraField(
+						message.serverName,
+						message.extraFieldName,
+						message.extraFieldValue,
+					)
+					// Refresh servers after saving
+					await mcpHubForExtraField.refreshInMemoryServers()
+				}
+				await provider.postStateToWebview()
+			} catch (error) {
+				const errorMessage = error instanceof Error ? error.message : String(error)
+				provider.log(`Failed to save extraField for MCP server: ${errorMessage}`)
+				vscode.window.showErrorMessage(t("mcp:errors.configFailed", { error: errorMessage }))
+			}
+			break
 		case "remoteControlEnabled":
 			try {
 				await CloudService.instance.updateUserSettings({ extensionBridgeEnabled: message.bool ?? false })
