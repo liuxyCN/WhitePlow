@@ -13,7 +13,6 @@ import {
 import { ExtensionMessage } from "@roo/ExtensionMessage"
 
 import { useAppTranslation } from "@src/i18n/TranslationContext"
-import { VSCodeButtonLink } from "@src/components/common/VSCodeButtonLink"
 import { vscode } from "@src/utils/vscode"
 import { Button, StandardTooltip } from "@src/components/ui"
 
@@ -22,12 +21,14 @@ import { ModelPicker } from "../ModelPicker"
 import { R1FormatSetting } from "../R1FormatSetting"
 import { ThinkingBudget } from "../ThinkingBudget"
 import { convertHeadersToObject } from "../utils/headers"
+import { Modal } from "../../common/Modal"
 
 type ChinalifePEProps = {
 	apiConfiguration?: ProviderSettings
 	setApiConfigurationField: (field: keyof ProviderSettings, value: ProviderSettings[keyof ProviderSettings]) => void
 	organizationAllowList: OrganizationAllowList
 	modelValidationError?: string
+	fromWelcomeView?: boolean
 }
 
 export const ChinalifePE = ({
@@ -35,6 +36,7 @@ export const ChinalifePE = ({
 	setApiConfigurationField,
 	organizationAllowList,
 	modelValidationError,
+	fromWelcomeView,
 }: ChinalifePEProps) => {
 	const { t } = useAppTranslation()
 
@@ -42,6 +44,13 @@ export const ChinalifePE = ({
 	const [openAiLegacyFormatSelected, setOpenAiLegacyFormatSelected] = useState(
 		!!apiConfiguration?.openAiLegacyFormat,
 	)
+	const [username, setUsername] = useState("")
+	const [password, setPassword] = useState("")
+	const [isLoggingIn, setIsLoggingIn] = useState(false)
+	const [showInviteCodeDialog, setShowInviteCodeDialog] = useState(false)
+	const [inviteCode, setInviteCode] = useState("")
+	const [isSubmittingInviteCode, setIsSubmittingInviteCode] = useState(false)
+	const [loginErrorMessage, setLoginErrorMessage] = useState<string | undefined>(undefined)
 
 	const [customHeaders, setCustomHeaders] = useState<[string, string][]>(() => {
 		const headers = apiConfiguration?.openAiHeaders || {}
@@ -103,6 +112,52 @@ export const ChinalifePE = ({
 		return () => clearTimeout(timer)
 	}, [customHeaders, setApiConfigurationField])
 
+	const handleLogin = useCallback(() => {
+		if (!username.trim() || !password.trim()) {
+			setLoginErrorMessage("请输入用户名和密码")
+			return
+		}
+
+		setIsLoggingIn(true)
+		setLoginErrorMessage(undefined)
+
+		// 从 apiConfiguration 获取 baseUrl
+		const apiUrl = apiConfiguration?.openAiBaseUrl || "https://ai.chinalifepe.com"
+
+		vscode.postMessage({
+			type: "chinalifePELogin",
+			values: {
+				username: username.trim(),
+				password: password.trim(),
+				apiUrl: apiUrl,
+			},
+		})
+	}, [username, password, apiConfiguration])
+
+	const handleSubmitInviteCode = useCallback(() => {
+		if (!inviteCode.trim() || !username.trim() || !password.trim()) {
+			setLoginErrorMessage("请输入邀请码")
+			return
+		}
+
+		setIsSubmittingInviteCode(true)
+		setLoginErrorMessage(undefined)
+
+		// 使用用户名和密码重新登录获取新ticket，然后用新ticket和邀请码获取apikey
+		// 从 apiConfiguration 获取 baseUrl
+		const apiUrl = apiConfiguration?.openAiBaseUrl || "https://ai.chinalifepe.com"
+
+		vscode.postMessage({
+			type: "chinalifePELogin",
+			values: {
+				username: username.trim(),
+				password: password.trim(),
+				inviteCode: inviteCode.trim(),
+				apiUrl: apiUrl,
+			},
+		})
+	}, [inviteCode, username, password, apiConfiguration])
+
 	const onMessage = useCallback((event: MessageEvent) => {
 		const message: ExtensionMessage = event.data
 
@@ -112,8 +167,34 @@ export const ChinalifePE = ({
 				setChinalifePEModels(Object.fromEntries(updatedModels.map((item) => [item, openAiModelInfoSaneDefaults])))
 				break
 			}
+			case "chinalifePELoginResponse": {
+				if (message.chinalifePELoginResponse?.success) {
+					setIsLoggingIn(false)
+					setIsSubmittingInviteCode(false)
+					console.log("登录成功，apiKey:", message.chinalifePELoginResponse.apiKey)
+					setShowInviteCodeDialog(false)
+					setInviteCode("")
+					// 如果登录成功，设置 API Key
+					if (message.chinalifePELoginResponse.apiKey) {
+						setApiConfigurationField("openAiApiKey", message.chinalifePELoginResponse.apiKey)
+					}
+				} else if (message.chinalifePELoginResponse?.requiresInviteCode) {
+					setIsLoggingIn(false)
+					// 需要邀请码，显示输入框
+					setShowInviteCodeDialog(true)
+				} else {
+					setIsLoggingIn(false)
+					setIsSubmittingInviteCode(false)
+					const errorMsg = message.chinalifePELoginResponse?.error || "登录失败"
+					setLoginErrorMessage(errorMsg)
+					if (!message.chinalifePELoginResponse?.requiresInviteCode) {
+						setShowInviteCodeDialog(false)
+					}
+				}
+				break
+			}
 		}
-	}, [])
+	}, [setApiConfigurationField])
 
 	useEvent("message", onMessage)
 
@@ -141,7 +222,7 @@ export const ChinalifePE = ({
 	)
 
 	return (
-		<>
+		<div className="w-full">
 			<VSCodeTextField
 				value={apiConfiguration?.openAiBaseUrl || "https://ai.chinalifepe.com"}
 				type="url"
@@ -150,23 +231,86 @@ export const ChinalifePE = ({
 				className="w-full">
 				<label className="block font-medium mb-1">{t("settings:providers.chinalifePEBaseUrl")}</label>
 			</VSCodeTextField>
-			<VSCodeTextField
-				value={apiConfiguration?.openAiApiKey || ""}
-				type="password"
-				onInput={handleInputChange("openAiApiKey")}
-				placeholder={t("settings:placeholders.apiKey")}
-				className="w-full">
-				<label className="block font-medium mb-1">{t("settings:providers.chinalifePEApiKey")}</label>
-			</VSCodeTextField>
-			<div className="text-sm text-vscode-descriptionForeground -mt-2">
-				{t("settings:providers.apiKeyStorageNotice")}
-			</div>
-			{!apiConfiguration?.openAiApiKey && (
-				<VSCodeButtonLink href="https://ai.chinalifepe.com/" appearance="secondary">
-					{t("settings:providers.getChinalifePEApiKey")}
-				</VSCodeButtonLink>
+			{fromWelcomeView && !apiConfiguration?.openAiApiKey && (
+				<>
+					<div className="mb-4 w-full">
+						<div className="flex flex-col gap-3">
+							<VSCodeTextField
+								value={username}
+								type="text"
+								onInput={(e: any) => setUsername(e.target.value)}
+								placeholder="用户名"
+								className="w-full">
+								<label className="block font-medium mb-1">用户名</label>
+							</VSCodeTextField>
+							<VSCodeTextField
+								value={password}
+								type="password"
+								onInput={(e: any) => setPassword(e.target.value)}
+								placeholder="密码"
+								className="w-full">
+								<label className="block font-medium mb-1">密码</label>
+							</VSCodeTextField>
+							<VSCodeButton 
+								onClick={handleLogin} 
+								appearance="primary"
+								disabled={isLoggingIn}>
+								{isLoggingIn ? "登录中..." : "登录"}
+							</VSCodeButton>
+							{loginErrorMessage && (
+								<div className="text-vscode-errorForeground text-sm">{loginErrorMessage}</div>
+							)}
+						</div>
+					</div>
+					{/* 邀请码输入对话框 */}
+					<Modal isOpen={showInviteCodeDialog} onClose={() => {}} className="max-w-md h-auto">
+						<div className="p-6 flex flex-col gap-4">
+							<h3 className="text-lg font-semibold">请输入邀请码</h3>
+							<VSCodeTextField
+								value={inviteCode}
+								type="text"
+								onInput={(e: any) => setInviteCode(e.target.value)}
+								placeholder="邀请码"
+								className="w-full"
+								onKeyDown={(e: any) => {
+									if (e.key === "Enter" && inviteCode.trim() && username.trim() && password.trim()) {
+										handleSubmitInviteCode()
+									}
+								}}>
+							</VSCodeTextField>
+							{loginErrorMessage && <div className="text-vscode-errorForeground text-sm">{loginErrorMessage}</div>}
+							<div className="flex gap-2 justify-end">
+								<VSCodeButton
+									onClick={() => {
+										setShowInviteCodeDialog(false)
+										setInviteCode("")
+										setLoginErrorMessage(undefined)
+									}}
+									appearance="secondary">
+									取消
+								</VSCodeButton>
+								<VSCodeButton
+									onClick={handleSubmitInviteCode}
+									appearance="primary"
+									disabled={!inviteCode.trim() || !username.trim() || !password.trim() || isSubmittingInviteCode}>
+									{isSubmittingInviteCode ? "提交中..." : "提交"}
+								</VSCodeButton>
+							</div>
+						</div>
+					</Modal>
+				</>
 			)}
-			{apiConfiguration && (
+			{((!fromWelcomeView) || (fromWelcomeView && apiConfiguration?.openAiApiKey)) && (
+				<VSCodeTextField
+					value={apiConfiguration?.openAiApiKey || ""}
+					type="password"
+					onInput={handleInputChange("openAiApiKey")}
+					placeholder={t("settings:placeholders.apiKey")}
+					className="w-full mb-4">
+					<label className="block font-medium mb-1">{t("settings:providers.chinalifePEApiKey")}</label>
+				</VSCodeTextField>
+			)}
+			{apiConfiguration && apiConfiguration?.openAiApiKey && (
 				<ModelPicker
 					apiConfiguration={apiConfiguration}
 					setApiConfigurationField={setApiConfigurationField}
@@ -608,7 +752,7 @@ export const ChinalifePE = ({
 					</div>
 				</>
 			)}
-		</>
+		</div>
 	)
 }
 

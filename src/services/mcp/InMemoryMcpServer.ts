@@ -132,8 +132,11 @@ export class InMemoryFileCoolServer {
 				}
 
 				const result = await processFiles(args, toolName, this.config)
+				const resultText = Array.isArray(result) && result.length > 0
+					? `已创建以下文件：\n${result.map(file => `- ${file}`).join("\n")}`
+					: "未创建任何文件"
 				return {
-					content: [{ type: "text", text: `${toolName} result: ${result}` }],
+					content: [{ type: "text", text: `${toolName} result: ${resultText}` }],
 				}
 			} catch (error: any) {
 				throw new Error(this.formatToolError(toolName, error))

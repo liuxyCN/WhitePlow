@@ -4,6 +4,7 @@ import * as os from "os"
 import * as fs from "fs/promises"
 import pWaitFor from "p-wait-for"
 import * as vscode from "vscode"
+import * as crypto from "crypto"
 
 import {
 	type Language,
@@ -62,8 +63,153 @@ const ALLOWED_VSCODE_SETTINGS = new Set(["terminal.integrated.inheritEnv"])
 // Debounce timer for mcpGatewayUrl changes
 let mcpGatewayUrlDebounceTimer: NodeJS.Timeout | null = null
 
+// ChinalifePE API URLs
+const CHINALIFEPE_CONFIG_URL = "https://s.chinalifepe.com/api/config/get"
+const CHINALIFEPE_LOGIN_URL = "https://s.chinalifepe.com/api/sso/login"
+
 import { MarketplaceManager, MarketplaceItemType } from "../../services/marketplace"
 import { setPendingTodoList } from "../tools/updateTodoListTool"
+
+/**
+ * 将文本按指定长度分块
+ */
+function splitText(text: string, limit: number): string[] {
+	const array: string[] = []
+	for (let i = 0; i < text.length; i += limit) {
+		array.push(text.slice(i, i + limit))
+	}
+	return array
+}
+
+/**
+ * 使用公钥加密数据
+ * 参考前端代码：将数据按32字符分块，使用RSA公钥加密，转换为base64
+ */
+function encryptWithPublicKey(data: string, publicKeyPem: string): string[] {
+	const chunks = splitText(data, 32)
+	const encrypted: string[] = []
+
+	for (const chunk of chunks) {
+		const buffer = Buffer.from(chunk, "utf-8")
+		const encryptedBuffer = crypto.publicEncrypt(
+			publicKeyPem,
+			buffer,
+		)
+		encrypted.push(encryptedBuffer.toString("base64"))
+	}
+
+	return encrypted
+}
+
+/**
+ * 获取 publicKey
+ */
+async function getChinalifePEPublicKey(): Promise<string> {
+	const configResponse = await fetch(CHINALIFEPE_CONFIG_URL, {
+		method: "GET",
+		headers: {
+			"Content-Type": "application/json",
+		},
+	})
+
+	if (!configResponse.ok) {
+		throw new Error(`获取配置失败: ${configResponse.status}`)
+	}
+
+	const configData = await configResponse.json()
+
+	if (configData.result_code !== "成功" || !configData.data?.publicKey) {
+		throw new Error("获取 publicKey 失败")
+	}
+
+	return configData.data.publicKey
+}
+
+/**
+ * 登录获取 ticket
+ */
+async function loginAndGetTicket(username: string, password: string): Promise<string> {
+	const publicKey = await getChinalifePEPublicKey()
+
+	// 加密用户名和密码
+	const loginParams = JSON.stringify({ username, password, appId: 'mcp' })
+	const encryptedParams = encryptWithPublicKey(loginParams, publicKey)
+
+	const requestBody = JSON.stringify({
+		__e: true,
+		__p: encryptedParams,
+		_common: {referer: "https://ai.chinalifepe.com/", platform: "oa"}
+	})
+
+	const loginResponse = await fetch(CHINALIFEPE_LOGIN_URL, {
+		method: "POST",
+		headers: {
+			"Content-Type": "application/json",
+		},
+		body: requestBody,
+	})
+
+	if (!loginResponse.ok) {
+		throw new Error(`登录请求失败: ${loginResponse.status}`)
+	}
+
+	const loginData = await loginResponse.json()
+
+	if (loginData.result_code !== "成功" || !loginData.data?.data?.ticket) {
+		if (loginData.result_code === "错误" && loginData.err?.message) {
+			throw new Error(loginData.err.message)
+		}
+		throw new Error("登录失败")
+	}
+
+	return loginData.data.data.ticket
+}
+
+/**
+ * 使用 ticket 获取 apikey
+ */
+async function getApiKeyWithTicket(ticket: string, apiUrl: string, inviteCode?: string): Promise<string> {
+	const requestBody: { ticket: string; inviteCode?: string } = { ticket }
+	if (inviteCode) {
+		requestBody.inviteCode = inviteCode
+	}
+
+	// 构建 apikey URL：从 baseUrl 中提取基础 URL，然后添加 /api/apikey 路径
+	// 例如：https://ai.chinalifepe.com -> https://ai.chinalifepe.com/api/apikey
+	// 或者：https://ai.chinalifepe.com/v1 -> https://ai.chinalifepe.com/api/apikey
+	const baseUrl = apiUrl.replace(/\/v1\/?$/, "").replace(/\/$/, "")
+	const apikeyUrl = `${baseUrl}/api/apikey`
+
+	const apikeyResponse = await fetch(apikeyUrl, {
+		method: "POST",
+		headers: {
+			"Content-Type": "application/json",
+		},
+		body: JSON.stringify(requestBody),
+	})
+
+	if (!apikeyResponse.ok) {
+		// 检查是否是 400 错误且需要邀请码
+		if (apikeyResponse.status === 400) {
+			const errorData = await apikeyResponse.json().catch(() => ({}))
+			if (errorData.error === "InviteCode is required") {
+				throw new Error("INVITE_CODE_REQUIRED")
+			}
+			if (errorData.error === "Authentication failed") {
+				throw new Error("登录失败")
+			}
+			if (errorData.error === "Invalid or used invite code") {
+				throw new Error("邀请码无效")
+			}
+		}
+		const errorData = await apikeyResponse.json().catch(() => ({}))
+		const errorMsg = errorData.error || `获取 apikey 失败: ${apikeyResponse.status}`
+		throw new Error(errorMsg)
+	}
+
+	const apikeyData = await apikeyResponse.json()
+	return apikeyData.apiKey
+} 
 
 export const webviewMessageHandler = async (
 	provider: ClineProvider,
@@ -1000,6 +1146,87 @@ export const webviewMessageHandler = async (
 			}
 
 			break
+		case "chinalifePELogin": {
+			const username = message.values?.username as string | undefined
+			const password = message.values?.password as string | undefined
+			const inviteCode = message.values?.inviteCode as string | undefined
+			const apiUrl = message.values?.apiUrl as string | undefined
+
+			// 验证参数
+			if (!username || !password) {
+				provider.postMessageToWebview({
+					type: "chinalifePELoginResponse",
+					chinalifePELoginResponse: {
+						success: false,
+						error: "用户名和密码不能为空",
+					},
+				})
+				break
+			}
+
+			if (!apiUrl) {
+				provider.postMessageToWebview({
+					type: "chinalifePELoginResponse",
+					chinalifePELoginResponse: {
+						success: false,
+						error: "API URL 不能为空",
+					},
+				})
+				break
+			}
+
+			try {
+				// 登录获取 ticket
+				const ticket = await loginAndGetTicket(username, password)
+
+				// 使用 ticket 获取 apikey
+				try {
+					const apikey = await getApiKeyWithTicket(ticket, apiUrl, inviteCode)
+					console.log("获取 apikey 成功:", apikey)
+
+					provider.postMessageToWebview({
+						type: "chinalifePELoginResponse",
+						chinalifePELoginResponse: {
+							success: true,
+							apiKey: apikey,
+						},
+					})
+				} catch (apikeyError) {
+					// 检查是否需要邀请码
+					if (apikeyError instanceof Error && apikeyError.message === "INVITE_CODE_REQUIRED") {
+						provider.postMessageToWebview({
+							type: "chinalifePELoginResponse",
+							chinalifePELoginResponse: {
+								success: false,
+								requiresInviteCode: true,
+							},
+						})
+					} else {
+						const errorMsg = apikeyError instanceof Error ? apikeyError.message : "获取 apikey 失败"
+						console.error("获取 apikey 失败:", apikeyError)
+						provider.postMessageToWebview({
+							type: "chinalifePELoginResponse",
+							chinalifePELoginResponse: {
+								success: false,
+								error: errorMsg,
+							},
+						})
+					}
+				}
+			} catch (error) {
+				const errorMsg = error instanceof Error ? error.message : "登录失败"
+				console.error("登录失败:", error)
+				provider.postMessageToWebview({
+					type: "chinalifePELoginResponse",
+					chinalifePELoginResponse: {
+						success: false,
+						error: errorMsg,
+					},
+				})
+			}
+
+			break
+		}
 		case "requestVsCodeLmModels":
 			const vsCodeLmModels = await getVsCodeLmModels()
 			// TODO: Cache like we do for OpenRouter, etc?
@@ -1039,6 +1266,11 @@ export const webviewMessageHandler = async (
 		case "openExternal":
 			if (message.url) {
 				vscode.env.openExternal(vscode.Uri.parse(message.url))
+			}
+			break
+		case "openSimpleBrowser":
+			if (message.url) {
+				vscode.commands.executeCommand("simpleBrowser.api.open", vscode.Uri.parse(message.url))
 			}
 			break
 		case "checkpointDiff":

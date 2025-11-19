@@ -78,6 +78,7 @@ export interface ExtensionMessage {
 		| "routerModels"
 		| "openAiModels"
 		| "chinalifePEModels"
+		| "chinalifePELoginResponse"
 		| "ollamaModels"
 		| "lmStudioModels"
 		| "vsCodeLmModels"
@@ -164,6 +165,12 @@ export interface ExtensionMessage {
 	routerModels?: RouterModels
 	openAiModels?: string[]
 	chinalifePEModels?: string[]
+	chinalifePELoginResponse?: {
+		success: boolean
+		apiKey?: string
+		error?: string
+		requiresInviteCode?: boolean
+	}
 	ollamaModels?: ModelRecord
 	lmStudioModels?: ModelRecord
 	vsCodeLmModels?: { vendor?: string; family?: string; version?: string; id?: string }[]

@@ -745,6 +745,38 @@ const ServerRow = ({ server, alwaysAllowMcp }: { server: McpServer; alwaysAllowM
 						</DialogDescription>
 					</DialogHeader>
 					<div style={{ display: "flex", flexDirection: "column", gap: "15px", marginTop: "15px" }}>
+						{/* Instructions */}
+						{server.serverConfig?.instructions && (
+							<div
+								style={{
+									padding: "12px",
+									background: "var(--vscode-textCodeBlock-background)",
+									borderRadius: "4px",
+									fontSize: "13px",
+								}}>
+								<div
+									style={{
+										fontWeight: "500",
+										marginBottom: "8px",
+										color: "var(--vscode-foreground)",
+									}}>
+									{server.serverConfig.instructions.title}
+								</div>
+								<div
+									style={{
+										display: "flex",
+										flexDirection: "column",
+										gap: "4px",
+										color: "var(--vscode-descriptionForeground)",
+									}}>
+									<div>{server.serverConfig.instructions.step1}</div>
+									<div>{server.serverConfig.instructions.step2}</div>
+									<div>{server.serverConfig.instructions.step3}</div>
+									<div>{server.serverConfig.instructions.step4}</div>
+									<div>{server.serverConfig.instructions.step5}</div>
+								</div>
+							</div>
+						)}
 						<div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
 							<VSCodeTextField
 								value={authKey}
@@ -752,7 +784,11 @@ const ServerRow = ({ server, alwaysAllowMcp }: { server: McpServer; alwaysAllowM
 								onInput={(e: any) => {
 									setAuthKey(e.target.value)
 								}}
-								placeholder={server.serverConfig?.fieldLabel || t("mcp:configDialog.authKey.placeholder")}
+								placeholder={
+									server.configStatus === "configured"
+										? "已配置 / Already configured"
+										: "未配置 / Not configured"
+								}
 								style={{ width: "100%" }}>
 							</VSCodeTextField>
 							<Button

@@ -853,6 +853,7 @@ export class McpHub {
 						moduleName: serverInfo.serverConfig.moduleName,
 						fieldLabel: serverInfo.serverConfig.fieldLabel,
 						extraFields: serverInfo.serverConfig.extraFields || [],
+						instructions: serverInfo.serverConfig.instructions,
 					}
 				}
 				// Notify webview of the changes

@@ -601,6 +601,7 @@ const ApiOptions = ({
 					setApiConfigurationField={setApiConfigurationField}
 					organizationAllowList={organizationAllowList}
 					modelValidationError={errorMessage}
+					fromWelcomeView={fromWelcomeView}
 				/>
 			)}
 
@@ -788,7 +789,7 @@ const ApiOptions = ({
 					setApiConfigurationField={setApiConfigurationField}
 					modelInfo={selectedModelInfo}
 				/>
-			) : (
+			) : selectedProvider === "chinalifepe" ? <></> : (
 				<ThinkingBudget
 					key={`${selectedProvider}-${selectedModelId}`}
 					apiConfiguration={apiConfiguration}

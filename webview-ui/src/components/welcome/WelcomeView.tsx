@@ -5,14 +5,12 @@ import { VSCodeButton, VSCodeLink } from "@vscode/webview-ui-toolkit/react"
 import posthog from "posthog-js"
 
 import type { ProviderSettings } from "@roo-code/types"
-import { TelemetryEventName, chinalifePEDefaultModelId } from "@roo-code/types"
+import { chinalifePEDefaultModelId } from "@roo-code/types"
 
 import { useExtensionState } from "@src/context/ExtensionStateContext"
 import { validateApiConfiguration } from "@src/utils/validate"
 import { vscode } from "@src/utils/vscode"
 import { useAppTranslation } from "@src/i18n/TranslationContext"
-import { getRequestyAuthUrl, getOpenRouterAuthUrl } from "@src/oauth/urls"
-import { telemetryClient } from "@src/utils/TelemetryClient"
 
 import ApiOptions from "../settings/ApiOptions"
 import { Tab, TabContent } from "../common/Tab"
@@ -39,6 +37,7 @@ const WelcomeView = () => {
 		},
 		[setApiConfiguration], // setApiConfiguration from context is stable
 	)
+
 
 	const handleSubmit = useCallback(() => {
 		const error = apiConfiguration ? validateApiConfiguration(apiConfiguration) : undefined
@@ -84,7 +83,7 @@ const WelcomeView = () => {
 					</p>
 				</div>
 
-				<div className="mb-4">
+				<div className="mb-4 w-full">
 					<ApiOptions
 						fromWelcomeView
 						apiConfiguration={apiConfiguration || {}}
@@ -95,6 +94,7 @@ const WelcomeView = () => {
 					/>
 				</div>
 			</TabContent>
+
 			<div className="sticky bottom-0 bg-vscode-sideBar-background p-4 border-t border-vscode-panel-border">
 				<div className="flex flex-col gap-2">
 					<div className="flex justify-end">
@@ -108,10 +108,13 @@ const WelcomeView = () => {
 							{t("welcome:importSettings")}
 						</VSCodeLink>
 					</div>
-					<VSCodeButton onClick={handleSubmit} appearance="primary">
+					<VSCodeButton 
+						onClick={handleSubmit} 
+						appearance="primary"
+						disabled={!apiConfiguration?.openAiApiKey}>
 						{t("welcome:start")}
 					</VSCodeButton>
-					{errorMessage && <div className="text-vscode-errorForeground">{errorMessage}</div>}
+
 				</div>
 			</div>
 		</Tab>

@@ -129,6 +129,7 @@ async function processFiles(
 
 		// 返回响应数据
 		const result = response.data
+		const createdFiles: string[] = []
 
 		if (result && result.length > 0) {
 			for (const _data of result) {
@@ -166,15 +167,16 @@ async function processFiles(
 					await fs.promises.mkdir(dirPath, { recursive: true })
 
 					await fs.promises.writeFile(fullPath, _fileBuffer)
+					createdFiles.push(fullPath)
 				}
 				await new Promise((resolve) => setTimeout(resolve, 1000))
 			}
 		}
 
-		return "success"
+		return createdFiles
 	} catch (error) {
 		console.error("Error processing files:", error)
-		return "failed"
+		throw error
 	}
 }
 

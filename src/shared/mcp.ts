@@ -14,6 +14,14 @@ export type McpServerConfig = {
 	moduleName?: string
 	fieldLabel?: string
 	extraFields?: McpExtraField[]
+	instructions?: {
+		title: string
+		step1: string
+		step2: string
+		step3: string
+		step4: string
+		step5: string
+	}
 }
 
 export type McpServer = {
