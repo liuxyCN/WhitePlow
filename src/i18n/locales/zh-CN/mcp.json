@@ -24,5 +24,20 @@
 		"refreshing_all": "正在刷新所有 MCP 服务器...",
 		"all_refreshed": "所有 MCP 服务器已刷新。",
 		"project_config_deleted": "项目MCP配置文件已删除。所有项目MCP服务器已断开连接。"
+	},
+	"fileCool": {
+		"filesCreated": "已创建以下文件：",
+		"noFilesCreated": "未创建任何文件"
+	},
+	"chinalifepe": {
+		"getConfigFailed": "获取配置失败: {{status}}",
+		"getPublicKeyFailed": "获取 publicKey 失败",
+		"loginRequestFailed": "登录请求失败: {{status}}",
+		"loginFailed": "登录失败",
+		"invalidInviteCode": "邀请码无效",
+		"getApiKeyFailed": "获取 apikey 失败: {{status}}",
+		"getApiKeyFailedGeneric": "获取 apikey 失败",
+		"usernamePasswordRequired": "用户名和密码不能为空",
+		"apiUrlRequired": "API URL 不能为空"
 	}
 }

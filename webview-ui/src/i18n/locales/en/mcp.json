@@ -82,7 +82,9 @@
 		"description": "Enter the configuration details for this MCP server",
 		"authKey": {
 			"label": "API Key",
-			"placeholder": "Enter API key"
+			"placeholder": "Enter API key",
+			"configured": "Already configured",
+			"notConfigured": "Not configured"
 		},
 		"extraField": {
 			"placeholder": "{{fieldLabel}}"

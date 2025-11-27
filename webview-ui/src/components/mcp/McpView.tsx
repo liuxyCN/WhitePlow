@@ -786,8 +786,8 @@ const ServerRow = ({ server, alwaysAllowMcp }: { server: McpServer; alwaysAllowM
 								}}
 								placeholder={
 									server.configStatus === "configured"
-										? "已配置 / Already configured"
-										: "未配置 / Not configured"
+										? t("mcp:configDialog.authKey.configured")
+										: t("mcp:configDialog.authKey.notConfigured")
 								}
 								style={{ width: "100%" }}>
 							</VSCodeTextField>

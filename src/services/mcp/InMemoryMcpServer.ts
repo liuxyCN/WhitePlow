@@ -4,6 +4,7 @@ import { createInMemoryTransportPair, InMemoryTransport } from "./InMemoryTransp
 import { processFiles } from "../file-cool/client.js"
 import { z, type ZodRawShape } from "zod"
 import axios from "axios"
+import { t } from "../../i18n"
 
 interface FileCoolConfig {
 	apiUrl?: string;
@@ -133,8 +134,8 @@ export class InMemoryFileCoolServer {
 
 				const result = await processFiles(args, toolName, this.config)
 				const resultText = Array.isArray(result) && result.length > 0
-					? `已创建以下文件：\n${result.map(file => `- ${file}`).join("\n")}`
-					: "未创建任何文件"
+					? `${t("mcp:fileCool.filesCreated")}\n${result.map(file => `- ${file}`).join("\n")}`
+					: t("mcp:fileCool.noFilesCreated")
 				return {
 					content: [{ type: "text", text: `${toolName} result: ${resultText}` }],
 				}

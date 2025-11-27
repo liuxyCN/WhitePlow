@@ -114,7 +114,7 @@ export const ChinalifePE = ({
 
 	const handleLogin = useCallback(() => {
 		if (!username.trim() || !password.trim()) {
-			setLoginErrorMessage("请输入用户名和密码")
+			setLoginErrorMessage(t("settings:providers.chinalifePELogin.usernamePasswordRequired"))
 			return
 		}
 
@@ -136,7 +136,7 @@ export const ChinalifePE = ({
 
 	const handleSubmitInviteCode = useCallback(() => {
 		if (!inviteCode.trim() || !username.trim() || !password.trim()) {
-			setLoginErrorMessage("请输入邀请码")
+			setLoginErrorMessage(t("settings:providers.chinalifePELogin.inviteCodeRequired"))
 			return
 		}
 
@@ -185,7 +185,7 @@ export const ChinalifePE = ({
 				} else {
 					setIsLoggingIn(false)
 					setIsSubmittingInviteCode(false)
-					const errorMsg = message.chinalifePELoginResponse?.error || "登录失败"
+					const errorMsg = message.chinalifePELoginResponse?.error || t("settings:providers.chinalifePELogin.loginFailed")
 					setLoginErrorMessage(errorMsg)
 					if (!message.chinalifePELoginResponse?.requiresInviteCode) {
 						setShowInviteCodeDialog(false)
@@ -239,23 +239,23 @@ export const ChinalifePE = ({
 								value={username}
 								type="text"
 								onInput={(e: any) => setUsername(e.target.value)}
-								placeholder="用户名"
+								placeholder={t("settings:providers.chinalifePELogin.username")}
 								className="w-full">
-								<label className="block font-medium mb-1">用户名</label>
+								<label className="block font-medium mb-1">{t("settings:providers.chinalifePELogin.username")}</label>
 							</VSCodeTextField>
 							<VSCodeTextField
 								value={password}
 								type="password"
 								onInput={(e: any) => setPassword(e.target.value)}
-								placeholder="密码"
+								placeholder={t("settings:providers.chinalifePELogin.password")}
 								className="w-full">
-								<label className="block font-medium mb-1">密码</label>
+								<label className="block font-medium mb-1">{t("settings:providers.chinalifePELogin.password")}</label>
 							</VSCodeTextField>
 							<VSCodeButton 
 								onClick={handleLogin} 
 								appearance="primary"
 								disabled={isLoggingIn}>
-								{isLoggingIn ? "登录中..." : "登录"}
+								{isLoggingIn ? t("settings:providers.chinalifePELogin.loggingIn") : t("settings:providers.chinalifePELogin.login")}
 							</VSCodeButton>
 							{loginErrorMessage && (
 								<div className="text-vscode-errorForeground text-sm">{loginErrorMessage}</div>
@@ -265,12 +265,12 @@ export const ChinalifePE = ({
 					{/* 邀请码输入对话框 */}
 					<Modal isOpen={showInviteCodeDialog} onClose={() => {}} className="max-w-md h-auto">
 						<div className="p-6 flex flex-col gap-4">
-							<h3 className="text-lg font-semibold">请输入邀请码</h3>
+							<h3 className="text-lg font-semibold">{t("settings:providers.chinalifePELogin.inviteCodeDialogTitle")}</h3>
 							<VSCodeTextField
 								value={inviteCode}
 								type="text"
 								onInput={(e: any) => setInviteCode(e.target.value)}
-								placeholder="邀请码"
+								placeholder={t("settings:providers.chinalifePELogin.inviteCode")}
 								className="w-full"
 								onKeyDown={(e: any) => {
 									if (e.key === "Enter" && inviteCode.trim() && username.trim() && password.trim()) {
@@ -287,13 +287,13 @@ export const ChinalifePE = ({
 										setLoginErrorMessage(undefined)
 									}}
 									appearance="secondary">
-									取消
+									{t("settings:providers.chinalifePELogin.cancel")}
 								</VSCodeButton>
 								<VSCodeButton
 									onClick={handleSubmitInviteCode}
 									appearance="primary"
 									disabled={!inviteCode.trim() || !username.trim() || !password.trim() || isSubmittingInviteCode}>
-									{isSubmittingInviteCode ? "提交中..." : "提交"}
+									{isSubmittingInviteCode ? t("settings:providers.chinalifePELogin.submitting") : t("settings:providers.chinalifePELogin.submit")}
 								</VSCodeButton>
 							</div>
 						</div>

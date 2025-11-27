@@ -76,6 +76,21 @@
 		"retrying": "重试中...",
 		"retryConnection": "重试连接"
 	},
+	"configDialog": {
+		"title": "配置 {{serverName}}",
+		"description": "输入此 MCP 服务器的配置详细信息",
+		"authKey": {
+			"label": "API 密钥",
+			"placeholder": "输入 API 密钥",
+			"configured": "已配置",
+			"notConfigured": "未配置"
+		},
+		"extraField": {
+			"placeholder": "{{fieldLabel}}"
+		},
+		"cancel": "取消",
+		"save": "保存"
+	},
 	"refreshMCP": "刷新 MCP 服务器",
 	"execution": {
 		"running": "运行中",

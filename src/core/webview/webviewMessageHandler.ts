@@ -113,13 +113,13 @@ async function getChinalifePEPublicKey(): Promise<string> {
 	})
 
 	if (!configResponse.ok) {
-		throw new Error(`获取配置失败: ${configResponse.status}`)
+		throw new Error(t("mcp:chinalifepe.getConfigFailed", { status: configResponse.status }))
 	}
 
 	const configData = await configResponse.json()
 
 	if (configData.result_code !== "成功" || !configData.data?.publicKey) {
-		throw new Error("获取 publicKey 失败")
+		throw new Error(t("mcp:chinalifepe.getPublicKeyFailed"))
 	}
 
 	return configData.data.publicKey
@@ -150,7 +150,7 @@ async function loginAndGetTicket(username: string, password: string): Promise<st
 	})
 
 	if (!loginResponse.ok) {
-		throw new Error(`登录请求失败: ${loginResponse.status}`)
+		throw new Error(t("mcp:chinalifepe.loginRequestFailed", { status: loginResponse.status }))
 	}
 
 	const loginData = await loginResponse.json()
@@ -159,7 +159,7 @@ async function loginAndGetTicket(username: string, password: string): Promise<st
 		if (loginData.result_code === "错误" && loginData.err?.message) {
 			throw new Error(loginData.err.message)
 		}
-		throw new Error("登录失败")
+		throw new Error(t("mcp:chinalifepe.loginFailed"))
 	}
 
 	return loginData.data.data.ticket
@@ -196,14 +196,14 @@ async function getApiKeyWithTicket(ticket: string, apiUrl: string, inviteCode?: 
 				throw new Error("INVITE_CODE_REQUIRED")
 			}
 			if (errorData.error === "Authentication failed") {
-				throw new Error("登录失败")
+				throw new Error(t("mcp:chinalifepe.loginFailed"))
 			}
 			if (errorData.error === "Invalid or used invite code") {
-				throw new Error("邀请码无效")
+				throw new Error(t("mcp:chinalifepe.invalidInviteCode"))
 			}
 		}
 		const errorData = await apikeyResponse.json().catch(() => ({}))
-		const errorMsg = errorData.error || `获取 apikey 失败: ${apikeyResponse.status}`
+		const errorMsg = errorData.error || t("mcp:chinalifepe.getApiKeyFailed", { status: apikeyResponse.status })
 		throw new Error(errorMsg)
 	}
 
@@ -1158,7 +1158,7 @@ export const webviewMessageHandler = async (
 					type: "chinalifePELoginResponse",
 					chinalifePELoginResponse: {
 						success: false,
-						error: "用户名和密码不能为空",
+						error: t("mcp:chinalifepe.usernamePasswordRequired"),
 					},
 				})
 				break
@@ -1169,7 +1169,7 @@ export const webviewMessageHandler = async (
 					type: "chinalifePELoginResponse",
 					chinalifePELoginResponse: {
 						success: false,
-						error: "API URL 不能为空",
+						error: t("mcp:chinalifepe.apiUrlRequired"),
 					},
 				})
 				break
@@ -1202,7 +1202,7 @@ export const webviewMessageHandler = async (
 							},
 						})
 					} else {
-						const errorMsg = apikeyError instanceof Error ? apikeyError.message : "获取 apikey 失败"
+						const errorMsg = apikeyError instanceof Error ? apikeyError.message : t("mcp:chinalifepe.getApiKeyFailedGeneric")
 						console.error("获取 apikey 失败:", apikeyError)
 						provider.postMessageToWebview({
 							type: "chinalifePELoginResponse",
@@ -1214,7 +1214,7 @@ export const webviewMessageHandler = async (
 					}
 				}
 			} catch (error) {
-				const errorMsg = error instanceof Error ? error.message : "登录失败"
+				const errorMsg = error instanceof Error ? error.message : t("mcp:chinalifepe.loginFailed")
 				console.error("登录失败:", error)
 				provider.postMessageToWebview({
 					type: "chinalifePELoginResponse",

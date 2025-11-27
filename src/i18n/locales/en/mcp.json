@@ -25,5 +25,20 @@
 		"refreshing_all": "Refreshing all MCP servers...",
 		"all_refreshed": "All MCP servers have been refreshed.",
 		"project_config_deleted": "Project MCP configuration file deleted. All project MCP servers have been disconnected."
+	},
+	"fileCool": {
+		"filesCreated": "The following files have been created:",
+		"noFilesCreated": "No files were created"
+	},
+	"chinalifepe": {
+		"getConfigFailed": "Failed to get configuration: {{status}}",
+		"getPublicKeyFailed": "Failed to get publicKey",
+		"loginRequestFailed": "Login request failed: {{status}}",
+		"loginFailed": "Login failed",
+		"invalidInviteCode": "Invalid invite code",
+		"getApiKeyFailed": "Failed to get apikey: {{status}}",
+		"getApiKeyFailedGeneric": "Failed to get apikey",
+		"usernamePasswordRequired": "Username and password cannot be empty",
+		"apiUrlRequired": "API URL cannot be empty"
 	}
 }
