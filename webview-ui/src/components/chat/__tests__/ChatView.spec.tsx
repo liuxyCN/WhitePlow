@@ -1,4 +1,4 @@
-// npx vitest run src/components/chat/__tests__/ChatView.spec.tsx
+// pnpm --filter @roo-code/vscode-webview test src/components/chat/__tests__/ChatView.spec.tsx
 
 import React from "react"
 import { render, waitFor, act, fireEvent } from "@/utils/test-utils"
@@ -59,6 +59,28 @@ vi.mock("../ChatRow", () => ({
 
 vi.mock("../AutoApproveMenu", () => ({
 	default: () => null,
+}))
+
+// Mock react-virtuoso to render items directly without virtualization
+// This allows tests to verify items rendered in the chat list
+vi.mock("react-virtuoso", () => ({
+	Virtuoso: function MockVirtuoso({
+		data,
+		itemContent,
+	}: {
+		data: ClineMessage[]
+		itemContent: (index: number, item: ClineMessage) => React.ReactNode
+	}) {
+		return (
+			<div data-testid="virtuoso-item-list">
+				{data.map((item, index) => (
+					<div key={item.ts} data-testid={`virtuoso-item-${index}`}>
+						{itemContent(index, item)}
+					</div>
+				))}
+			</div>
+		)
+	},
 }))
 
 // Mock VersionIndicator - returns null by default to prevent rendering in tests
@@ -293,643 +315,8 @@ const renderChatView = (props: Partial<ChatViewProps> = {}) => {
 	)
 }
 
-describe("ChatView - Auto Approval Tests", () => {
-	beforeEach(() => vi.clearAllMocks())
-
-	it("does not auto-approve any actions when autoApprovalEnabled is false", () => {
-		renderChatView()
-
-		// First hydrate state with initial task
-		mockPostMessage({
-			autoApprovalEnabled: false,
-			alwaysAllowBrowser: true,
-			alwaysAllowReadOnly: true,
-			alwaysAllowWrite: true,
-			alwaysAllowExecute: true,
-			allowedCommands: ["npm test"],
-			clineMessages: [
-				{
-					type: "say",
-					say: "task",
-					ts: Date.now() - 2000,
-					text: "Initial task",
-				},
-			],
-		})
-
-		// Test various types of actions that should not be auto-approved
-		const testCases = [
-			{
-				ask: "browser_action_launch",
-				text: JSON.stringify({ action: "launch", url: "http://example.com" }),
-			},
-			{
-				ask: "tool",
-				text: JSON.stringify({ tool: "readFile", path: "test.txt" }),
-			},
-			{
-				ask: "tool",
-				text: JSON.stringify({ tool: "editedExistingFile", path: "test.txt" }),
-			},
-			{
-				ask: "command",
-				text: "npm test",
-			},
-		]
-
-		testCases.forEach((testCase) => {
-			mockPostMessage({
-				autoApprovalEnabled: false,
-				alwaysAllowBrowser: true,
-				alwaysAllowReadOnly: true,
-				alwaysAllowWrite: true,
-				alwaysAllowExecute: true,
-				allowedCommands: ["npm test"],
-				clineMessages: [
-					{
-						type: "say",
-						say: "task",
-						ts: Date.now() - 2000,
-						text: "Initial task",
-					},
-					{
-						type: "ask",
-						ask: testCase.ask as any,
-						ts: Date.now(),
-						text: testCase.text,
-					},
-				],
-			})
-
-			// Should not auto-approve when autoApprovalEnabled is false
-			expect(vscode.postMessage).not.toHaveBeenCalledWith({
-				type: "askResponse",
-				askResponse: "yesButtonClicked",
-			})
-		})
-	})
-
-	it("auto-approves browser actions when alwaysAllowBrowser is enabled", async () => {
-		renderChatView()
-
-		// First hydrate state with initial task
-		mockPostMessage({
-			autoApprovalEnabled: true,
-			alwaysAllowBrowser: true,
-			clineMessages: [
-				{
-					type: "say",
-					say: "task",
-					ts: Date.now() - 2000,
-					text: "Initial task",
-				},
-			],
-		})
-
-		// Clear any initial calls
-		vi.mocked(vscode.postMessage).mockClear()
-
-		// Add browser action
-		mockPostMessage({
-			autoApprovalEnabled: true,
-			alwaysAllowBrowser: true,
-			clineMessages: [
-				{
-					type: "say",
-					say: "task",
-					ts: Date.now() - 2000,
-					text: "Initial task",
-				},
-				{
-					type: "ask",
-					ask: "browser_action_launch",
-					ts: Date.now(),
-					text: JSON.stringify({ action: "launch", url: "http://example.com" }),
-				},
-			],
-		})
-
-		// Wait for auto-approval to happen
-		await waitFor(() => {
-			expect(vscode.postMessage).toHaveBeenCalledWith({
-				type: "askResponse",
-				askResponse: "yesButtonClicked",
-			})
-		})
-	})
-
-	it("auto-approves read-only tools when alwaysAllowReadOnly is enabled", async () => {
-		renderChatView()
-
-		// First hydrate state with initial task
-		mockPostMessage({
-			autoApprovalEnabled: true,
-			alwaysAllowReadOnly: true,
-			clineMessages: [
-				{
-					type: "say",
-					say: "task",
-					ts: Date.now() - 2000,
-					text: "Initial task",
-				},
-			],
-		})
-
-		// Clear any initial calls
-		vi.mocked(vscode.postMessage).mockClear()
-
-		// Add read-only tool request
-		mockPostMessage({
-			autoApprovalEnabled: true,
-			alwaysAllowReadOnly: true,
-			clineMessages: [
-				{
-					type: "say",
-					say: "task",
-					ts: Date.now() - 2000,
-					text: "Initial task",
-				},
-				{
-					type: "ask",
-					ask: "tool",
-					ts: Date.now(),
-					text: JSON.stringify({ tool: "readFile", path: "test.txt" }),
-				},
-			],
-		})
-
-		// Wait for auto-approval to happen
-		await waitFor(() => {
-			expect(vscode.postMessage).toHaveBeenCalledWith({
-				type: "askResponse",
-				askResponse: "yesButtonClicked",
-			})
-		})
-	})
-
-	describe("Write Tool Auto-Approval Tests", () => {
-		it("auto-approves write tools when alwaysAllowWrite is enabled and message is a tool request", async () => {
-			renderChatView()
-
-			// First hydrate state with initial task
-			mockPostMessage({
-				autoApprovalEnabled: true,
-				alwaysAllowWrite: true,
-				writeDelayMs: 100, // Short delay for testing
-				clineMessages: [
-					{
-						type: "say",
-						say: "task",
-						ts: Date.now() - 2000,
-						text: "Initial task",
-					},
-				],
-			})
-
-			// Clear any initial calls
-			vi.mocked(vscode.postMessage).mockClear()
-
-			// Add write tool request
-			mockPostMessage({
-				autoApprovalEnabled: true,
-				alwaysAllowWrite: true,
-				writeDelayMs: 100, // Short delay for testing
-				clineMessages: [
-					{
-						type: "say",
-						say: "task",
-						ts: Date.now() - 2000,
-						text: "Initial task",
-					},
-					{
-						type: "ask",
-						ask: "tool",
-						ts: Date.now(),
-						text: JSON.stringify({ tool: "editedExistingFile", path: "test.txt" }),
-						partial: false,
-					},
-				],
-			})
-
-			// Wait for auto-approval to happen (with delay for write tools)
-			await waitFor(
-				() => {
-					expect(vscode.postMessage).toHaveBeenCalledWith({
-						type: "askResponse",
-						askResponse: "yesButtonClicked",
-					})
-				},
-				{ timeout: 1000 },
-			)
-		})
-
-		it("does not auto-approve write operations when alwaysAllowWrite is enabled but message is not a tool request", () => {
-			renderChatView()
-
-			// First hydrate state with initial task
-			mockPostMessage({
-				autoApprovalEnabled: true,
-				alwaysAllowWrite: true,
-				clineMessages: [
-					{
-						type: "say",
-						say: "task",
-						ts: Date.now() - 2000,
-						text: "Initial task",
-					},
-				],
-			})
-
-			// Clear any initial calls
-			vi.mocked(vscode.postMessage).mockClear()
-
-			// Add non-tool write request
-			mockPostMessage({
-				autoApprovalEnabled: true,
-				alwaysAllowWrite: true,
-				clineMessages: [
-					{
-						type: "say",
-						say: "task",
-						ts: Date.now() - 2000,
-						text: "Initial task",
-					},
-					{
-						type: "ask",
-						ask: "write_to_file",
-						ts: Date.now(),
-						text: "Writing to test.txt",
-					},
-				],
-			})
-
-			// Should not auto-approve non-tool write operations
-			expect(vscode.postMessage).not.toHaveBeenCalledWith({
-				type: "askResponse",
-				askResponse: "yesButtonClicked",
-			})
-		})
-	})
-
-	it("auto-approves allowed commands when alwaysAllowExecute is enabled", async () => {
-		renderChatView()
-
-		// First hydrate state with initial task
-		mockPostMessage({
-			autoApprovalEnabled: true,
-			alwaysAllowExecute: true,
-			allowedCommands: ["npm test", "npm run build"],
-			clineMessages: [
-				{
-					type: "say",
-					say: "task",
-					ts: Date.now() - 2000,
-					text: "Initial task",
-				},
-			],
-		})
-
-		// Clear any initial calls
-		vi.mocked(vscode.postMessage).mockClear()
-
-		// Add allowed command
-		mockPostMessage({
-			autoApprovalEnabled: true,
-			alwaysAllowExecute: true,
-			allowedCommands: ["npm test", "npm run build"],
-			clineMessages: [
-				{
-					type: "say",
-					say: "task",
-					ts: Date.now() - 2000,
-					text: "Initial task",
-				},
-				{
-					type: "ask",
-					ask: "command",
-					ts: Date.now(),
-					text: "npm test",
-				},
-			],
-		})
-
-		// Wait for auto-approval to happen
-		await waitFor(() => {
-			expect(vscode.postMessage).toHaveBeenCalledWith({
-				type: "askResponse",
-				askResponse: "yesButtonClicked",
-			})
-		})
-	})
-
-	it("does not auto-approve disallowed commands even when alwaysAllowExecute is enabled", () => {
-		renderChatView()
-
-		// First hydrate state with initial task
-		mockPostMessage({
-			autoApprovalEnabled: true,
-			alwaysAllowExecute: true,
-			allowedCommands: ["npm test"],
-			clineMessages: [
-				{
-					type: "say",
-					say: "task",
-					ts: Date.now() - 2000,
-					text: "Initial task",
-				},
-			],
-		})
-
-		// Clear any initial calls
-		vi.mocked(vscode.postMessage).mockClear()
-
-		// Add disallowed command
-		mockPostMessage({
-			autoApprovalEnabled: true,
-			alwaysAllowExecute: true,
-			allowedCommands: ["npm test"],
-			clineMessages: [
-				{
-					type: "say",
-					say: "task",
-					ts: Date.now() - 2000,
-					text: "Initial task",
-				},
-				{
-					type: "ask",
-					ask: "command",
-					ts: Date.now(),
-					text: "rm -rf /",
-				},
-			],
-		})
-
-		// Should not auto-approve disallowed command
-		expect(vscode.postMessage).not.toHaveBeenCalledWith({
-			type: "askResponse",
-			askResponse: "yesButtonClicked",
-		})
-	})
-
-	describe("Command Chaining Tests", () => {
-		it("auto-approves chained commands when all parts are allowed", async () => {
-			renderChatView()
-
-			// First hydrate state with initial task
-			mockPostMessage({
-				autoApprovalEnabled: true,
-				alwaysAllowExecute: true,
-				allowedCommands: ["npm test", "npm run build", "echo"],
-				clineMessages: [
-					{
-						type: "say",
-						say: "task",
-						ts: Date.now() - 2000,
-						text: "Initial task",
-					},
-				],
-			})
-
-			// Clear any initial calls
-			vi.mocked(vscode.postMessage).mockClear()
-
-			// Test various chained commands
-			const chainedCommands = [
-				"npm test && npm run build",
-				"npm test || echo 'test failed'",
-				"npm test; npm run build",
-			]
-
-			for (const command of chainedCommands) {
-				vi.mocked(vscode.postMessage).mockClear()
-
-				mockPostMessage({
-					autoApprovalEnabled: true,
-					alwaysAllowExecute: true,
-					allowedCommands: ["npm test", "npm run build", "echo"],
-					clineMessages: [
-						{
-							type: "say",
-							say: "task",
-							ts: Date.now() - 2000,
-							text: "Initial task",
-						},
-						{
-							type: "ask",
-							ask: "command",
-							ts: Date.now(),
-							text: command,
-						},
-					],
-				})
-
-				// Wait for auto-approval to happen
-				await waitFor(() => {
-					expect(vscode.postMessage).toHaveBeenCalledWith({
-						type: "askResponse",
-						askResponse: "yesButtonClicked",
-					})
-				})
-			}
-		})
-
-		it("does not auto-approve chained commands when any part is disallowed", () => {
-			renderChatView()
-
-			// First hydrate state with initial task
-			mockPostMessage({
-				autoApprovalEnabled: true,
-				alwaysAllowExecute: true,
-				allowedCommands: ["npm test", "echo"],
-				clineMessages: [
-					{
-						type: "say",
-						say: "task",
-						ts: Date.now() - 2000,
-						text: "Initial task",
-					},
-				],
-			})
-
-			// Clear any initial calls
-			vi.mocked(vscode.postMessage).mockClear()
-
-			// Add chained command with disallowed part
-			mockPostMessage({
-				autoApprovalEnabled: true,
-				alwaysAllowExecute: true,
-				allowedCommands: ["npm test", "echo"],
-				clineMessages: [
-					{
-						type: "say",
-						say: "task",
-						ts: Date.now() - 2000,
-						text: "Initial task",
-					},
-					{
-						type: "ask",
-						ask: "command",
-						ts: Date.now(),
-						text: "npm test && rm -rf /",
-					},
-				],
-			})
-
-			// Should not auto-approve chained command with disallowed part
-			expect(vscode.postMessage).not.toHaveBeenCalledWith({
-				type: "askResponse",
-				askResponse: "yesButtonClicked",
-			})
-		})
-
-		it("handles complex PowerShell command chains correctly", async () => {
-			renderChatView()
-
-			// First hydrate state with initial task
-			mockPostMessage({
-				autoApprovalEnabled: true,
-				alwaysAllowExecute: true,
-				allowedCommands: ["Get-Process", "Where-Object", "Select-Object"],
-				clineMessages: [
-					{
-						type: "say",
-						say: "task",
-						ts: Date.now() - 2000,
-						text: "Initial task",
-					},
-				],
-			})
-
-			// Clear any initial calls
-			vi.mocked(vscode.postMessage).mockClear()
-
-			// Add PowerShell piped command
-			mockPostMessage({
-				autoApprovalEnabled: true,
-				alwaysAllowExecute: true,
-				allowedCommands: ["Get-Process", "Where-Object", "Select-Object"],
-				clineMessages: [
-					{
-						type: "say",
-						say: "task",
-						ts: Date.now() - 2000,
-						text: "Initial task",
-					},
-					{
-						type: "ask",
-						ask: "command",
-						ts: Date.now(),
-						text: "Get-Process | Where-Object {$_.CPU -gt 10} | Select-Object Name, CPU",
-					},
-				],
-			})
-
-			// Wait for auto-approval to happen
-			await waitFor(() => {
-				expect(vscode.postMessage).toHaveBeenCalledWith({
-					type: "askResponse",
-					askResponse: "yesButtonClicked",
-				})
-			})
-		})
-	})
-})
-
 describe("ChatView - Sound Playing Tests", () => {
 	beforeEach(() => vi.clearAllMocks())
-
-	it("does not play sound for auto-approved browser actions", () => {
-		renderChatView()
-
-		// First hydrate state with initial task
-		mockPostMessage({
-			autoApprovalEnabled: true,
-			alwaysAllowBrowser: true,
-			clineMessages: [
-				{
-					type: "say",
-					say: "task",
-					ts: Date.now() - 2000,
-					text: "Initial task",
-				},
-			],
-		})
-
-		// Clear any initial calls
-		mockPlayFunction.mockClear()
-
-		// Add browser action that will be auto-approved
-		mockPostMessage({
-			autoApprovalEnabled: true,
-			alwaysAllowBrowser: true,
-			clineMessages: [
-				{
-					type: "say",
-					say: "task",
-					ts: Date.now() - 2000,
-					text: "Initial task",
-				},
-				{
-					type: "ask",
-					ask: "browser_action_launch",
-					ts: Date.now(),
-					text: JSON.stringify({ action: "launch", url: "http://example.com" }),
-				},
-			],
-		})
-
-		// Should not play sound for auto-approved action
-		expect(mockPlayFunction).not.toHaveBeenCalled()
-	})
-
-	it("plays notification sound for non-auto-approved browser actions", async () => {
-		renderChatView()
-
-		// First hydrate state with initial task
-		mockPostMessage({
-			autoApprovalEnabled: true,
-			alwaysAllowBrowser: false, // Browser actions not auto-approved
-			soundEnabled: true, // Enable sound
-			clineMessages: [
-				{
-					type: "say",
-					say: "task",
-					ts: Date.now() - 2000,
-					text: "Initial task",
-				},
-			],
-		})
-
-		// Clear any initial calls
-		mockPlayFunction.mockClear()
-
-		// Add browser action that won't be auto-approved
-		mockPostMessage({
-			autoApprovalEnabled: true,
-			alwaysAllowBrowser: false,
-			soundEnabled: true, // Enable sound
-			clineMessages: [
-				{
-					type: "say",
-					say: "task",
-					ts: Date.now() - 2000,
-					text: "Initial task",
-				},
-				{
-					type: "ask",
-					ask: "browser_action_launch",
-					ts: Date.now(),
-					text: JSON.stringify({ action: "launch", url: "http://example.com" }),
-					partial: false, // Ensure it's not partial
-				},
-			],
-		})
-
-		// Wait for sound to be played
-		await waitFor(() => {
-			expect(mockPlayFunction).toHaveBeenCalled()
-		})
-	})
 
 	it("plays celebration sound for completion results", async () => {
 		renderChatView()
@@ -1098,7 +485,17 @@ describe("ChatView - Focus Grabbing Tests", () => {
 			],
 		})
 
-		// Clear any initial calls
+		// Wait for the component to fully render and settle before clearing mocks
+		await waitFor(() => {
+			expect(getByTestId("chat-textarea")).toBeInTheDocument()
+		})
+
+		// Wait for the debounced focus effect to fire (50ms debounce + buffer for CI variability)
+		await act(async () => {
+			await new Promise((resolve) => setTimeout(resolve, 100))
+		})
+
+		// Clear any initial calls after state has settled
 		mockFocus.mockClear()
 
 		// Add follow-up question
@@ -1119,7 +516,7 @@ describe("ChatView - Focus Grabbing Tests", () => {
 			],
 		})
 
-		// Wait a bit to ensure any focus operations would have occurred
+		// Wait for state update to complete
 		await waitFor(() => {
 			expect(getByTestId("chat-textarea")).toBeInTheDocument()
 		})
@@ -1682,6 +1079,76 @@ describe("ChatView - Message Queueing Tests", () => {
 				type: "askResponse",
 				askResponse: "messageResponse",
 			}),
+		)
+	})
+})
+
+describe("ChatView - Context Condensing Indicator Tests", () => {
+	beforeEach(() => {
+		vi.clearAllMocks()
+	})
+
+	it("should add a condensing message to groupedMessages when isCondensing is true", async () => {
+		// This test verifies that when the condenseTaskContextStarted message is received,
+		// the isCondensing state is set to true and a synthetic condensing message is added
+		// to the grouped messages list
+		const { getByTestId, container } = renderChatView()
+
+		// First hydrate state with an active task
+		mockPostMessage({
+			clineMessages: [
+				{
+					type: "say",
+					say: "task",
+					ts: Date.now() - 2000,
+					text: "Initial task",
+				},
+				{
+					type: "say",
+					say: "api_req_started",
+					ts: Date.now() - 1000,
+					text: JSON.stringify({ apiProtocol: "anthropic" }),
+				},
+			],
+		})
+
+		// Wait for component to render
+		await waitFor(() => {
+			expect(getByTestId("chat-view")).toBeInTheDocument()
+		})
+
+		// Allow time for useEvent hook to register message listener
+		await act(async () => {
+			await new Promise((resolve) => setTimeout(resolve, 10))
+		})
+
+		// Dispatch a MessageEvent directly to trigger the message handler
+		// This simulates the VSCode extension sending a message to the webview
+		await act(async () => {
+			const event = new MessageEvent("message", {
+				data: {
+					type: "condenseTaskContextStarted",
+					text: "test-task-id",
+				},
+			})
+			window.dispatchEvent(event)
+			// Wait for React state updates
+			await new Promise((resolve) => setTimeout(resolve, 0))
+		})
+
+		// Check that groupedMessages now includes a condensing message
+		// With Virtuoso mocked, items render directly and we can find the ChatRow with partial condense_context message
+		await waitFor(
+			() => {
+				const rows = container.querySelectorAll('[data-testid="chat-row"]')
+				// Check for the actual message structure: partial condense_context message
+				const condensingRow = Array.from(rows).find((row) => {
+					const text = row.textContent || ""
+					return text.includes('"say":"condense_context"') && text.includes('"partial":true')
+				})
+				expect(condensingRow).toBeTruthy()
+			},
+			{ timeout: 2000 },
 		)
 	})
 })

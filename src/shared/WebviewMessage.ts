@@ -1,6 +1,7 @@
 import { z } from "zod"
 
 import {
+	type RooCodeSettings,
 	type ProviderSettings,
 	type PromptComponent,
 	type ModeConfig,
@@ -38,17 +39,6 @@ export interface WebviewMessage {
 		| "renameApiConfiguration"
 		| "getListApiConfiguration"
 		| "customInstructions"
-		| "allowedCommands"
-		| "deniedCommands"
-		| "alwaysAllowReadOnly"
-		| "alwaysAllowReadOnlyOutsideWorkspace"
-		| "alwaysAllowWrite"
-		| "alwaysAllowWriteOutsideWorkspace"
-		| "alwaysAllowWriteProtected"
-		| "alwaysAllowExecute"
-		| "alwaysAllowFollowupQuestions"
-		| "alwaysAllowUpdateTodoList"
-		| "followupAutoApproveTimeoutMs"
 		| "webviewDidLaunch"
 		| "newTask"
 		| "askResponse"
@@ -72,6 +62,7 @@ export interface WebviewMessage {
 		| "requestOllamaModels"
 		| "requestLmStudioModels"
 		| "requestRooModels"
+		| "requestRooCreditBalance"
 		| "requestVsCodeLmModels"
 		| "requestHuggingFaceModels"
 		| "openImage"
@@ -79,33 +70,16 @@ export interface WebviewMessage {
 		| "openFile"
 		| "openMention"
 		| "cancelTask"
+		| "cancelAutoApproval"
 		| "updateVSCodeSetting"
 		| "getVSCodeSetting"
 		| "vsCodeSetting"
-		| "alwaysAllowBrowser"
-		| "alwaysAllowMcp"
-		| "alwaysAllowModeSwitch"
-		| "allowedMaxRequests"
-		| "allowedMaxCost"
-		| "alwaysAllowSubtasks"
-		| "alwaysAllowUpdateTodoList"
-		| "autoCondenseContext"
-		| "autoCondenseContextPercent"
-		| "condensingApiConfigId"
 		| "updateCondensingPrompt"
 		| "playSound"
 		| "playTts"
 		| "stopTts"
-		| "soundEnabled"
 		| "ttsEnabled"
 		| "ttsSpeed"
-		| "soundVolume"
-		| "diffEnabled"
-		| "enableCheckpoints"
-		| "checkpointTimeout"
-		| "browserViewportSize"
-		| "screenshotQuality"
-		| "remoteBrowserHost"
 		| "openKeyboardShortcuts"
 		| "openMcpSettings"
 		| "openProjectMcpSettings"
@@ -115,9 +89,6 @@ export interface WebviewMessage {
 		| "toggleToolEnabledForPrompt"
 		| "toggleMcpServer"
 		| "updateMcpTimeout"
-		| "fuzzyMatchThreshold"
-		| "writeDelayMs"
-		| "diagnosticsEnabled"
 		| "enhancePrompt"
 		| "enhancedPrompt"
 		| "draggedImages"
@@ -125,34 +96,17 @@ export interface WebviewMessage {
 		| "deleteMessageConfirm"
 		| "submitEditedMessage"
 		| "editMessageConfirm"
-		| "terminalOutputLineLimit"
-		| "terminalOutputCharacterLimit"
-		| "terminalShellIntegrationTimeout"
-		| "terminalShellIntegrationDisabled"
-		| "terminalCommandDelay"
-		| "terminalPowershellCounter"
-		| "terminalZshClearEolMark"
-		| "terminalZshOhMy"
-		| "terminalZshP10k"
-		| "terminalZdotdir"
-		| "terminalCompressProgressBar"
-		| "mcpEnabled"
 		| "enableMcpServerCreation"
 		| "remoteControlEnabled"
 		| "taskSyncEnabled"
 		| "searchCommits"
-		| "alwaysApproveResubmit"
-		| "requestDelaySeconds"
 		| "setApiConfigPassword"
 		| "mode"
 		| "updatePrompt"
-		| "updateSupportPrompt"
 		| "getSystemPrompt"
 		| "copySystemPrompt"
 		| "systemPrompt"
 		| "enhancementApiConfigId"
-		| "includeTaskHistoryInEnhance"
-		| "updateExperimental"
 		| "autoApprovalEnabled"
 		| "updateCustomMode"
 		| "deleteCustomMode"
@@ -161,29 +115,14 @@ export interface WebviewMessage {
 		| "checkpointDiff"
 		| "checkpointRestore"
 		| "deleteMcpServer"
-		| "maxOpenTabsContext"
-		| "maxWorkspaceFiles"
 		| "humanRelayResponse"
 		| "humanRelayCancel"
-		| "browserToolEnabled"
 		| "codebaseIndexEnabled"
 		| "telemetrySetting"
-		| "showRooIgnoredFiles"
 		| "testBrowserConnection"
 		| "browserConnectionResult"
-		| "remoteBrowserEnabled"
-		| "language"
-		| "maxReadFileLine"
-		| "maxImageFileSize"
-		| "maxTotalImageSize"
-		| "maxConcurrentFileReads"
-		| "includeDiagnosticMessages"
-		| "maxDiagnosticMessages"
-		| "includeCurrentTime"
-		| "includeCurrentCost"
 		| "searchFiles"
 		| "toggleApiConfigPin"
-		| "setHistoryPreviewCollapsed"
 		| "hasOpenedModeSelector"
 		| "cloudButtonClicked"
 		| "rooCloudSignIn"
@@ -198,9 +137,6 @@ export interface WebviewMessage {
 		| "indexingStatusUpdate"
 		| "indexCleared"
 		| "focusPanelRequest"
-		| "profileThresholds"
-		| "setHistoryPreviewCollapsed"
-		| "setReasoningBlockCollapsed"
 		| "openExternal"
 		| "openSimpleBrowser"
 		| "filterMarketplaceItems"
@@ -212,7 +148,6 @@ export interface WebviewMessage {
 		| "marketplaceInstallResult"
 		| "fetchMarketplaceData"
 		| "switchTab"
-		| "profileThresholds"
 		| "shareTaskSuccess"
 		| "exportMode"
 		| "exportModeResult"
@@ -235,13 +170,21 @@ export interface WebviewMessage {
 		| "insertTextIntoTextarea"
 		| "showMdmAuthRequiredNotification"
 		| "imageGenerationSettings"
-		| "openRouterImageApiKey"
-		| "openRouterImageGenerationSelectedModel"
 		| "queueMessage"
 		| "removeQueuedMessage"
 		| "editQueuedMessage"
 		| "dismissUpsell"
 		| "getDismissedUpsells"
+		| "updateSettings"
+		| "allowedCommands"
+		| "deniedCommands"
+		| "killBrowserSession"
+		| "openBrowserSessionPanel"
+		| "showBrowserSessionPanelAtStep"
+		| "refreshBrowserSessionPanel"
+		| "browserPanelDidLaunch"
+		| "openDebugApiHistory"
+		| "openDebugUiHistory"
 	text?: string
 	editedMessageContent?: string
 	tab?: "settings" | "history" | "mcp" | "modes" | "chat" | "marketplace" | "cloud"
@@ -253,6 +196,9 @@ export interface WebviewMessage {
 	images?: string[]
 	bool?: boolean
 	value?: number
+	stepIndex?: number
+	isLaunchAction?: boolean
+	forceShow?: boolean
 	commands?: string[]
 	audioType?: AudioType
 	serverName?: string
@@ -293,6 +239,7 @@ export interface WebviewMessage {
 	upsellId?: string // For dismissUpsell
 	list?: string[] // For dismissedUpsells response
 	organizationId?: string | null // For organization switching
+	useProviderSignup?: boolean // For rooCloudSignIn to use provider signup flow
 	codeIndexSettings?: {
 		// Global state settings
 		codebaseIndexEnabled: boolean
@@ -304,13 +251,17 @@ export interface WebviewMessage {
 			| "gemini"
 			| "mistral"
 			| "vercel-ai-gateway"
+			| "bedrock"
 			| "openrouter"
 		codebaseIndexEmbedderBaseUrl?: string
 		codebaseIndexEmbedderModelId: string
 		codebaseIndexEmbedderModelDimension?: number // Generic dimension for all providers
 		codebaseIndexOpenAiCompatibleBaseUrl?: string
+		codebaseIndexBedrockRegion?: string
+		codebaseIndexBedrockProfile?: string
 		codebaseIndexSearchMaxResults?: number
 		codebaseIndexSearchMinScore?: number
+		codebaseIndexOpenRouterSpecificProvider?: string // OpenRouter provider routing
 
 		// Secret settings
 		codeIndexOpenAiKey?: string
@@ -321,6 +272,7 @@ export interface WebviewMessage {
 		codebaseIndexVercelAiGatewayApiKey?: string
 		codebaseIndexOpenRouterApiKey?: string
 	}
+	updatedSettings?: RooCodeSettings
 }
 
 export const checkoutDiffPayloadSchema = z.object({

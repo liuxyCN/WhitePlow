@@ -3,7 +3,7 @@
 	"displayName": "%extension.displayName%",
 	"description": "%extension.description%",
 	"publisher": "NeonTractorInc",
-	"version": "3.30.3",
+	"version": "3.36.6",
 	"icon": "assets/images/neontractor-logo.png",
 	"galleryBanner": {
 		"color": "#617A91",
@@ -79,21 +79,16 @@
 				"icon": "$(edit)"
 			},
 			{
-				"command": "roo-cline.promptsButtonClicked",
-				"title": "%command.prompts.title%",
-				"icon": "$(organization)"
-			},
-			{
-				"command": "roo-cline.mcpButtonClicked",
-				"title": "%command.mcpServers.title%",
-				"icon": "$(server)"
-			},
-			{
 				"command": "roo-cline.historyButtonClicked",
 				"title": "%command.history.title%",
 				"icon": "$(history)"
-		},
-		{
+			},
+			{
+				"command": "roo-cline.mcpButtonClicked",
+				"title": "%command.mcp.title%",
+				"icon": "$(server)"
+			},
+			{
 			"command": "roo-cline.popoutButtonClicked",
 				"title": "%command.openInEditor.title%",
 				"icon": "$(link-external)"
@@ -254,18 +249,8 @@
 					"when": "activeWebviewPanelId == roo-cline.TabPanelProvider"
 				},
 				{
-					"command": "roo-cline.promptsButtonClicked",
-					"group": "overflow@2",
-					"when": "activeWebviewPanelId == roo-cline.TabPanelProvider"
-				},
-				{
-					"command": "roo-cline.mcpButtonClicked",
-					"group": "overflow@3",
-					"when": "activeWebviewPanelId == roo-cline.TabPanelProvider"
-				},
-				{
 					"command": "roo-cline.popoutButtonClicked",
-					"group": "overflow@4",
+					"group": "overflow@2",
 					"when": "activeWebviewPanelId == roo-cline.TabPanelProvider"
 				}
 			]
@@ -404,6 +389,11 @@
 					"minimum": 1,
 					"maximum": 200,
 					"description": "%settings.codeIndex.embeddingBatchSize.description%"
+				},
+				"roo-cline.debug": {
+					"type": "boolean",
+					"default": false,
+					"description": "%settings.debug.description%"
 				}
 			}
 		}
@@ -428,7 +418,7 @@
 		"@anthropic-ai/vertex-sdk": "^0.7.0",
 		"@aws-sdk/client-bedrock-runtime": "^3.922.0",
 		"@aws-sdk/credential-providers": "^3.922.0",
-		"@google/genai": "^1.0.0",
+		"@google/genai": "^1.29.1",
 		"@lmstudio/sdk": "^1.1.1",
 		"@mistralai/mistralai": "^1.9.18",
 		"@modelcontextprotocol/sdk": "1.12.0",
@@ -469,6 +459,7 @@
 		"os-name": "^6.0.0",
 		"p-limit": "^6.2.0",
 		"p-wait-for": "^5.0.2",
+		"partial-json": "^0.1.7",
 		"pdf-parse": "^1.1.1",
 		"pkce-challenge": "^5.0.0",
 		"pretty-bytes": "^7.0.0",
@@ -477,9 +468,12 @@
 		"puppeteer-chromium-resolver": "^24.0.0",
 		"puppeteer-core": "^23.4.0",
 		"reconnecting-eventsource": "^1.6.4",
+		"safe-stable-stringify": "^2.5.0",
 		"sanitize-filename": "^1.6.3",
 		"say": "^0.16.0",
+		"semver-compare": "^1.0.0",
 		"serialize-error": "^12.0.0",
+		"shell-quote": "^1.8.2",
 		"simple-git": "^3.27.0",
 		"socket.io-client": "^4.8.1",
 		"sound-play": "^1.1.0",
@@ -514,6 +508,8 @@
 		"@types/node-ipc": "^9.2.3",
 		"@types/proper-lockfile": "^4.1.4",
 		"@types/ps-tree": "^1.1.6",
+		"@types/semver-compare": "^1.0.3",
+		"@types/shell-quote": "^1.7.5",
 		"@types/stream-json": "^1.7.8",
 		"@types/string-similarity": "^4.0.2",
 		"@types/tmp": "^0.2.6",
@@ -523,7 +519,7 @@
 		"@vscode/vsce": "3.3.2",
 		"esbuild": "^0.25.0",
 		"execa": "^9.5.2",
-		"glob": "^11.0.1",
+		"glob": "^11.1.0",
 		"mkdirp": "^3.0.1",
 		"nock": "^14.0.4",
 		"npm-run-all2": "^8.0.1",

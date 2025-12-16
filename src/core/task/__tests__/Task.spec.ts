@@ -697,11 +697,8 @@ describe("Cline", () => {
 					return mockSuccessStream
 				})
 
-				// Set alwaysApproveResubmit and requestDelaySeconds
-				mockProvider.getState = vi.fn().mockResolvedValue({
-					alwaysApproveResubmit: true,
-					requestDelaySeconds: 3,
-				})
+				// Set up mock state
+				mockProvider.getState = vi.fn().mockResolvedValue({})
 
 				// Mock previous API request message
 				cline.clineMessages = [
@@ -723,7 +720,7 @@ describe("Cline", () => {
 				await iterator.next()
 
 				// Calculate expected delay for first retry
-				const baseDelay = 3 // from requestDelaySeconds
+				const baseDelay = 3 // test retry delay
 
 				// Verify countdown messages
 				for (let i = baseDelay; i > 0; i--) {
@@ -821,11 +818,8 @@ describe("Cline", () => {
 					return mockSuccessStream
 				})
 
-				// Set alwaysApproveResubmit and requestDelaySeconds
-				mockProvider.getState = vi.fn().mockResolvedValue({
-					alwaysApproveResubmit: true,
-					requestDelaySeconds: 3,
-				})
+				// Set up mock state
+				mockProvider.getState = vi.fn().mockResolvedValue({})
 
 				// Mock previous API request message
 				cline.clineMessages = [
@@ -847,7 +841,7 @@ describe("Cline", () => {
 				await iterator.next()
 
 				// Verify delay is only applied for the countdown
-				const baseDelay = 3 // from requestDelaySeconds
+				const baseDelay = 3 // test retry delay
 				const expectedDelayCount = baseDelay // One delay per second for countdown
 				expect(mockDelay).toHaveBeenCalledTimes(expectedDelayCount)
 				expect(mockDelay).toHaveBeenCalledWith(1000) // Each delay should be 1 second
@@ -1623,69 +1617,6 @@ describe("Cline", () => {
 		})
 	})
 
-	describe("Conversation continuity after condense and deletion", () => {
-		it("should set suppressPreviousResponseId when last message is condense_context", async () => {
-			// Arrange: create task
-			const task = new Task({
-				provider: mockProvider,
-				apiConfiguration: mockApiConfig,
-				task: "initial task",
-				startTask: false,
-			})
-
-			// Ensure provider state returns required fields for attemptApiRequest
-			mockProvider.getState = vi.fn().mockResolvedValue({
-				apiConfiguration: mockApiConfig,
-			})
-
-			// Simulate deletion that leaves a condense_context as the last message
-			const condenseMsg = {
-				ts: Date.now(),
-				type: "say" as const,
-				say: "condense_context" as const,
-				contextCondense: {
-					summary: "summarized",
-					cost: 0.001,
-					prevContextTokens: 1200,
-					newContextTokens: 400,
-				},
-			}
-			await task.overwriteClineMessages([condenseMsg])
-
-			// Spy and return a minimal successful stream to exercise attemptApiRequest
-			const mockStream = {
-				async *[Symbol.asyncIterator]() {
-					yield { type: "text", text: "ok" }
-				},
-				async next() {
-					return { done: true, value: { type: "text", text: "ok" } }
-				},
-				async return() {
-					return { done: true, value: undefined }
-				},
-				async throw(e: any) {
-					throw e
-				},
-				[Symbol.asyncDispose]: async () => {},
-			} as AsyncGenerator<ApiStreamChunk>
-
-			const createMessageSpy = vi.spyOn(task.api, "createMessage").mockReturnValue(mockStream)
-
-			// Act: initiate an API request
-			const iterator = task.attemptApiRequest(0)
-			await iterator.next() // read first chunk to ensure call happened
-
-			// Assert: metadata includes suppressPreviousResponseId set to true
-			expect(createMessageSpy).toHaveBeenCalled()
-			const callArgs = createMessageSpy.mock.calls[0]
-			// Args: [systemPrompt, cleanConversationHistory, metadata]
-			const metadata = callArgs?.[2]
-			expect(metadata?.suppressPreviousResponseId).toBe(true)
-
-			// The skip flag should be reset after the call
-			expect((task as any).skipPrevResponseIdOnce).toBe(false)
-		})
-	})
 	describe("abortTask", () => {
 		it("should set abort flag and emit TaskAborted event", async () => {
 			const task = new Task({
@@ -1831,6 +1762,80 @@ describe("Cline", () => {
 
 				// Restore mocks
 				consoleErrorSpy.mockRestore()
+			})
+		})
+
+		describe("cancelCurrentRequest", () => {
+			it("should cancel the current HTTP request via AbortController", () => {
+				const task = new Task({
+					provider: mockProvider,
+					apiConfiguration: mockApiConfig,
+					task: "test task",
+					startTask: false,
+				})
+
+				// Create a real AbortController and spy on its abort method
+				const mockAbortController = new AbortController()
+				const abortSpy = vi.spyOn(mockAbortController, "abort")
+				task.currentRequestAbortController = mockAbortController
+
+				// Spy on console.log
+				const consoleLogSpy = vi.spyOn(console, "log").mockImplementation(() => {})
+
+				// Call cancelCurrentRequest
+				task.cancelCurrentRequest()
+
+				// Verify abort was called on the controller
+				expect(abortSpy).toHaveBeenCalled()
+
+				// Verify the controller was cleared
+				expect(task.currentRequestAbortController).toBeUndefined()
+
+				// Verify logging
+				expect(consoleLogSpy).toHaveBeenCalledWith(expect.stringContaining("Aborting current HTTP request"))
+
+				// Restore console.log
+				consoleLogSpy.mockRestore()
+			})
+
+			it("should handle missing AbortController gracefully", () => {
+				const task = new Task({
+					provider: mockProvider,
+					apiConfiguration: mockApiConfig,
+					task: "test task",
+					startTask: false,
+				})
+
+				// Ensure no controller exists
+				task.currentRequestAbortController = undefined
+
+				// Should not throw when called with no controller
+				expect(() => task.cancelCurrentRequest()).not.toThrow()
+			})
+
+			it("should be called during dispose", () => {
+				const task = new Task({
+					provider: mockProvider,
+					apiConfiguration: mockApiConfig,
+					task: "test task",
+					startTask: false,
+				})
+
+				// Spy on cancelCurrentRequest
+				const cancelSpy = vi.spyOn(task, "cancelCurrentRequest")
+
+				// Mock other dispose operations
+				vi.spyOn(task.messageQueueService, "removeListener").mockImplementation(
+					() => task.messageQueueService as any,
+				)
+				vi.spyOn(task.messageQueueService, "dispose").mockImplementation(() => {})
+				vi.spyOn(task, "removeAllListeners").mockImplementation(() => task as any)
+
+				// Call dispose
+				task.dispose()
+
+				// Verify cancelCurrentRequest was called
+				expect(cancelSpy).toHaveBeenCalled()
 			})
 		})
 	})

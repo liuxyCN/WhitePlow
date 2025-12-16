@@ -1,4 +1,5 @@
 export * from "./anthropic.js"
+export * from "./baseten.js"
 export * from "./bedrock.js"
 export * from "./cerebras.js"
 export * from "./chinalifepe.js"
@@ -9,7 +10,6 @@ export * from "./doubao.js"
 export * from "./featherless.js"
 export * from "./fireworks.js"
 export * from "./gemini.js"
-export * from "./glama.js"
 export * from "./groq.js"
 export * from "./huggingface.js"
 export * from "./io-intelligence.js"
@@ -34,6 +34,7 @@ export * from "./deepinfra.js"
 export * from "./minimax.js"
 
 import { anthropicDefaultModelId } from "./anthropic.js"
+import { basetenDefaultModelId } from "./baseten.js"
 import { bedrockDefaultModelId } from "./bedrock.js"
 import { cerebrasDefaultModelId } from "./cerebras.js"
 import { chinalifePEDefaultModelId } from "./chinalifepe.js"
@@ -44,7 +45,6 @@ import { doubaoDefaultModelId } from "./doubao.js"
 import { featherlessDefaultModelId } from "./featherless.js"
 import { fireworksDefaultModelId } from "./fireworks.js"
 import { geminiDefaultModelId } from "./gemini.js"
-import { glamaDefaultModelId } from "./glama.js"
 import { groqDefaultModelId } from "./groq.js"
 import { ioIntelligenceDefaultModelId } from "./io-intelligence.js"
 import { litellmDefaultModelId } from "./lite-llm.js"
@@ -81,8 +81,6 @@ export function getProviderDefaultModelId(
 			return openRouterDefaultModelId
 		case "requesty":
 			return requestyDefaultModelId
-		case "glama":
-			return glamaDefaultModelId
 		case "unbound":
 			return unboundDefaultModelId
 		case "litellm":
@@ -95,6 +93,8 @@ export function getProviderDefaultModelId(
 			return "meta-llama/Llama-3.3-70B-Instruct"
 		case "chutes":
 			return chutesDefaultModelId
+		case "baseten":
+			return basetenDefaultModelId
 		case "bedrock":
 			return bedrockDefaultModelId
 		case "vertex":

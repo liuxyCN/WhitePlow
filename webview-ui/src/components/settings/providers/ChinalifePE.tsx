@@ -205,6 +205,25 @@ export const ChinalifePE = ({
 		}
 	}, [apiConfiguration, setApiConfigurationField])
 
+	// 初始化推理强度默认值为"中"
+	useEffect(() => {
+		if (apiConfiguration) {
+			// 对于自定义模型，设置 enableReasoningEffort 和 reasoningEffort 默认值
+			if (isCustomModel) {
+				if (apiConfiguration.enableReasoningEffort === undefined) {
+					setApiConfigurationField("enableReasoningEffort", true)
+				}
+				if (apiConfiguration.openAiCustomModelInfo?.reasoningEffort === undefined) {
+					const openAiCustomModelInfo = apiConfiguration.openAiCustomModelInfo || openAiModelInfoSaneDefaults
+					setApiConfigurationField("openAiCustomModelInfo", {
+						...openAiCustomModelInfo,
+						reasoningEffort: "medium" as ReasoningEffort,
+					})
+				}
+			}
+		}
+	}, [apiConfiguration, isCustomModel, setApiConfigurationField])
+
 	useDebounce(
 		() => {
 			if (apiConfiguration?.openAiBaseUrl && apiConfiguration?.openAiApiKey) {

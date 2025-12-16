@@ -1,7 +1,6 @@
 import React, { useState } from "react"
 import { Trans } from "react-i18next"
 import {
-	VSCodeButton,
 	VSCodeCheckbox,
 	VSCodeLink,
 	VSCodePanels,
@@ -9,6 +8,7 @@ import {
 	VSCodePanelView,
 	VSCodeTextField,
 } from "@vscode/webview-ui-toolkit/react"
+import { Webhook } from "lucide-react"
 
 import { McpServer } from "@roo/mcp"
 
@@ -27,19 +27,15 @@ import {
 	StandardTooltip,
 } from "@src/components/ui"
 import { buildDocLink } from "@src/utils/docLinks"
-
-import { Tab, TabContent, TabHeader } from "../common/Tab"
+import { Section } from "@src/components/settings/Section"
+import { SectionHeader } from "@src/components/settings/SectionHeader"
 
 import McpToolRow from "./McpToolRow"
 import McpResourceRow from "./McpResourceRow"
 import McpEnabledToggle from "./McpEnabledToggle"
 import { McpErrorRow } from "./McpErrorRow"
 
-type McpViewProps = {
-	onDone: () => void
-}
-
-const McpView = ({ onDone }: McpViewProps) => {
+const McpView = () => {
 	const {
 		mcpServers: servers,
 		alwaysAllowMcp,
@@ -59,13 +55,15 @@ const McpView = ({ onDone }: McpViewProps) => {
 	const { t } = useAppTranslation()
 
 	return (
-		<Tab>
-			<TabHeader className="flex justify-between items-center">
-				<h3 className="text-vscode-foreground m-0">{t("mcp:title")}</h3>
-				<Button onClick={onDone}>{t("mcp:done")}</Button>
-			</TabHeader>
+		<div>
+			<SectionHeader>
+				<div className="flex items-center gap-2">
+					<Webhook className="w-4" />
+					<div>{t("mcp:title")}</div>
+				</div>
+			</SectionHeader>
 
-			<TabContent>
+			<Section>
 				<div
 					style={{
 						color: "var(--vscode-foreground)",
@@ -283,8 +281,8 @@ const McpView = ({ onDone }: McpViewProps) => {
 						</div>
 					</>
 				)}
-			</TabContent>
-		</Tab>
+			</Section>
+		</div>
 	)
 }
 
@@ -701,15 +699,15 @@ const ServerRow = ({ server, alwaysAllowMcp }: { server: McpServer; alwaysAllowM
 										</React.Fragment>
 									))}
 							</div>
-							<VSCodeButton
-								appearance="secondary"
+							<Button
+								variant="secondary"
 								onClick={handleRestart}
 								disabled={server.status === "connecting"}
 								style={{ width: "calc(100% - 20px)", margin: "0 10px 10px 10px" }}>
 								{server.status === "connecting"
 									? t("mcp:serverStatus.retrying")
 									: t("mcp:serverStatus.retryConnection")}
-							</VSCodeButton>
+							</Button>
 						</div>
 					)}
 
@@ -726,7 +724,7 @@ const ServerRow = ({ server, alwaysAllowMcp }: { server: McpServer; alwaysAllowM
 						<Button variant="secondary" onClick={() => setShowDeleteConfirm(false)}>
 							{t("mcp:deleteDialog.cancel")}
 						</Button>
-						<Button variant="default" onClick={handleDelete}>
+						<Button variant="primary" onClick={handleDelete}>
 							{t("mcp:deleteDialog.delete")}
 						</Button>
 					</DialogFooter>
@@ -792,7 +790,7 @@ const ServerRow = ({ server, alwaysAllowMcp }: { server: McpServer; alwaysAllowM
 								style={{ width: "100%" }}>
 							</VSCodeTextField>
 							<Button
-								variant="default"
+								variant="primary"
 								size="sm"
 								onClick={handleSaveAuthKey}
 								disabled={!authKey.trim()}
@@ -816,7 +814,7 @@ const ServerRow = ({ server, alwaysAllowMcp }: { server: McpServer; alwaysAllowM
 										style={{ width: "100%" }}>
 									</VSCodeTextField>
 									<Button
-										variant="default"
+										variant="primary"
 										size="sm"
 										onClick={() => handleSaveExtraField(field.fieldName, extraFieldValues[field.fieldName] || "")}
 										disabled={!extraFieldValues[field.fieldName]?.trim()}

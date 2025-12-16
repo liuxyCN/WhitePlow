@@ -328,6 +328,343 @@ describe("BaseOpenAiCompatibleProvider", () => {
 		})
 	})
 
+	describe("separateToolCallsFromReasoning", () => {
+		it("should keep pure reasoning content as reasoning", async () => {
+			mockCreate.mockImplementationOnce(() => {
+				return {
+					[Symbol.asyncIterator]: () => ({
+						next: vi
+							.fn()
+							.mockResolvedValueOnce({
+								done: false,
+								value: { choices: [{ delta: { reasoning_content: "Let me think about this problem" } }] },
+							})
+							.mockResolvedValueOnce({ done: true }),
+					}),
+				}
+			})
+
+			const stream = handler.createMessage("system prompt", [])
+			const chunks = []
+			for await (const chunk of stream) {
+				chunks.push(chunk)
+			}
+
+			expect(chunks).toEqual([{ type: "reasoning", text: "Let me think about this problem" }])
+		})
+
+		it("should extract attempt_completion as text", async () => {
+			mockCreate.mockImplementationOnce(() => {
+				return {
+					[Symbol.asyncIterator]: () => ({
+						next: vi
+							.fn()
+							.mockResolvedValueOnce({
+								done: false,
+								value: {
+									choices: [
+										{
+											delta: {
+												reasoning_content:
+													"<attempt_completion>\n<result>Task completed successfully</result>\n</attempt_completion>",
+											},
+										},
+									],
+								},
+							})
+							.mockResolvedValueOnce({ done: true }),
+					}),
+				}
+			})
+
+			const stream = handler.createMessage("system prompt", [])
+			const chunks = []
+			for await (const chunk of stream) {
+				chunks.push(chunk)
+			}
+
+			expect(chunks).toEqual([
+				{
+					type: "text",
+					text: "<attempt_completion>\n<result>Task completed successfully</result>\n</attempt_completion>",
+				},
+			])
+		})
+
+		it("should separate reasoning and tool calls", async () => {
+			mockCreate.mockImplementationOnce(() => {
+				return {
+					[Symbol.asyncIterator]: () => ({
+						next: vi
+							.fn()
+							.mockResolvedValueOnce({
+								done: false,
+								value: {
+									choices: [
+										{
+											delta: {
+												reasoning_content:
+													'First I need to read the file.<read_file><path>test.txt</path></read_file>Now I will process it.',
+											},
+										},
+									],
+								},
+							})
+							.mockResolvedValueOnce({ done: true }),
+					}),
+				}
+			})
+
+			const stream = handler.createMessage("system prompt", [])
+			const chunks = []
+			for await (const chunk of stream) {
+				chunks.push(chunk)
+			}
+
+			expect(chunks).toEqual([
+				{ type: "reasoning", text: "First I need to read the file." },
+				{ type: "text", text: "<read_file><path>test.txt</path></read_file>" },
+				{ type: "reasoning", text: "Now I will process it." },
+			])
+		})
+
+		it("should handle multiple tool calls in reasoning", async () => {
+			mockCreate.mockImplementationOnce(() => {
+				return {
+					[Symbol.asyncIterator]: () => ({
+						next: vi
+							.fn()
+							.mockResolvedValueOnce({
+								done: false,
+								value: {
+									choices: [
+										{
+											delta: {
+												reasoning_content:
+													"<read_file><path>a.txt</path></read_file><write_to_file><path>b.txt</path><content>data</content></write_to_file>",
+											},
+										},
+									],
+								},
+							})
+							.mockResolvedValueOnce({ done: true }),
+					}),
+				}
+			})
+
+			const stream = handler.createMessage("system prompt", [])
+			const chunks = []
+			for await (const chunk of stream) {
+				chunks.push(chunk)
+			}
+
+			expect(chunks).toEqual([
+				{ type: "text", text: "<read_file><path>a.txt</path></read_file>" },
+				{ type: "text", text: "<write_to_file><path>b.txt</path><content>data</content></write_to_file>" },
+			])
+		})
+
+		it("should keep <think> tags as reasoning", async () => {
+			mockCreate.mockImplementationOnce(() => {
+				return {
+					[Symbol.asyncIterator]: () => ({
+						next: vi
+							.fn()
+							.mockResolvedValueOnce({
+								done: false,
+								value: {
+									choices: [
+										{
+											delta: {
+												reasoning_content:
+													"<think>Let me analyze this</think><read_file><path>test.txt</path></read_file>",
+											},
+										},
+									],
+								},
+							})
+							.mockResolvedValueOnce({ done: true }),
+					}),
+				}
+			})
+
+			const stream = handler.createMessage("system prompt", [])
+			const chunks = []
+			for await (const chunk of stream) {
+				chunks.push(chunk)
+			}
+
+			expect(chunks).toEqual([
+				{ type: "reasoning", text: "<think>Let me analyze this</think>" },
+				{ type: "text", text: "<read_file><path>test.txt</path></read_file>" },
+			])
+		})
+
+		it("should handle tool calls with attributes", async () => {
+			mockCreate.mockImplementationOnce(() => {
+				return {
+					[Symbol.asyncIterator]: () => ({
+						next: vi
+							.fn()
+							.mockResolvedValueOnce({
+								done: false,
+								value: {
+									choices: [
+										{
+											delta: {
+												reasoning_content: '<execute_command id="1"><command>ls -la</command></execute_command>',
+											},
+										},
+									],
+								},
+							})
+							.mockResolvedValueOnce({ done: true }),
+					}),
+				}
+			})
+
+			const stream = handler.createMessage("system prompt", [])
+			const chunks = []
+			for await (const chunk of stream) {
+				chunks.push(chunk)
+			}
+
+			expect(chunks).toEqual([
+				{ type: "text", text: '<execute_command id="1"><command>ls -la</command></execute_command>' },
+			])
+		})
+
+		it("should handle unknown tool names (generic XML tags)", async () => {
+			mockCreate.mockImplementationOnce(() => {
+				return {
+					[Symbol.asyncIterator]: () => ({
+						next: vi
+							.fn()
+							.mockResolvedValueOnce({
+								done: false,
+								value: {
+									choices: [
+										{
+											delta: {
+												reasoning_content:
+													"<custom_tool><param>value</param></custom_tool><another_tool><data>test</data></another_tool>",
+											},
+										},
+									],
+								},
+							})
+							.mockResolvedValueOnce({ done: true }),
+					}),
+				}
+			})
+
+			const stream = handler.createMessage("system prompt", [])
+			const chunks = []
+			for await (const chunk of stream) {
+				chunks.push(chunk)
+			}
+
+			expect(chunks).toEqual([
+				{ type: "text", text: "<custom_tool><param>value</param></custom_tool>" },
+				{ type: "text", text: "<another_tool><data>test</data></another_tool>" },
+			])
+		})
+
+		it("should handle mixed reasoning tags and tool calls", async () => {
+			mockCreate.mockImplementationOnce(() => {
+				return {
+					[Symbol.asyncIterator]: () => ({
+						next: vi
+							.fn()
+							.mockResolvedValueOnce({
+								done: false,
+								value: {
+									choices: [
+										{
+											delta: {
+												reasoning_content:
+													"<thinking>First step</thinking><read_file><path>x.txt</path></read_file><analysis>Second step</analysis>",
+											},
+										},
+									],
+								},
+							})
+							.mockResolvedValueOnce({ done: true }),
+					}),
+				}
+			})
+
+			const stream = handler.createMessage("system prompt", [])
+			const chunks = []
+			for await (const chunk of stream) {
+				chunks.push(chunk)
+			}
+
+			expect(chunks).toEqual([
+				{ type: "reasoning", text: "<thinking>First step</thinking>" },
+				{ type: "text", text: "<read_file><path>x.txt</path></read_file>" },
+				{ type: "reasoning", text: "<analysis>Second step</analysis>" },
+			])
+		})
+
+		it("should handle empty content gracefully", async () => {
+			mockCreate.mockImplementationOnce(() => {
+				return {
+					[Symbol.asyncIterator]: () => ({
+						next: vi
+							.fn()
+							.mockResolvedValueOnce({
+								done: false,
+								value: { choices: [{ delta: { reasoning_content: "" } }] },
+							})
+							.mockResolvedValueOnce({ done: true }),
+					}),
+				}
+			})
+
+			const stream = handler.createMessage("system prompt", [])
+			const chunks = []
+			for await (const chunk of stream) {
+				chunks.push(chunk)
+			}
+
+			expect(chunks).toEqual([])
+		})
+
+		it("should handle malformed XML gracefully", async () => {
+			mockCreate.mockImplementationOnce(() => {
+				return {
+					[Symbol.asyncIterator]: () => ({
+						next: vi
+							.fn()
+							.mockResolvedValueOnce({
+								done: false,
+								value: {
+									choices: [
+										{
+											delta: {
+												reasoning_content: "Some text <unclosed_tag> more text",
+											},
+										},
+									],
+								},
+							})
+							.mockResolvedValueOnce({ done: true }),
+					}),
+				}
+			})
+
+			const stream = handler.createMessage("system prompt", [])
+			const chunks = []
+			for await (const chunk of stream) {
+				chunks.push(chunk)
+			}
+
+			// Malformed XML should be treated as reasoning content
+			expect(chunks).toEqual([{ type: "reasoning", text: "Some text <unclosed_tag> more text" }])
+		})
+	})
+
 	describe("Basic functionality", () => {
 		it("should create stream with correct parameters", async () => {
 			mockCreate.mockImplementationOnce(() => {
@@ -380,7 +717,7 @@ describe("BaseOpenAiCompatibleProvider", () => {
 			const firstChunk = await stream.next()
 
 			expect(firstChunk.done).toBe(false)
-			expect(firstChunk.value).toEqual({ type: "usage", inputTokens: 100, outputTokens: 50 })
+			expect(firstChunk.value).toMatchObject({ type: "usage", inputTokens: 100, outputTokens: 50 })
 		})
 	})
 })

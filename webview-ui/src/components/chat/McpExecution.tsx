@@ -92,6 +92,39 @@ export const McpExecution = ({
 		// For arguments, we don't have a streaming status, so we check if it looks like complete JSON
 		const trimmed = argumentsText.trim()
 
+		// Check if the string is a JSON string (starts and ends with quotes)
+		// This handles cases where the string itself is a JSON-encoded string
+		if (trimmed.startsWith('"') && trimmed.endsWith('"')) {
+			try {
+				// Parse the JSON string to get the actual content
+				const unquoted = JSON.parse(trimmed)
+				// If the unquoted content is also a JSON string, parse it again
+				if (typeof unquoted === "string") {
+					try {
+						const parsed = JSON.parse(unquoted)
+						return {
+							isJson: true,
+							formatted: JSON.stringify(parsed, null, 2),
+						}
+					} catch {
+						// The unquoted string is not JSON, return it as-is
+						return { isJson: false, formatted: unquoted }
+					}
+				}
+				// If the unquoted content is already an object/array, format it
+				if (typeof unquoted === "object" && unquoted !== null) {
+					return {
+						isJson: true,
+						formatted: JSON.stringify(unquoted, null, 2),
+					}
+				}
+				// Otherwise return the unquoted value as-is
+				return { isJson: false, formatted: String(unquoted) }
+			} catch {
+				// Not a valid JSON string, fall through to normal parsing
+			}
+		}
+
 		// Basic check for complete JSON structure
 		if (
 			trimmed &&
@@ -157,8 +190,11 @@ export const McpExecution = ({
 
 	// Initialize with text if provided and parse command/response sections
 	useEffect(() => {
-		// Handle arguments text - don't parse JSON here as it might be incomplete
-		if (text) {
+		// Handle arguments text - prioritize useMcpServer?.arguments, then text
+		// Don't parse JSON here as it might be incomplete
+		if (useMcpServer?.arguments) {
+			setArgumentsText(useMcpServer.arguments)
+		} else if (text) {
 			setArgumentsText(text)
 		}
 

@@ -101,28 +101,6 @@ const getCommandsMap = ({ context, outputChannel, provider }: RegisterCommandOpt
 		// This ensures the focus happens after the view has switched
 		await visibleProvider.postMessageToWebview({ type: "action", action: "focusInput" })
 	},
-	mcpButtonClicked: () => {
-		const visibleProvider = getVisibleProviderOrLog(outputChannel)
-
-		if (!visibleProvider) {
-			return
-		}
-
-		TelemetryService.instance.captureTitleButtonClicked("mcp")
-
-		visibleProvider.postMessageToWebview({ type: "action", action: "mcpButtonClicked" })
-	},
-	promptsButtonClicked: () => {
-		const visibleProvider = getVisibleProviderOrLog(outputChannel)
-
-		if (!visibleProvider) {
-			return
-		}
-
-		TelemetryService.instance.captureTitleButtonClicked("prompts")
-
-		visibleProvider.postMessageToWebview({ type: "action", action: "promptsButtonClicked" })
-	},
 	popoutButtonClicked: () => {
 		TelemetryService.instance.captureTitleButtonClicked("popout")
 
@@ -156,13 +134,24 @@ const getCommandsMap = ({ context, outputChannel, provider }: RegisterCommandOpt
 		TelemetryService.instance.captureTitleButtonClicked("history")
 
 	visibleProvider.postMessageToWebview({ type: "action", action: "historyButtonClicked" })
-},
-marketplaceButtonClicked: () => {
-	const visibleProvider = getVisibleProviderOrLog(outputChannel)
-	if (!visibleProvider) return
-	visibleProvider.postMessageToWebview({ type: "action", action: "marketplaceButtonClicked" })
-},
-showHumanRelayDialog: (params: { requestId: string; promptText: string }) => {
+	},
+	mcpButtonClicked: () => {
+		const visibleProvider = getVisibleProviderOrLog(outputChannel)
+
+		if (!visibleProvider) {
+			return
+		}
+
+		TelemetryService.instance.captureTitleButtonClicked("mcp")
+
+		visibleProvider.postMessageToWebview({ type: "action", action: "mcpButtonClicked", values: { section: "mcp" } })
+	},
+	marketplaceButtonClicked: () => {
+		const visibleProvider = getVisibleProviderOrLog(outputChannel)
+		if (!visibleProvider) return
+		visibleProvider.postMessageToWebview({ type: "action", action: "marketplaceButtonClicked" })
+	},
+	showHumanRelayDialog: (params: { requestId: string; promptText: string }) => {
 		const panel = getPanel()
 
 		if (panel) {

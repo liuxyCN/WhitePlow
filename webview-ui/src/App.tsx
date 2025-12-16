@@ -15,7 +15,7 @@ import { ExtensionStateContextProvider, useExtensionState } from "./context/Exte
 import ChatView, { ChatViewRef } from "./components/chat/ChatView"
 import HistoryView from "./components/history/HistoryView"
 import SettingsView, { SettingsViewRef } from "./components/settings/SettingsView"
-import WelcomeView from "./components/welcome/WelcomeView"
+import WelcomeView from "./components/welcome/WelcomeViewProvider"
 import McpView from "./components/mcp/McpView"
 // Hidden: MCP Marketplace feature
 // import { MarketplaceView } from "./components/marketplace/MarketplaceView"
@@ -60,9 +60,8 @@ const MemoizedHumanRelayDialog = React.memo(HumanRelayDialog)
 const tabsByMessageAction: Partial<Record<NonNullable<ExtensionMessage["action"]>, Tab>> = {
 	chatButtonClicked: "chat",
 	settingsButtonClicked: "settings",
-	promptsButtonClicked: "modes",
-	mcpButtonClicked: "mcp",
 	historyButtonClicked: "history",
+	mcpButtonClicked: "settings",
 	// Hidden: MCP Marketplace feature
 	// marketplaceButtonClicked: "marketplace",
 	// cloudButtonClicked: "cloud",
@@ -256,8 +255,6 @@ const App = () => {
 		<WelcomeView />
 	) : (
 		<>
-			{tab === "modes" && <ModesView onDone={() => switchTab("chat")} />}
-			{tab === "mcp" && <McpView onDone={() => switchTab("chat")} />}
 			{tab === "history" && <HistoryView onDone={() => switchTab("chat")} />}
 		{tab === "settings" && (
 			<SettingsView ref={settingsRef} onDone={() => setTab("chat")} targetSection={currentSection} />
@@ -277,7 +274,6 @@ const App = () => {
 					isAuthenticated={cloudIsAuthenticated}
 					cloudApiUrl={cloudApiUrl}
 					organizations={cloudOrganizations}
-					onDone={() => switchTab("chat")}
 				/>
 			)} */}
 			<ChatView

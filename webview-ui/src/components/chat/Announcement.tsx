@@ -1,12 +1,12 @@
-import { useState, memo } from "react"
+import { memo, type ReactNode, useState } from "react"
 import { Trans } from "react-i18next"
+import { SiDiscord, SiReddit, SiX } from "react-icons/si"
 import { VSCodeLink } from "@vscode/webview-ui-toolkit/react"
 
 import { Package } from "@roo/package"
 import { useAppTranslation } from "@src/i18n/TranslationContext"
 import { vscode } from "@src/utils/vscode"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@src/components/ui"
-import { Button } from "@src/components/ui"
 
 interface AnnouncementProps {
 	hideAnnouncement: () => void
@@ -47,45 +47,36 @@ const Announcement = ({ hideAnnouncement }: AnnouncementProps) => {
 	)
 }
 
-const XLink = () => (
+const SocialLink = ({ icon, label, href }: { icon: ReactNode; label: string; href: string }) => (
 	<VSCodeLink
-		href="https://x.com/roocode"
+		href={href}
+		className="inline-flex items-center gap-1"
 		onClick={(e) => {
 			e.preventDefault()
-			vscode.postMessage({ type: "openExternal", url: "https://x.com/roocode" })
+			vscode.postMessage({ type: "openExternal", url: href })
 		}}>
-		X
+		{icon}
+		<span className="sr-only">{label}</span>
 	</VSCodeLink>
 )
 
-const DiscordLink = () => (
+const GitHubLink = ({ children }: { children?: ReactNode }) => (
 	<VSCodeLink
-		href="https://discord.gg/rCQcvT7Fnt"
+		href="https://ai.chinalifepe.com"
 		onClick={(e) => {
 			e.preventDefault()
-			vscode.postMessage({ type: "openExternal", url: "https://discord.gg/rCQcvT7Fnt" })
+			vscode.postMessage({ type: "openExternal", url: "https://ai.chinalifepe.com" })
 		}}>
-		Discord
+		{children}
 	</VSCodeLink>
 )
 
-const RedditLink = () => (
+const CareersLink = ({ children }: { children?: ReactNode }) => (
 	<VSCodeLink
-		href="https://www.reddit.com/r/RooCode/"
+		href="https://ai.chinalifepe.com"
 		onClick={(e) => {
 			e.preventDefault()
-			vscode.postMessage({ type: "openExternal", url: "https://www.reddit.com/r/RooCode/" })
-		}}>
-		r/RooCode
-	</VSCodeLink>
-)
-
-const CareersLink = ({ children }: { children?: React.ReactNode }) => (
-	<VSCodeLink
-		href="https://careers.roocode.com"
-		onClick={(e) => {
-			e.preventDefault()
-			vscode.postMessage({ type: "openExternal", url: "https://careers.roocode.com" })
+			vscode.postMessage({ type: "openExternal", url: "https://ai.chinalifepe.com" })
 		}}>
 		{children}
 	</VSCodeLink>

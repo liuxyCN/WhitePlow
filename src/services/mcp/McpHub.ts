@@ -35,6 +35,7 @@ import { fileExistsAtPath } from "../../utils/fs"
 import { arePathsEqual, getWorkspacePath } from "../../utils/path"
 import { injectVariables } from "../../utils/config"
 import { safeWriteJson } from "../../utils/safeWriteJson"
+import { sanitizeMcpName } from "../../utils/mcp-name"
 
 // Discriminated union for connection states
 export type ConnectedMcpConnection = {
@@ -161,6 +162,7 @@ export class McpHub {
 	private memoryServerDisabledStates: Map<string, boolean> = new Map()
 	private isProgrammaticUpdate: boolean = false
 	private flagResetTimer?: NodeJS.Timeout
+	private sanitizedNameRegistry: Map<string, string> = new Map()
 
 	constructor(provider: ClineProvider) {
 		this.providerRef = new WeakRef(provider)
@@ -790,7 +792,10 @@ export class McpHub {
 	private async initializeStreamableHttpGatewayServers(gatewayUrl: string, apiKey: string): Promise<void> {
 		try {
 			const serverList = await this.fetchGatewayServerList(gatewayUrl, apiKey)
-			console.log(`Found ${serverList.length} servers:`, serverList.map((s: any) => s.name || s))
+			console.log(
+				`Found ${serverList.length} servers:`,
+				serverList.map((s: any) => s.name || s),
+			)
 
 			// Connect to each server
 			for (const serverInfo of serverList) {
@@ -833,7 +838,8 @@ export class McpHub {
 				type: "streamable-http" as const,
 				url: `${gatewayUrl}${gatewayUrl.endsWith("/") ? "" : "/"}${serverPath}`,
 				headers: { API_KEY: apiKey },
-				disabled: this.memoryServerDisabledStates.get(serverName) ?? (serverName === "file-cool" ? false : true),
+				disabled:
+					this.memoryServerDisabledStates.get(serverName) ?? (serverName === "file-cool" ? false : true),
 				timeout: 600,
 				alwaysAllow: [],
 				disabledTools: [],
@@ -841,12 +847,12 @@ export class McpHub {
 
 			console.log(`Connecting to server: ${serverName}`)
 			await this.connectToServer(serverName, serverConfig, "memory")
-			
+
 			// Add configStatus and serverConfig to the server object if available
 			const connection = this.findConnection(serverName, "memory")
 			if (connection && typeof serverInfo === "object" && serverInfo !== null) {
 				connection.server.configStatus = serverInfo.configStatus
-				
+
 				// Use serverConfig from API response if it exists
 				if (serverInfo.serverConfig && typeof serverInfo.serverConfig === "object") {
 					connection.server.serverConfig = {
@@ -859,10 +865,13 @@ export class McpHub {
 				// Notify webview of the changes
 				await this.notifyWebviewOfServerChanges()
 			}
-			
+
 			console.log(`Successfully connected to server: ${serverName}`)
 		} catch (error) {
-			console.error(`Failed to connect to server ${typeof serverInfo === "string" ? serverInfo : serverInfo.name}:`, error)
+			console.error(
+				`Failed to connect to server ${typeof serverInfo === "string" ? serverInfo : serverInfo.name}:`,
+				error,
+			)
 		}
 	}
 
@@ -982,6 +991,10 @@ export class McpHub {
 	): Promise<void> {
 		// Remove existing connection if it exists with the same source
 		await this.deleteConnection(name, source)
+
+		// Register the sanitized name for O(1) lookup
+		const sanitizedName = sanitizeMcpName(name)
+		this.sanitizedNameRegistry.set(sanitizedName, name)
 
 		// Check if MCP is globally enabled
 		const mcpEnabled = await this.isMcpEnabled()
@@ -1201,14 +1214,14 @@ export class McpHub {
 			}
 			this.connections.push(connection)
 
-		// Connect (this will automatically start the transport)
-		await client.connect(transport)
-		connection.server.status = "connected"
-		connection.server.error = ""
-		connection.server.instructions = client.getInstructions()
+			// Connect (this will automatically start the transport)
+			await client.connect(transport)
+			connection.server.status = "connected"
+			connection.server.error = ""
+			connection.server.instructions = client.getInstructions()
 
-		// Initial fetch of tools and resources
-		await this.fetchServerCapabilities(connection, name, source)
+			// Initial fetch of tools and resources
+			await this.fetchServerCapabilities(connection, name, source)
 		} catch (error) {
 			// Update status with error
 			const connection = this.findConnection(name, source)
@@ -1270,10 +1283,27 @@ export class McpHub {
 		const globalConn = this.connections.find(
 			(conn) => conn.server.name === serverName && (conn.server.source === "global" || !conn.server.source),
 		)
+
 		if (globalConn) return globalConn
 
 		// Finally, look for memory servers
 		return this.connections.find((conn) => conn.server.name === serverName && conn.server.source === "memory")
+	}
+
+	/**
+	 * Find a connection by sanitized server name.
+	 * This is used when parsing MCP tool responses where the server name has been
+	 * sanitized (e.g., hyphens replaced with underscores) for API compliance.
+	 * @param sanitizedServerName The sanitized server name from the API tool call
+	 * @returns The original server name if found, or null if no match
+	 */
+	public findServerNameBySanitizedName(sanitizedServerName: string): string | null {
+		const exactMatch = this.connections.find((conn) => conn.server.name === sanitizedServerName)
+		if (exactMatch) {
+			return exactMatch.server.name
+		}
+
+		return this.sanitizedNameRegistry.get(sanitizedServerName) ?? null
 	}
 
 	private async fetchToolsList(serverName: string, source?: "global" | "project" | "memory"): Promise<McpTool[]> {
@@ -1293,11 +1323,13 @@ export class McpHub {
 			// Priority: use the passed source parameter first, then connection.server.source, finally default to "global"
 			// But never use "global" if the connection is actually a memory server (to prevent writing memory tools to global settings)
 			let actualSource = source || connection.server.source || "global"
-			
+
 			// Additional safety check: if connection is from memory but source parameter suggests otherwise, use memory
 			// This prevents memory servers from being treated as global/project servers when gateway errors occur
 			if (connection.server.source === "memory" && actualSource !== "memory") {
-				console.warn(`Source mismatch detected for ${serverName}: connection source is "memory" but actualSource is "${actualSource}". Using "memory" to prevent writing to global settings.`)
+				console.warn(
+					`Source mismatch detected for ${serverName}: connection source is "memory" but actualSource is "${actualSource}". Using "memory" to prevent writing to global settings.`,
+				)
 				actualSource = "memory"
 			}
 			let configPath: string
@@ -1449,6 +1481,13 @@ export class McpHub {
 			if (source && conn.server.source !== source) return true
 			return false
 		})
+
+		// Remove from sanitized name registry if no more connections with this name exist
+		const remainingConnections = this.connections.filter((conn) => conn.server.name === name)
+		if (remainingConnections.length === 0) {
+			const sanitizedName = sanitizeMcpName(name)
+			this.sanitizedNameRegistry.delete(sanitizedName)
+		}
 	}
 
 	async updateServerConnections(
@@ -1644,7 +1683,7 @@ export class McpHub {
 			}
 			return
 		}
-		
+
 		this.isConnecting = true
 
 		// Check if MCP is globally enabled
@@ -1726,7 +1765,7 @@ export class McpHub {
 
 			// Update all memory server connections
 			const memoryConnections = this.connections.filter((conn) => conn.server.source === "memory")
-			
+
 			for (const connection of memoryConnections) {
 				if (connection.server.tools) {
 					for (const tool of connection.server.tools) {
@@ -1980,20 +2019,40 @@ export class McpHub {
 
 			// Handle file-based servers (global/project)
 			await this.updateServerConfig(serverName, { disabled }, serverSource)
-			connection.server.disabled = disabled
 
-			// Reconnect based on status change
-			if (disabled && connection.server.status === "connected") {
-				this.removeFileWatchersForServer(serverName)
-				await this.deleteConnection(serverName, serverSource)
-				const updatedConfig = await this.readServerConfigFromFile(serverName, serverSource)
-				await this.connectToServer(serverName, updatedConfig, serverSource)
-			} else if (!disabled && connection.server.status === "disconnected") {
-				const updatedConfig = await this.readServerConfigFromFile(serverName, serverSource)
-				await this.deleteConnection(serverName, serverSource)
-				await this.connectToServer(serverName, updatedConfig, serverSource)
-			} else if (connection.type === "connected" && connection.server.status === "connected") {
-				await this.fetchServerCapabilities(connection, serverName, serverSource)
+			// Update the connection object
+			if (connection) {
+				try {
+					connection.server.disabled = disabled
+
+					// If disabling a connected server, disconnect it
+					if (disabled && connection.server.status === "connected") {
+						// Clean up file watchers when disabling
+						this.removeFileWatchersForServer(serverName)
+						await this.deleteConnection(serverName, serverSource)
+						// Re-add as a disabled connection
+						// Re-read config from file to get updated disabled state
+						const updatedConfig = await this.readServerConfigFromFile(serverName, serverSource)
+						await this.connectToServer(serverName, updatedConfig, serverSource)
+					} else if (!disabled && connection.server.status === "disconnected") {
+						// If enabling a disabled server, connect it
+						// Re-read config from file to get updated disabled state
+						const updatedConfig = await this.readServerConfigFromFile(serverName, serverSource)
+						await this.deleteConnection(serverName, serverSource)
+						// When re-enabling, file watchers will be set up in connectToServer
+						await this.connectToServer(serverName, updatedConfig, serverSource)
+					} else if (connection.server.status === "connected") {
+						// Only refresh capabilities if connected
+						connection.server.tools = await this.fetchToolsList(serverName, serverSource)
+						connection.server.resources = await this.fetchResourcesList(serverName, serverSource)
+						connection.server.resourceTemplates = await this.fetchResourceTemplatesList(
+							serverName,
+							serverSource,
+						)
+					}
+				} catch (error) {
+					console.error(`Failed to refresh capabilities for ${serverName}:`, error)
+				}
 			}
 
 			await this.notifyWebviewOfServerChanges()
@@ -2112,7 +2171,7 @@ export class McpHub {
 			// Force use memory source to prevent writing to global settings
 			source = "memory"
 		}
-		
+
 		// Skip config updates for memory servers
 		if (source === "memory") {
 			return
@@ -2381,7 +2440,7 @@ export class McpHub {
 			// Force use memory source to prevent writing to global settings
 			source = "memory"
 		}
-		
+
 		// Skip config file updates for memory servers
 		if (source === "memory") {
 			// For memory servers, just update the in-memory tool configuration

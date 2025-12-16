@@ -1,9 +1,10 @@
 import { z } from "zod"
 
-import { modelInfoSchema, reasoningEffortWithMinimalSchema, verbosityLevelsSchema, serviceTierSchema } from "./model.js"
+import { modelInfoSchema, reasoningEffortSettingSchema, verbosityLevelsSchema, serviceTierSchema } from "./model.js"
 import { codebaseIndexProviderSchema } from "./codebase-index.js"
 import {
 	anthropicModels,
+	basetenModels,
 	bedrockModels,
 	cerebrasModels,
 	chinalifePEModels,
@@ -48,7 +49,6 @@ export const dynamicProviders = [
 	"io-intelligence",
 	"requesty",
 	"unbound",
-	"glama",
 	"roo",
 	"chutes",
 ] as const
@@ -121,6 +121,7 @@ export const providerNames = [
 	...fauxProviders,
 	"anthropic",
 	"bedrock",
+	"baseten",
 	"cerebras",
 	"chinalifepe",
 	"claude-code",
@@ -178,12 +179,15 @@ const baseProviderSettingsSchema = z.object({
 
 	// Model reasoning.
 	enableReasoningEffort: z.boolean().optional(),
-	reasoningEffort: reasoningEffortWithMinimalSchema.optional(),
+	reasoningEffort: reasoningEffortSettingSchema.optional(),
 	modelMaxTokens: z.number().optional(),
 	modelMaxThinkingTokens: z.number().optional(),
 
 	// Model verbosity.
 	verbosity: verbosityLevelsSchema.optional(),
+
+	// Tool protocol override for this profile.
+	toolProtocol: z.enum(["xml", "native"]).optional(),
 })
 
 // Several of the providers share common model config properties.
@@ -201,11 +205,6 @@ const anthropicSchema = apiModelIdProviderModelSchema.extend({
 const claudeCodeSchema = apiModelIdProviderModelSchema.extend({
 	claudeCodePath: z.string().optional(),
 	claudeCodeMaxOutputTokens: z.number().int().min(1).max(200000).optional(),
-})
-
-const glamaSchema = baseProviderSettingsSchema.extend({
-	glamaModelId: z.string().optional(),
-	glamaApiKey: z.string().optional(),
 })
 
 const openRouterSchema = baseProviderSettingsSchema.extend({
@@ -233,6 +232,7 @@ const bedrockSchema = apiModelIdProviderModelSchema.extend({
 	awsBedrockEndpointEnabled: z.boolean().optional(),
 	awsBedrockEndpoint: z.string().optional(),
 	awsBedrock1MContext: z.boolean().optional(), // Enable 'context-1m-2025-08-07' beta for 1M context window.
+	awsBedrockServiceTier: z.enum(["STANDARD", "FLEX", "PRIORITY"]).optional(), // AWS Bedrock service tier selection
 })
 
 const vertexSchema = apiModelIdProviderModelSchema.extend({
@@ -390,7 +390,7 @@ const sambaNovaSchema = apiModelIdProviderModelSchema.extend({
 	sambaNovaApiKey: z.string().optional(),
 })
 
-export const zaiApiLineSchema = z.enum(["international_coding", "china_coding"])
+export const zaiApiLineSchema = z.enum(["international_coding", "china_coding", "international_api", "china_api"])
 
 export type ZaiApiLine = z.infer<typeof zaiApiLineSchema>
 
@@ -425,6 +425,10 @@ const vercelAiGatewaySchema = baseProviderSettingsSchema.extend({
 	vercelAiGatewayModelId: z.string().optional(),
 })
 
+const basetenSchema = apiModelIdProviderModelSchema.extend({
+	basetenApiKey: z.string().optional(),
+})
+
 const defaultSchema = z.object({
 	apiProvider: z.undefined(),
 })
@@ -432,7 +436,6 @@ const defaultSchema = z.object({
 export const providerSettingsSchemaDiscriminated = z.discriminatedUnion("apiProvider", [
 	anthropicSchema.merge(z.object({ apiProvider: z.literal("anthropic") })),
 	claudeCodeSchema.merge(z.object({ apiProvider: z.literal("claude-code") })),
-	glamaSchema.merge(z.object({ apiProvider: z.literal("glama") })),
 	openRouterSchema.merge(z.object({ apiProvider: z.literal("openrouter") })),
 	bedrockSchema.merge(z.object({ apiProvider: z.literal("bedrock") })),
 	vertexSchema.merge(z.object({ apiProvider: z.literal("vertex") })),
@@ -455,6 +458,7 @@ export const providerSettingsSchemaDiscriminated = z.discriminatedUnion("apiProv
 	fakeAiSchema.merge(z.object({ apiProvider: z.literal("fake-ai") })),
 	xaiSchema.merge(z.object({ apiProvider: z.literal("xai") })),
 	groqSchema.merge(z.object({ apiProvider: z.literal("groq") })),
+	basetenSchema.merge(z.object({ apiProvider: z.literal("baseten") })),
 	huggingFaceSchema.merge(z.object({ apiProvider: z.literal("huggingface") })),
 	chutesSchema.merge(z.object({ apiProvider: z.literal("chutes") })),
 	litellmSchema.merge(z.object({ apiProvider: z.literal("litellm") })),
@@ -475,7 +479,6 @@ export const providerSettingsSchema = z.object({
 	apiProvider: providerNamesSchema.optional(),
 	...anthropicSchema.shape,
 	...claudeCodeSchema.shape,
-	...glamaSchema.shape,
 	...openRouterSchema.shape,
 	...bedrockSchema.shape,
 	...vertexSchema.shape,
@@ -498,6 +501,7 @@ export const providerSettingsSchema = z.object({
 	...fakeAiSchema.shape,
 	...xaiSchema.shape,
 	...groqSchema.shape,
+	...basetenSchema.shape,
 	...huggingFaceSchema.shape,
 	...chutesSchema.shape,
 	...litellmSchema.shape,
@@ -532,7 +536,6 @@ export const PROVIDER_SETTINGS_KEYS = providerSettingsSchema.keyof().options
 
 export const modelIdKeys = [
 	"apiModelId",
-	"glamaModelId",
 	"openRouterModelId",
 	"openAiModelId",
 	"ollamaModelId",
@@ -566,7 +569,6 @@ export const isTypicalProvider = (key: unknown): key is TypicalProvider =>
 export const modelIdKeysByProvider: Record<TypicalProvider, ModelIdKey> = {
 	anthropic: "apiModelId",
 	"claude-code": "apiModelId",
-	glama: "glamaModelId",
 	openrouter: "openRouterModelId",
 	bedrock: "apiModelId",
 	vertex: "apiModelId",
@@ -586,6 +588,7 @@ export const modelIdKeysByProvider: Record<TypicalProvider, ModelIdKey> = {
 	requesty: "requestyModelId",
 	xai: "apiModelId",
 	groq: "apiModelId",
+	baseten: "apiModelId",
 	chutes: "apiModelId",
 	litellm: "litellmModelId",
 	huggingface: "huggingFaceModelId",
@@ -605,7 +608,7 @@ export const modelIdKeysByProvider: Record<TypicalProvider, ModelIdKey> = {
  */
 
 // Providers that use Anthropic-style API protocol.
-export const ANTHROPIC_STYLE_PROVIDERS: ProviderName[] = ["anthropic", "claude-code", "bedrock"]
+export const ANTHROPIC_STYLE_PROVIDERS: ProviderName[] = ["anthropic", "claude-code", "bedrock", "minimax"]
 
 export const getApiProtocol = (provider: ProviderName | undefined, modelId?: string): "anthropic" | "openai" => {
 	if (provider && ANTHROPIC_STYLE_PROVIDERS.includes(provider)) {
@@ -723,10 +726,10 @@ export const MODELS_BY_PROVIDER: Record<
 		models: Object.keys(vscodeLlmModels),
 	},
 	xai: { id: "xai", label: "xAI (Grok)", models: Object.keys(xaiModels) },
-	zai: { id: "zai", label: "Zai", models: Object.keys(internationalZAiModels) },
+	zai: { id: "zai", label: "Z.ai", models: Object.keys(internationalZAiModels) },
+	baseten: { id: "baseten", label: "Baseten", models: Object.keys(basetenModels) },
 
 	// Dynamic providers; models pulled from remote APIs.
-	glama: { id: "glama", label: "Glama", models: [] },
 	huggingface: { id: "huggingface", label: "Hugging Face", models: [] },
 	litellm: { id: "litellm", label: "LiteLLM", models: [] },
 	openrouter: { id: "openrouter", label: "OpenRouter", models: [] },

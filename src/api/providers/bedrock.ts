@@ -6,7 +6,11 @@ import {
 	ContentBlock,
 	Message,
 	SystemContentBlock,
+	Tool,
+	ToolConfiguration,
+	ToolChoice,
 } from "@aws-sdk/client-bedrock-runtime"
+import OpenAI from "openai"
 import { fromIni } from "@aws-sdk/credential-providers"
 import { Anthropic } from "@anthropic-ai/sdk"
 
@@ -14,6 +18,7 @@ import {
 	type ModelInfo,
 	type ProviderSettings,
 	type BedrockModelId,
+	type BedrockServiceTier,
 	bedrockDefaultModelId,
 	bedrockModels,
 	bedrockDefaultPromptRouterModelId,
@@ -23,6 +28,8 @@ import {
 	AWS_INFERENCE_PROFILE_MAPPING,
 	BEDROCK_1M_CONTEXT_MODEL_IDS,
 	BEDROCK_GLOBAL_INFERENCE_MODEL_IDS,
+	BEDROCK_SERVICE_TIER_MODEL_IDS,
+	BEDROCK_SERVICE_TIER_PRICING,
 } from "@roo-code/types"
 
 import { ApiStream } from "../transform/stream"
@@ -67,6 +74,14 @@ interface BedrockPayload {
 	inferenceConfig: BedrockInferenceConfig
 	anthropic_version?: string
 	additionalModelRequestFields?: BedrockAdditionalModelFields
+	toolConfig?: ToolConfiguration
+}
+
+// Extended payload type that includes service_tier as a top-level parameter
+// AWS Bedrock service tiers (STANDARD, FLEX, PRIORITY) are specified at the top level
+// https://docs.aws.amazon.com/bedrock/latest/userguide/service-tiers-inference.html
+type BedrockPayloadWithServiceTier = BedrockPayload & {
+	service_tier?: BedrockServiceTier
 }
 
 // Define specific types for content block events to avoid 'as any' usage
@@ -75,6 +90,10 @@ interface ContentBlockStartEvent {
 	start?: {
 		text?: string
 		thinking?: string
+		toolUse?: {
+			toolUseId?: string
+			name?: string
+		}
 	}
 	contentBlockIndex?: number
 	// Alternative structure used by some AWS SDK versions
@@ -89,6 +108,11 @@ interface ContentBlockStartEvent {
 		reasoningContent?: {
 			text?: string
 		}
+		// Tool use block start
+		toolUse?: {
+			toolUseId?: string
+			name?: string
+		}
 	}
 }
 
@@ -100,6 +124,10 @@ interface ContentBlockDeltaEvent {
 		// AWS SDK structure for reasoning content deltas
 		reasoningContent?: {
 			text?: string
+		}
+		// Tool use input delta
+		toolUse?: {
+			input?: string
 		}
 	}
 	contentBlockIndex?: number
@@ -327,6 +355,15 @@ export class AwsBedrockHandler extends BaseProvider implements SingleCompletionH
 		const modelConfig = this.getModel()
 		const usePromptCache = Boolean(this.options.awsUsePromptCache && this.supportsAwsPromptCache(modelConfig))
 
+		// Determine early if native tools should be used (needed for message conversion)
+		const supportsNativeTools = modelConfig.info.supportsNativeTools ?? false
+		const useNativeTools =
+			supportsNativeTools &&
+			metadata?.tools &&
+			metadata.tools.length > 0 &&
+			metadata?.toolProtocol !== "xml" &&
+			metadata?.tool_choice !== "none"
+
 		const conversationId =
 			messages.length > 0
 				? `conv_${messages[0].role}_${
@@ -342,6 +379,7 @@ export class AwsBedrockHandler extends BaseProvider implements SingleCompletionH
 			usePromptCache,
 			modelConfig.info,
 			conversationId,
+			useNativeTools,
 		)
 
 		let additionalModelRequestFields: BedrockAdditionalModelFields | undefined
@@ -382,15 +420,53 @@ export class AwsBedrockHandler extends BaseProvider implements SingleCompletionH
 		const is1MContextEnabled =
 			BEDROCK_1M_CONTEXT_MODEL_IDS.includes(baseModelId as any) && this.options.awsBedrock1MContext
 
-		// Add anthropic_beta for 1M context to additionalModelRequestFields
+		// Add anthropic_beta headers for various features
+		// Start with an empty array and add betas as needed
+		const anthropicBetas: string[] = []
+
+		// Add 1M context beta if enabled
 		if (is1MContextEnabled) {
+			anthropicBetas.push("context-1m-2025-08-07")
+		}
+
+		// Add fine-grained tool streaming beta when native tools are used with Claude models
+		// This enables proper tool use streaming for Anthropic models on Bedrock
+		if (useNativeTools && baseModelId.includes("claude")) {
+			anthropicBetas.push("fine-grained-tool-streaming-2025-05-14")
+		}
+
+		// Apply anthropic_beta to additionalModelRequestFields if any betas are needed
+		if (anthropicBetas.length > 0) {
 			if (!additionalModelRequestFields) {
 				additionalModelRequestFields = {} as BedrockAdditionalModelFields
 			}
-			additionalModelRequestFields.anthropic_beta = ["context-1m-2025-08-07"]
+			additionalModelRequestFields.anthropic_beta = anthropicBetas
 		}
 
-		const payload: BedrockPayload = {
+		// Determine if service tier should be applied (checked later when building payload)
+		const useServiceTier =
+			this.options.awsBedrockServiceTier && BEDROCK_SERVICE_TIER_MODEL_IDS.includes(baseModelId as any)
+		if (useServiceTier) {
+			logger.info("Service tier specified for Bedrock request", {
+				ctx: "bedrock",
+				modelId: modelConfig.id,
+				serviceTier: this.options.awsBedrockServiceTier,
+			})
+		}
+
+		// Build tool configuration if native tools are enabled
+		let toolConfig: ToolConfiguration | undefined
+		if (useNativeTools && metadata?.tools) {
+			toolConfig = {
+				tools: this.convertToolsForBedrock(metadata.tools),
+				toolChoice: this.convertToolChoiceForBedrock(metadata.tool_choice),
+			}
+		}
+
+		// Build payload with optional service_tier at top level
+		// Service tier is a top-level parameter per AWS documentation, NOT inside additionalModelRequestFields
+		// https://docs.aws.amazon.com/bedrock/latest/userguide/service-tiers-inference.html
+		const payload: BedrockPayloadWithServiceTier = {
 			modelId: modelConfig.id,
 			messages: formatted.messages,
 			system: formatted.system,
@@ -398,6 +474,9 @@ export class AwsBedrockHandler extends BaseProvider implements SingleCompletionH
 			...(additionalModelRequestFields && { additionalModelRequestFields }),
 			// Add anthropic_version at top level when using thinking features
 			...(thinkingEnabled && { anthropic_version: "bedrock-2023-05-31" }),
+			...(toolConfig && { toolConfig }),
+			// Add service_tier as a top-level parameter (not inside additionalModelRequestFields)
+			...(useServiceTier && { service_tier: this.options.awsBedrockServiceTier }),
 		}
 
 		// Create AbortController with 10 minute timeout
@@ -530,6 +609,19 @@ export class AwsBedrockHandler extends BaseProvider implements SingleCompletionH
 								text: contentBlock.thinking,
 							}
 						}
+					}
+					// Handle tool use block start
+					else if (cbStart.start?.toolUse || cbStart.contentBlock?.toolUse) {
+						const toolUse = cbStart.start?.toolUse || cbStart.contentBlock?.toolUse
+						if (toolUse) {
+							yield {
+								type: "tool_call_partial",
+								index: cbStart.contentBlockIndex ?? 0,
+								id: toolUse.toolUseId,
+								name: toolUse.name,
+								arguments: undefined,
+							}
+						}
 					} else if (cbStart.start?.text) {
 						yield {
 							type: "text",
@@ -549,12 +641,25 @@ export class AwsBedrockHandler extends BaseProvider implements SingleCompletionH
 					// - delta.reasoningContent.text: AWS docs structure for reasoning
 					// - delta.thinking: alternative structure for thinking content
 					// - delta.text: standard text content
+					// - delta.toolUse.input: tool input arguments
 					if (delta) {
 						// Check for reasoningContent property (AWS SDK structure)
 						if (delta.reasoningContent?.text) {
 							yield {
 								type: "reasoning",
 								text: delta.reasoningContent.text,
+							}
+							continue
+						}
+
+						// Handle tool use input delta
+						if (delta.toolUse?.input) {
+							yield {
+								type: "tool_call_partial",
+								index: cbDelta.contentBlockIndex ?? 0,
+								id: undefined,
+								name: undefined,
+								arguments: delta.toolUse.input,
 							}
 							continue
 						}
@@ -724,9 +829,12 @@ export class AwsBedrockHandler extends BaseProvider implements SingleCompletionH
 		usePromptCache: boolean = false,
 		modelInfo?: any,
 		conversationId?: string, // Optional conversation ID to track cache points across messages
+		useNativeTools: boolean = false, // Whether native tool calling is being used
 	): { system: SystemContentBlock[]; messages: Message[] } {
 		// First convert messages using shared converter for proper image handling
-		const convertedMessages = sharedConverter(anthropicMessages as Anthropic.Messages.MessageParam[])
+		const convertedMessages = sharedConverter(anthropicMessages as Anthropic.Messages.MessageParam[], {
+			useNativeTools,
+		})
 
 		// If prompt caching is disabled, return the converted messages directly
 		if (!usePromptCache) {
@@ -1007,6 +1115,30 @@ export class AwsBedrockHandler extends BaseProvider implements SingleCompletionH
 			defaultTemperature: BEDROCK_DEFAULT_TEMPERATURE,
 		})
 
+		// Apply service tier pricing if specified and model supports it
+		const baseModelIdForTier = this.parseBaseModelId(modelConfig.id)
+		if (this.options.awsBedrockServiceTier && BEDROCK_SERVICE_TIER_MODEL_IDS.includes(baseModelIdForTier as any)) {
+			const pricingMultiplier = BEDROCK_SERVICE_TIER_PRICING[this.options.awsBedrockServiceTier]
+			if (pricingMultiplier && pricingMultiplier !== 1.0) {
+				// Apply pricing multiplier to all price fields
+				modelConfig.info = {
+					...modelConfig.info,
+					inputPrice: modelConfig.info.inputPrice
+						? modelConfig.info.inputPrice * pricingMultiplier
+						: undefined,
+					outputPrice: modelConfig.info.outputPrice
+						? modelConfig.info.outputPrice * pricingMultiplier
+						: undefined,
+					cacheWritesPrice: modelConfig.info.cacheWritesPrice
+						? modelConfig.info.cacheWritesPrice * pricingMultiplier
+						: undefined,
+					cacheReadsPrice: modelConfig.info.cacheReadsPrice
+						? modelConfig.info.cacheReadsPrice * pricingMultiplier
+						: undefined,
+				}
+			}
+		}
+
 		// Don't override maxTokens/contextWindow here; handled in getModelById (and includes user overrides)
 		return { ...modelConfig, ...params } as {
 			id: BedrockModelId | string
@@ -1052,6 +1184,72 @@ export class AwsBedrockHandler extends BaseProvider implements SingleCompletionH
 		}
 
 		return content
+	}
+
+	/************************************************************************************
+	 *
+	 *     NATIVE TOOLS
+	 *
+	 *************************************************************************************/
+
+	/**
+	 * Convert OpenAI tool definitions to Bedrock Converse format
+	 * @param tools Array of OpenAI ChatCompletionTool definitions
+	 * @returns Array of Bedrock Tool definitions
+	 */
+	private convertToolsForBedrock(tools: OpenAI.Chat.ChatCompletionTool[]): Tool[] {
+		return tools
+			.filter((tool) => tool.type === "function")
+			.map(
+				(tool) =>
+					({
+						toolSpec: {
+							name: tool.function.name,
+							description: tool.function.description,
+							inputSchema: {
+								json: tool.function.parameters as Record<string, unknown>,
+							},
+						},
+					}) as Tool,
+			)
+	}
+
+	/**
+	 * Convert OpenAI tool_choice to Bedrock ToolChoice format
+	 * @param toolChoice OpenAI tool_choice parameter
+	 * @returns Bedrock ToolChoice configuration
+	 */
+	private convertToolChoiceForBedrock(
+		toolChoice: OpenAI.Chat.ChatCompletionCreateParams["tool_choice"],
+	): ToolChoice | undefined {
+		if (!toolChoice) {
+			// Default to auto - model decides whether to use tools
+			return { auto: {} } as ToolChoice
+		}
+
+		if (typeof toolChoice === "string") {
+			switch (toolChoice) {
+				case "none":
+					return undefined // Bedrock doesn't have "none", just omit tools
+				case "auto":
+					return { auto: {} } as ToolChoice
+				case "required":
+					return { any: {} } as ToolChoice // Model must use at least one tool
+				default:
+					return { auto: {} } as ToolChoice
+			}
+		}
+
+		// Handle object form { type: "function", function: { name: string } }
+		if (typeof toolChoice === "object" && "function" in toolChoice) {
+			return {
+				tool: {
+					name: toolChoice.function.name,
+				},
+			} as ToolChoice
+		}
+
+		return { auto: {} } as ToolChoice
 	}
 
 	/************************************************************************************

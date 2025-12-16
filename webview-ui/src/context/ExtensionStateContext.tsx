@@ -118,10 +118,6 @@ export interface ExtensionStateContextType extends ExtensionState {
 	setTaskSyncEnabled: (value: boolean) => void
 	featureRoomoteControlEnabled: boolean
 	setFeatureRoomoteControlEnabled: (value: boolean) => void
-	alwaysApproveResubmit?: boolean
-	setAlwaysApproveResubmit: (value: boolean) => void
-	requestDelaySeconds: number
-	setRequestDelaySeconds: (value: number) => void
 	setCurrentApiConfigName: (value: string) => void
 	setListApiConfigMeta: (value: ProviderSettingsEntry[]) => void
 	mode: Mode
@@ -156,13 +152,13 @@ export interface ExtensionStateContextType extends ExtensionState {
 	setTerminalCompressProgressBar: (value: boolean) => void
 	setHistoryPreviewCollapsed: (value: boolean) => void
 	setReasoningBlockCollapsed: (value: boolean) => void
+	enterBehavior?: "send" | "newline"
+	setEnterBehavior: (value: "send" | "newline") => void
 	autoCondenseContext: boolean
 	setAutoCondenseContext: (value: boolean) => void
 	autoCondenseContextPercent: number
 	setAutoCondenseContextPercent: (value: number) => void
 	routerModels?: RouterModels
-	alwaysAllowUpdateTodoList?: boolean
-	setAlwaysAllowUpdateTodoList: (value: boolean) => void
 	includeDiagnosticMessages?: boolean
 	setIncludeDiagnosticMessages: (value: boolean) => void
 	maxDiagnosticMessages?: number
@@ -208,6 +204,7 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 		deniedCommands: [],
 		soundEnabled: false,
 		soundVolume: 0.5,
+		isBrowserSessionActive: false,
 		ttsEnabled: false,
 		ttsSpeed: 1.0,
 		diffEnabled: false,
@@ -230,8 +227,6 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 		remoteControlEnabled: false,
 		taskSyncEnabled: false,
 		featureRoomoteControlEnabled: false,
-		alwaysApproveResubmit: false,
-		requestDelaySeconds: 5,
 		currentApiConfigName: "default",
 		listApiConfigMeta: [],
 		mode: defaultModeSlug,
@@ -262,6 +257,7 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 		terminalCompressProgressBar: true, // Default to compress progress bar output
 		historyPreviewCollapsed: false, // Initialize the new state (default to expanded)
 		reasoningBlockCollapsed: true, // Default to collapsed
+		enterBehavior: "send", // Default: Enter sends, Shift+Enter creates newline
 		cloudUserInfo: null,
 		cloudIsAuthenticated: false,
 		cloudOrganizations: [],
@@ -281,10 +277,6 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 			codebaseIndexSearchMinScore: undefined,
 		},
 		codebaseIndexModels: { ollama: {}, openai: {} },
-		alwaysAllowUpdateTodoList: true,
-		alwaysAllowReadOnly: true,
-		alwaysAllowMcp: true,
-		alwaysAllowSubtasks: true,
 		includeDiagnosticMessages: true,
 		maxDiagnosticMessages: 50,
 		openRouterImageApiKey: "",
@@ -546,8 +538,6 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 		setTaskSyncEnabled: (value) => setState((prevState) => ({ ...prevState, taskSyncEnabled: value }) as any),
 		setFeatureRoomoteControlEnabled: (value) =>
 			setState((prevState) => ({ ...prevState, featureRoomoteControlEnabled: value })),
-		setAlwaysApproveResubmit: (value) => setState((prevState) => ({ ...prevState, alwaysApproveResubmit: value })),
-		setRequestDelaySeconds: (value) => setState((prevState) => ({ ...prevState, requestDelaySeconds: value })),
 		setCurrentApiConfigName: (value) => setState((prevState) => ({ ...prevState, currentApiConfigName: value })),
 		setListApiConfigMeta,
 		setMode: (value: Mode) => setState((prevState) => ({ ...prevState, mode: value })),
@@ -589,6 +579,8 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 			setState((prevState) => ({ ...prevState, historyPreviewCollapsed: value })),
 		setReasoningBlockCollapsed: (value) =>
 			setState((prevState) => ({ ...prevState, reasoningBlockCollapsed: value })),
+		enterBehavior: state.enterBehavior ?? "send",
+		setEnterBehavior: (value) => setState((prevState) => ({ ...prevState, enterBehavior: value })),
 		setHasOpenedModeSelector: (value) => setState((prevState) => ({ ...prevState, hasOpenedModeSelector: value })),
 		setAutoCondenseContext: (value) => setState((prevState) => ({ ...prevState, autoCondenseContext: value })),
 		setAutoCondenseContextPercent: (value) =>
@@ -597,10 +589,6 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 		setCustomCondensingPrompt: (value) =>
 			setState((prevState) => ({ ...prevState, customCondensingPrompt: value })),
 		setProfileThresholds: (value) => setState((prevState) => ({ ...prevState, profileThresholds: value })),
-		alwaysAllowUpdateTodoList: state.alwaysAllowUpdateTodoList,
-		setAlwaysAllowUpdateTodoList: (value) => {
-			setState((prevState) => ({ ...prevState, alwaysAllowUpdateTodoList: value }))
-		},
 		includeDiagnosticMessages: state.includeDiagnosticMessages,
 		setIncludeDiagnosticMessages: (value) => {
 			setState((prevState) => ({ ...prevState, includeDiagnosticMessages: value }))

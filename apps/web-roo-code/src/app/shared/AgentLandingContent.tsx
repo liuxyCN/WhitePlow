@@ -16,10 +16,8 @@ import Image from "next/image"
 import Link from "next/link"
 
 import { Button } from "@/components/ui"
-import { AnimatedBackground } from "@/components/homepage"
-import { AgentCarousel } from "@/components/reviewer/agent-carousel"
+import { AnimatedBackground, UseExamplesSection } from "@/components/homepage"
 import { EXTERNAL_LINKS } from "@/lib/constants"
-import { trackGoogleAdsConversion } from "@/lib/analytics/google-ads"
 import { type AgentPageContent, type IconName } from "./agent-page-content"
 
 /**
@@ -47,13 +45,13 @@ export function AgentLandingContent({ content }: { content: AgentPageContent }) 
 	return (
 		<>
 			{/* Hero Section */}
-			<section className="relative flex md:h-[calc(70vh-theme(spacing.12))] items-center overflow-hidden">
+			<section className="relative flex min-h-screen md:min-h-[calc(70vh-theme(spacing.12))] items-center overflow-hidden py-12 md:py-0">
 				<AnimatedBackground />
 				<div className="container relative flex items-center h-full z-10 mx-auto px-4 sm:px-6 lg:px-8">
-					<div className="grid h-full relative gap-4 md:gap-20 lg:grid-cols-2">
-						<div className="flex flex-col px-4 justify-center space-y-6 sm:space-y-8">
+					<div className="grid h-full relative gap-8 md:gap-12 lg:gap-20 lg:grid-cols-2">
+						<div className="flex flex-col justify-center space-y-6 sm:space-y-8">
 							<div>
-								<h1 className="text-3xl font-bold tracking-tight mt-8 md:text-left md:text-4xl lg:text-5xl lg:mt-0">
+								<h1 className="text-3xl font-bold tracking-tight md:text-left md:text-4xl lg:text-5xl">
 									{content.hero.icon &&
 										(() => {
 											const Icon = getIcon(content.hero.icon)
@@ -62,7 +60,7 @@ export function AgentLandingContent({ content }: { content: AgentPageContent }) 
 									{content.hero.heading}
 								</h1>
 
-								<div className="mt-4 max-w-lg space-y-4 text-base text-muted-foreground md:text-left sm:mt-6">
+								<div className="mt-4 max-w-full lg:max-w-lg space-y-4 text-base text-muted-foreground md:text-left sm:mt-6">
 									{content.hero.paragraphs.map((paragraph, index) => (
 										<p key={index}>{paragraph}</p>
 									))}
@@ -94,10 +92,9 @@ export function AgentLandingContent({ content }: { content: AgentPageContent }) 
 									className="w-full sm:w-auto backdrop-blur-sm border hover:shadow-[0_0_20px_rgba(59,130,246,0.5)] transition-all duration-300"
 									asChild>
 									<a
-										href={EXTERNAL_LINKS.CLOUD_APP_SIGNUP_PRO}
+										href={`${EXTERNAL_LINKS.CLOUD_APP_SIGNUP_PRO}${content.hero.cta.tracking}`}
 										target="_blank"
 										rel="noopener noreferrer"
-										onClick={trackGoogleAdsConversion}
 										className="flex w-full items-center justify-center">
 										{content.hero.cta.buttonText}
 										<ArrowRight className="ml-2" />
@@ -110,23 +107,16 @@ export function AgentLandingContent({ content }: { content: AgentPageContent }) 
 						</div>
 
 						{content.hero.image && (
-							<div className="flex items-center justify-end mx-auto h-full mt-8 lg:mt-0">
-								<div
-									className="relative overflow-clip"
-									style={{
-										width: `${content.hero.image.width}px`,
-										height: `${content.hero.image.height}px`,
-										maxWidth: "100%",
-									}}>
-									<div className="block">
-										<Image
-											src={content.hero.image.url}
-											alt={content.hero.image.alt || "Hero image"}
-											className="max-w-full h-auto"
-											width={content.hero.image.width}
-											height={content.hero.image.height}
-										/>
-									</div>
+							<div className="flex items-center justify-center lg:justify-end mx-auto h-full w-full">
+								<div className="relative w-full max-w-full overflow-hidden rounded-lg">
+									<Image
+										src={content.hero.image.url}
+										alt={content.hero.image.alt || "Hero image"}
+										className="w-full h-auto"
+										width={content.hero.image.width}
+										height={content.hero.image.height}
+										priority
+									/>
 								</div>
 							</div>
 						)}
@@ -136,6 +126,9 @@ export function AgentLandingContent({ content }: { content: AgentPageContent }) 
 
 			{/* How It Works Section */}
 			<section className="relative overflow-hidden border-t border-border py-32">
+				<div className="absolute inset-y-0 left-1/2 h-full w-full max-w-[1200px] -translate-x-1/2 z-1">
+					<div className="absolute left-1/2 top-1/2 h-[400px] w-full -translate-x-1/2 -translate-y-1/2 rounded-full bg-violet-500/10 dark:bg-violet-700/20 blur-[140px]" />
+				</div>
 				<div className="container relative z-10 mx-auto px-4 sm:px-6 lg:px-8">
 					<div className="mx-auto mb-12 md:mb-24 max-w-5xl text-center">
 						<div>
@@ -170,6 +163,9 @@ export function AgentLandingContent({ content }: { content: AgentPageContent }) 
 
 			{/* Why Better Section */}
 			<section className="relative overflow-hidden border-t border-border py-32">
+				<div className="absolute inset-y-0 left-1/2 h-full w-full max-w-[1200px] -translate-x-1/2 z-1">
+					<div className="absolute left-1/2 top-1/2 h-[400px] w-full -translate-x-1/2 -translate-y-1/2 rounded-full bg-blue-500/10 dark:bg-blue-700/20 blur-[140px]" />
+				</div>
 				<div className="container relative z-10 mx-auto px-4 sm:px-6 lg:px-8">
 					<div className="mx-auto mb-12 md:mb-24 max-w-5xl text-center">
 						<div>
@@ -206,8 +202,7 @@ export function AgentLandingContent({ content }: { content: AgentPageContent }) 
 				</div>
 			</section>
 
-			{/* Agent Carousel */}
-			<AgentCarousel currentAgent={content.agentName} />
+			<UseExamplesSection agentTitle={true} />
 
 			{/* CTA Section */}
 			<section className="py-20">
@@ -223,12 +218,11 @@ export function AgentLandingContent({ content }: { content: AgentPageContent }) 
 								className="bg-black text-white hover:bg-gray-800 hover:shadow-lg hover:shadow-black/20 dark:bg-white dark:text-black dark:hover:bg-gray-200 dark:hover:shadow-white/20 transition-all duration-300"
 								asChild>
 								<a
-									href={EXTERNAL_LINKS.CLOUD_APP_SIGNUP_PRO}
+									href={`${EXTERNAL_LINKS.CLOUD_APP_SIGNUP_PRO}${content.hero.cta.tracking}`}
 									target="_blank"
 									rel="noopener noreferrer"
-									onClick={trackGoogleAdsConversion}
 									className="flex items-center justify-center">
-									{content.cta.buttonText}
+									{content.hero.cta.buttonText}
 									<ArrowRight className="ml-2 h-4 w-4" />
 								</a>
 							</Button>
