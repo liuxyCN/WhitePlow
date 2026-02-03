@@ -69,6 +69,8 @@ let mcpGatewayUrlDebounceTimer: NodeJS.Timeout | null = null
 // ChinalifePE API URLs
 const CHINALIFEPE_CONFIG_URL = "https://s.chinalifepe.com/api/config/get"
 const CHINALIFEPE_LOGIN_URL = "https://s.chinalifepe.com/api/sso/login"
+const CHINALIFEPE_SEND_CAPTCHA_URL = "https://s.chinalifepe.com/api/sso/sendCaptcha"
+const CHINALIFEPE_CHECK_CAPTCHA_URL = "https://s.chinalifepe.com/api/sso/checkCaptcha"
 
 import { MarketplaceManager, MarketplaceItemType } from "../../services/marketplace"
 import { setPendingTodoList } from "../tools/UpdateTodoListTool"
@@ -159,13 +161,72 @@ async function loginAndGetTicket(username: string, password: string): Promise<st
 	const loginData = await loginResponse.json()
 
 	if (loginData.result_code !== "成功" || !loginData.data?.data?.ticket) {
-		if (loginData.result_code === "错误" && loginData.err?.message) {
-			throw new Error(loginData.err.message)
-		}
-		throw new Error(t("mcp:chinalifepe.loginFailed"))
+		// 需要二次验证码，提取cookies并抛出特定错误
+		const cookies = loginResponse.headers.get("set-cookie") || ""
+		const captchaError = new Error("CAPTCHA_REQUIRED")
+		;(captchaError as any).cookies = cookies
+		throw captchaError
 	}
 
 	return loginData.data.data.ticket
+}
+
+/**
+ * 发送验证码
+ */
+async function sendCaptcha(cookies: string): Promise<boolean> {
+	// 构建 URL 查询参数
+	const url = new URL(CHINALIFEPE_SEND_CAPTCHA_URL)
+	url.searchParams.append('_common[referer]', 'https://s.chinalifepe.com/sso/login')
+	url.searchParams.append('_common[platform]', 'oa')
+
+	const sendCaptchaResponse = await fetch(url.toString(), {
+		method: "GET",
+		headers: {
+			"Cookie": cookies,
+		},
+	})
+
+	if (!sendCaptchaResponse.ok) {
+		throw new Error(t("mcp:chinalifepe.sendCaptchaFailed", { status: sendCaptchaResponse.status }))
+	}
+
+	// sendCaptcha 接口只返回 HTTP 200，没有响应体
+	return true
+}
+
+/**
+ * 验证验证码并获取 ticket
+ */
+async function checkCaptchaAndGetTicket(captchaCode: string, cookies: string): Promise<string> {
+	// 构建 URL 查询参数
+	const url = new URL(CHINALIFEPE_CHECK_CAPTCHA_URL)
+	url.searchParams.append('captcha', captchaCode)
+	url.searchParams.append('appId', 'mcp')
+	url.searchParams.append('_common[referer]', 'https://s.chinalifepe.com/sso/login')
+	url.searchParams.append('_common[platform]', 'oa')
+
+	const checkCaptchaResponse = await fetch(url.toString(), {
+		method: "GET",
+		headers: {
+			"Cookie": cookies,
+		},
+	})
+
+	if (!checkCaptchaResponse.ok) {
+		throw new Error(t("mcp:chinalifepe.checkCaptchaFailed", { status: checkCaptchaResponse.status }))
+	}
+
+	const checkCaptchaData = await checkCaptchaResponse.json()
+
+	if (checkCaptchaData.result_code !== "成功" || !checkCaptchaData.data?.data?.ticket) {
+		if (checkCaptchaData.result_code === "错误" && checkCaptchaData.err?.message) {
+			throw new Error(checkCaptchaData.err.message)
+		}
+		throw new Error(t("mcp:chinalifepe.checkCaptchaFailedGeneric"))
+	}
+
+	return checkCaptchaData.data.data.ticket
 }
 
 /**
@@ -1268,8 +1329,169 @@ export const webviewMessageHandler = async (
 					}
 				}
 			} catch (error) {
-				const errorMsg = error instanceof Error ? error.message : t("mcp:chinalifepe.loginFailed")
-				console.error("登录失败:", error)
+				// 检查是否需要验证码
+				if (error instanceof Error && error.message === "CAPTCHA_REQUIRED") {
+					const cookies = (error as any).cookies || ""
+					
+					// 发送验证码
+					try {
+						await sendCaptcha(cookies)
+						provider.postMessageToWebview({
+							type: "chinalifePELoginResponse",
+							chinalifePELoginResponse: {
+								success: false,
+								requiresCaptcha: true,
+								cookies: cookies,
+							},
+						})
+					} catch (captchaError) {
+						const errorMsg = captchaError instanceof Error ? captchaError.message : t("mcp:chinalifepe.sendCaptchaFailedGeneric")
+						console.error("发送验证码失败:", captchaError)
+						provider.postMessageToWebview({
+							type: "chinalifePELoginResponse",
+							chinalifePELoginResponse: {
+								success: false,
+								error: errorMsg,
+							},
+						})
+					}
+				} else {
+					const errorMsg = error instanceof Error ? error.message : t("mcp:chinalifepe.loginFailed")
+					console.error("登录失败:", error)
+					provider.postMessageToWebview({
+						type: "chinalifePELoginResponse",
+						chinalifePELoginResponse: {
+							success: false,
+							error: errorMsg,
+						},
+					})
+				}
+			}
+
+			break
+		}
+		case "chinalifePECheckCaptcha": {
+			const captchaCode = message.values?.captchaCode as string | undefined
+			const cookies = message.values?.cookies as string | undefined
+			const inviteCode = message.values?.inviteCode as string | undefined
+			const apiUrl = message.values?.apiUrl as string | undefined
+
+			if (!captchaCode || !cookies) {
+				provider.postMessageToWebview({
+					type: "chinalifePELoginResponse",
+					chinalifePELoginResponse: {
+						success: false,
+						error: t("mcp:chinalifepe.captchaRequired"),
+					},
+				})
+				break
+			}
+
+			if (!apiUrl) {
+				provider.postMessageToWebview({
+					type: "chinalifePELoginResponse",
+					chinalifePELoginResponse: {
+						success: false,
+						error: t("mcp:chinalifepe.apiUrlRequired"),
+					},
+				})
+				break
+			}
+
+			try {
+				// 验证验证码并获取 ticket
+				const ticket = await checkCaptchaAndGetTicket(captchaCode, cookies)
+
+				// 使用 ticket 获取 apikey
+				try {
+					const apikey = await getApiKeyWithTicket(ticket, apiUrl, inviteCode)
+					console.log("获取 apikey 成功:", apikey)
+
+					provider.postMessageToWebview({
+						type: "chinalifePELoginResponse",
+						chinalifePELoginResponse: {
+							success: true,
+							apiKey: apikey,
+						},
+					})
+				} catch (apikeyError) {
+					// 检查是否需要邀请码
+					if (apikeyError instanceof Error && apikeyError.message === "INVITE_CODE_REQUIRED") {
+						provider.postMessageToWebview({
+							type: "chinalifePELoginResponse",
+							chinalifePELoginResponse: {
+								success: false,
+								requiresInviteCode: true,
+								ticket: ticket,
+							},
+						})
+					} else {
+						const errorMsg = apikeyError instanceof Error ? apikeyError.message : t("mcp:chinalifepe.getApiKeyFailedGeneric")
+						console.error("获取 apikey 失败:", apikeyError)
+						provider.postMessageToWebview({
+							type: "chinalifePELoginResponse",
+							chinalifePELoginResponse: {
+								success: false,
+								error: errorMsg,
+							},
+						})
+					}
+				}
+			} catch (error) {
+				const errorMsg = error instanceof Error ? error.message : t("mcp:chinalifepe.checkCaptchaFailedGeneric")
+				console.error("验证验证码失败:", error)
+				provider.postMessageToWebview({
+					type: "chinalifePELoginResponse",
+					chinalifePELoginResponse: {
+						success: false,
+						error: errorMsg,
+					},
+				})
+			}
+
+			break
+		}
+		case "chinalifePEGetApiKeyWithInviteCode": {
+			const ticket = message.values?.ticket as string | undefined
+			const inviteCode = message.values?.inviteCode as string | undefined
+			const apiUrl = message.values?.apiUrl as string | undefined
+
+			if (!ticket || !inviteCode) {
+				provider.postMessageToWebview({
+					type: "chinalifePELoginResponse",
+					chinalifePELoginResponse: {
+						success: false,
+						error: t("mcp:chinalifepe.inviteCodeRequired"),
+					},
+				})
+				break
+			}
+
+			if (!apiUrl) {
+				provider.postMessageToWebview({
+					type: "chinalifePELoginResponse",
+					chinalifePELoginResponse: {
+						success: false,
+						error: t("mcp:chinalifepe.apiUrlRequired"),
+					},
+				})
+				break
+			}
+
+			try {
+				const apikey = await getApiKeyWithTicket(ticket, apiUrl, inviteCode)
+				console.log("获取 apikey 成功:", apikey)
+
+				provider.postMessageToWebview({
+					type: "chinalifePELoginResponse",
+					chinalifePELoginResponse: {
+						success: true,
+						apiKey: apikey,
+					},
+				})
+			} catch (error) {
+				const errorMsg = error instanceof Error ? error.message : t("mcp:chinalifepe.getApiKeyFailedGeneric")
+				console.error("获取 apikey 失败:", error)
 				provider.postMessageToWebview({
 					type: "chinalifePELoginResponse",
 					chinalifePELoginResponse: {

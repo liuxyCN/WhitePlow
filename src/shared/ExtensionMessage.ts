@@ -174,6 +174,9 @@ export interface ExtensionMessage {
 		apiKey?: string
 		error?: string
 		requiresInviteCode?: boolean
+		requiresCaptcha?: boolean
+		cookies?: string
+		ticket?: string
 	}
 	ollamaModels?: ModelRecord
 	lmStudioModels?: ModelRecord

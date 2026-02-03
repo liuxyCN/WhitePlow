@@ -59,6 +59,8 @@ export interface WebviewMessage {
 		| "requestOpenAiModels"
 		| "requestChinalifePEModels"
 		| "chinalifePELogin"
+		| "chinalifePECheckCaptcha"
+		| "chinalifePEGetApiKeyWithInviteCode"
 		| "requestOllamaModels"
 		| "requestLmStudioModels"
 		| "requestRooModels"

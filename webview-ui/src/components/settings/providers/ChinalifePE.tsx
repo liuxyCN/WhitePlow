@@ -50,6 +50,11 @@ export const ChinalifePE = ({
 	const [showInviteCodeDialog, setShowInviteCodeDialog] = useState(false)
 	const [inviteCode, setInviteCode] = useState("")
 	const [isSubmittingInviteCode, setIsSubmittingInviteCode] = useState(false)
+	const [showCaptchaDialog, setShowCaptchaDialog] = useState(false)
+	const [captchaCode, setCaptchaCode] = useState("")
+	const [isSubmittingCaptcha, setIsSubmittingCaptcha] = useState(false)
+	const [cookies, setCookies] = useState("")
+	const [ticket, setTicket] = useState("")
 	const [loginErrorMessage, setLoginErrorMessage] = useState<string | undefined>(undefined)
 
 	const [customHeaders, setCustomHeaders] = useState<[string, string][]>(() => {
@@ -143,20 +148,52 @@ export const ChinalifePE = ({
 		setIsSubmittingInviteCode(true)
 		setLoginErrorMessage(undefined)
 
-		// 使用用户名和密码重新登录获取新ticket，然后用新ticket和邀请码获取apikey
-		// 从 apiConfiguration 获取 baseUrl
+		const apiUrl = apiConfiguration?.openAiBaseUrl || "https://ai.chinalifepe.com"
+
+		// 如果有 ticket（从验证码验证后获得），直接使用 ticket 和邀请码获取 apikey
+		// 否则重新登录获取新 ticket
+		if (ticket) {
+			vscode.postMessage({
+				type: "chinalifePEGetApiKeyWithInviteCode",
+				values: {
+					ticket: ticket,
+					inviteCode: inviteCode.trim(),
+					apiUrl: apiUrl,
+				},
+			})
+		} else {
+			vscode.postMessage({
+				type: "chinalifePELogin",
+				values: {
+					username: username.trim(),
+					password: password.trim(),
+					inviteCode: inviteCode.trim(),
+					apiUrl: apiUrl,
+				},
+			})
+		}
+	}, [inviteCode, username, password, ticket, apiConfiguration])
+
+	const handleSubmitCaptcha = useCallback(() => {
+		if (!captchaCode.trim() || !cookies) {
+			setLoginErrorMessage(t("settings:providers.chinalifePELogin.captchaRequired"))
+			return
+		}
+
+		setIsSubmittingCaptcha(true)
+		setLoginErrorMessage(undefined)
+
 		const apiUrl = apiConfiguration?.openAiBaseUrl || "https://ai.chinalifepe.com"
 
 		vscode.postMessage({
-			type: "chinalifePELogin",
+			type: "chinalifePECheckCaptcha",
 			values: {
-				username: username.trim(),
-				password: password.trim(),
-				inviteCode: inviteCode.trim(),
+				captchaCode: captchaCode.trim(),
+				cookies: cookies,
 				apiUrl: apiUrl,
 			},
 		})
-	}, [inviteCode, username, password, apiConfiguration])
+	}, [captchaCode, cookies, apiConfiguration])
 
 	const onMessage = useCallback((event: MessageEvent) => {
 		const message: ExtensionMessage = event.data
@@ -171,24 +208,45 @@ export const ChinalifePE = ({
 				if (message.chinalifePELoginResponse?.success) {
 					setIsLoggingIn(false)
 					setIsSubmittingInviteCode(false)
+					setIsSubmittingCaptcha(false)
 					console.log("登录成功，apiKey:", message.chinalifePELoginResponse.apiKey)
 					setShowInviteCodeDialog(false)
+					setShowCaptchaDialog(false)
 					setInviteCode("")
+					setCaptchaCode("")
+					setTicket("")
 					// 如果登录成功，设置 API Key
 					if (message.chinalifePELoginResponse.apiKey) {
 						setApiConfigurationField("openAiApiKey", message.chinalifePELoginResponse.apiKey)
 					}
+				} else if (message.chinalifePELoginResponse?.requiresCaptcha) {
+					setIsLoggingIn(false)
+					setIsSubmittingCaptcha(false)
+					// 需要验证码，显示验证码输入框
+					if (message.chinalifePELoginResponse.cookies) {
+						setCookies(message.chinalifePELoginResponse.cookies)
+					}
+					setShowCaptchaDialog(true)
+					setShowInviteCodeDialog(false)
 				} else if (message.chinalifePELoginResponse?.requiresInviteCode) {
 					setIsLoggingIn(false)
-					// 需要邀请码，显示输入框
+					setIsSubmittingCaptcha(false)
+					// 需要邀请码，显示邀请码输入框
+					// 保存 ticket（如果有的话）
+					if (message.chinalifePELoginResponse.ticket) {
+						setTicket(message.chinalifePELoginResponse.ticket)
+					}
 					setShowInviteCodeDialog(true)
+					setShowCaptchaDialog(false)
 				} else {
 					setIsLoggingIn(false)
 					setIsSubmittingInviteCode(false)
+					setIsSubmittingCaptcha(false)
 					const errorMsg = message.chinalifePELoginResponse?.error || t("settings:providers.chinalifePELogin.loginFailed")
 					setLoginErrorMessage(errorMsg)
-					if (!message.chinalifePELoginResponse?.requiresInviteCode) {
+					if (!message.chinalifePELoginResponse?.requiresInviteCode && !message.chinalifePELoginResponse?.requiresCaptcha) {
 						setShowInviteCodeDialog(false)
+						setShowCaptchaDialog(false)
 					}
 				}
 				break
@@ -281,6 +339,43 @@ export const ChinalifePE = ({
 							)}
 						</div>
 					</div>
+					{/* 验证码输入对话框 */}
+					<Modal isOpen={showCaptchaDialog} onClose={() => {}} className="max-w-md h-auto">
+						<div className="p-6 flex flex-col gap-4">
+							<h3 className="text-lg font-semibold">{t("settings:providers.chinalifePELogin.captchaDialogTitle")}</h3>
+							<p className="text-sm text-vscode-descriptionForeground">{t("settings:providers.chinalifePELogin.captchaDialogDescription")}</p>
+							<VSCodeTextField
+								value={captchaCode}
+								type="text"
+								onInput={(e: any) => setCaptchaCode(e.target.value)}
+								placeholder={t("settings:providers.chinalifePELogin.captcha")}
+								className="w-full"
+								onKeyDown={(e: any) => {
+									if (e.key === "Enter" && captchaCode.trim() && cookies) {
+										handleSubmitCaptcha()
+									}
+								}}>
+							</VSCodeTextField>
+							{loginErrorMessage && <div className="text-vscode-errorForeground text-sm">{loginErrorMessage}</div>}
+							<div className="flex gap-2 justify-end">
+								<VSCodeButton
+									onClick={() => {
+										setShowCaptchaDialog(false)
+										setCaptchaCode("")
+										setLoginErrorMessage(undefined)
+									}}
+									appearance="secondary">
+									{t("settings:providers.chinalifePELogin.cancel")}
+								</VSCodeButton>
+								<VSCodeButton
+									onClick={handleSubmitCaptcha}
+									appearance="primary"
+									disabled={!captchaCode.trim() || !cookies || isSubmittingCaptcha}>
+									{isSubmittingCaptcha ? t("settings:providers.chinalifePELogin.submitting") : t("settings:providers.chinalifePELogin.submit")}
+								</VSCodeButton>
+							</div>
+						</div>
+					</Modal>
 					{/* 邀请码输入对话框 */}
 					<Modal isOpen={showInviteCodeDialog} onClose={() => {}} className="max-w-md h-auto">
 						<div className="p-6 flex flex-col gap-4">

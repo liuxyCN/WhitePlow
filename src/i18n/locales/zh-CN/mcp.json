@@ -38,6 +38,11 @@
 		"getApiKeyFailed": "获取 apikey 失败: {{status}}",
 		"getApiKeyFailedGeneric": "获取 apikey 失败",
 		"usernamePasswordRequired": "用户名和密码不能为空",
-		"apiUrlRequired": "API URL 不能为空"
+		"apiUrlRequired": "API URL 不能为空",
+		"sendCaptchaFailed": "发送验证码失败: {{status}}",
+		"sendCaptchaFailedGeneric": "发送验证码失败",
+		"checkCaptchaFailed": "验证码验证失败: {{status}}",
+		"checkCaptchaFailedGeneric": "验证码验证失败",
+		"captchaRequired": "请输入验证码"
 	}
 }

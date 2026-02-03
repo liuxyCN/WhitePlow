@@ -39,6 +39,11 @@
 		"getApiKeyFailed": "Failed to get apikey: {{status}}",
 		"getApiKeyFailedGeneric": "Failed to get apikey",
 		"usernamePasswordRequired": "Username and password cannot be empty",
-		"apiUrlRequired": "API URL cannot be empty"
+		"apiUrlRequired": "API URL cannot be empty",
+		"sendCaptchaFailed": "Failed to send verification code: {{status}}",
+		"sendCaptchaFailedGeneric": "Failed to send verification code",
+		"checkCaptchaFailed": "Verification code verification failed: {{status}}",
+		"checkCaptchaFailedGeneric": "Verification code verification failed",
+		"captchaRequired": "Please enter verification code"
 	}
 }
