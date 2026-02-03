@@ -330,7 +330,7 @@
 			"inviteCode": "邀请码",
 			"captchaRequired": "请输入验证码",
 			"captchaDialogTitle": "二次验证",
-			"captchaDialogDescription": "验证码已发送到您的注册邮箱，请在下方输入验证码。",
+			"captchaDialogDescription": "验证码已发送，请在下方输入验证码。",
 			"captcha": "验证码",
 			"submit": "提交",
 			"submitting": "提交中...",

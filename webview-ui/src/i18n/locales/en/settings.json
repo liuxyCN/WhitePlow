@@ -339,7 +339,7 @@
 			"inviteCode": "Invite code",
 			"captchaRequired": "Please enter captcha code",
 			"captchaDialogTitle": "Two-Factor Authentication",
-			"captchaDialogDescription": "A verification code has been sent to your registered email. Please enter the code below.",
+			"captchaDialogDescription": "A verification code has been sent. Please enter the code below.",
 			"captcha": "Verification code",
 			"submit": "Submit",
 			"submitting": "Submitting...",
