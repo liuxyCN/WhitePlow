@@ -20,7 +20,7 @@ export const chinalifePEModels = {
 	"kimi-k2-thinking": {
 		maxTokens: 262_144, // 256K max output
 		contextWindow: 262_144,
-		supportsImages: false,
+		supportsImages: true,
 		supportsPromptCache: true,
 		supportsReasoningEffort: true,
 		requiredReasoningEffort: true,
