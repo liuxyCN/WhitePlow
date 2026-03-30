@@ -644,7 +644,7 @@ export interface WebviewMessage {
 	modeConfig?: ModeConfig
 	timeout?: number
 	payload?: WebViewMessagePayload
-	source?: "global" | "project"
+	source?: "global" | "project" | "memory"
 	skillName?: string // For skill operations (createSkill, deleteSkill, moveSkill, openSkillFile)
 	/** @deprecated Use skillModeSlugs instead */
 	skillMode?: string // For skill operations (current mode restriction)

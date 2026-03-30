@@ -730,37 +730,48 @@ const ServerRow = ({ server, alwaysAllowMcp }: { server: McpServer; alwaysAllowM
 					</DialogHeader>
 					<div style={{ display: "flex", flexDirection: "column", gap: "15px", marginTop: "15px" }}>
 						{/* Instructions */}
-						{server.serverConfig?.instructions && (
-							<div
-								style={{
-									padding: "12px",
-									background: "var(--vscode-textCodeBlock-background)",
-									borderRadius: "4px",
-									fontSize: "13px",
-								}}>
+						{server.serverConfig?.instructions &&
+							(typeof server.serverConfig.instructions === "string" ? (
 								<div
 									style={{
-										fontWeight: "500",
-										marginBottom: "8px",
-										color: "var(--vscode-foreground)",
+										padding: "12px",
+										background: "var(--vscode-textCodeBlock-background)",
+										borderRadius: "4px",
+										fontSize: "13px",
 									}}>
-									{server.serverConfig.instructions.title}
+									{server.serverConfig.instructions}
 								</div>
+							) : (
 								<div
 									style={{
-										display: "flex",
-										flexDirection: "column",
-										gap: "4px",
-										color: "var(--vscode-descriptionForeground)",
+										padding: "12px",
+										background: "var(--vscode-textCodeBlock-background)",
+										borderRadius: "4px",
+										fontSize: "13px",
 									}}>
-									<div>{server.serverConfig.instructions.step1}</div>
-									<div>{server.serverConfig.instructions.step2}</div>
-									<div>{server.serverConfig.instructions.step3}</div>
-									<div>{server.serverConfig.instructions.step4}</div>
-									<div>{server.serverConfig.instructions.step5}</div>
+									<div
+										style={{
+											fontWeight: "500",
+											marginBottom: "8px",
+											color: "var(--vscode-foreground)",
+										}}>
+										{server.serverConfig.instructions.title}
+									</div>
+									<div
+										style={{
+											display: "flex",
+											flexDirection: "column",
+											gap: "4px",
+											color: "var(--vscode-descriptionForeground)",
+										}}>
+										<div>{server.serverConfig.instructions.step1}</div>
+										<div>{server.serverConfig.instructions.step2}</div>
+										<div>{server.serverConfig.instructions.step3}</div>
+										<div>{server.serverConfig.instructions.step4}</div>
+										<div>{server.serverConfig.instructions.step5}</div>
+									</div>
 								</div>
-							</div>
-						)}
+							))}
 						<div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
 							<VSCodeTextField
 								value={authKey}

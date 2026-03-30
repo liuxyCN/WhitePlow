@@ -277,6 +277,9 @@ const ApiOptions = ({
 		if (selectedProvider === "openai" || selectedProvider === "chinalifepe") {
 			return []
 		}
+		if (isRetiredProvider(selectedProvider)) {
+			return []
+		}
 		const models = MODELS_BY_PROVIDER[selectedProvider]
 
 		if (!models) return []

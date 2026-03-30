@@ -3,14 +3,18 @@ import { useEvent, useDebounce } from "react-use"
 import { Checkbox } from "vscrui"
 import { VSCodeButton, VSCodeTextField } from "@vscode/webview-ui-toolkit/react"
 
-import type { ProviderSettings, ModelInfo, OrganizationAllowList, ReasoningEffort } from "@roo-code/types"
+import type {
+	ProviderSettings,
+	ModelInfo,
+	OrganizationAllowList,
+	ReasoningEffort,
+	ExtensionMessage,
+} from "@roo-code/types"
 import {
 	openAiModelInfoSaneDefaults,
 	chinalifePEDefaultModelId,
 	chinalifePEModels as predefinedChinalifePEModels,
 } from "@roo-code/types"
-
-import { ExtensionMessage } from "@roo/ExtensionMessage"
 
 import { useAppTranslation } from "@src/i18n/TranslationContext"
 import { vscode } from "@src/utils/vscode"
@@ -162,7 +166,9 @@ export const ChinalifePE = ({
 				case "chinalifePEModels": {
 					const updatedModels = message.chinalifePEModels ?? []
 					setChinalifePEModels(
-						Object.fromEntries(updatedModels.map((item) => [item, openAiModelInfoSaneDefaults])),
+						Object.fromEntries(
+							updatedModels.map((item: string) => [item, openAiModelInfoSaneDefaults]),
+						),
 					)
 					break
 				}

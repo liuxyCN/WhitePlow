@@ -65,12 +65,21 @@ export type McpServer = {
 	source?: "global" | "project" | "memory"
 	projectPath?: string
 	instructions?: string
-	configStatus?: "configured" | "unconfigured" | "partial"
+	configStatus?: "configured" | "unconfigured" | "partial" | "not_configured"
 	serverConfig?: {
 		authRequired?: boolean
 		moduleName?: string
 		fieldLabel?: string
-		instructions?: string
+		instructions?:
+			| string
+			| {
+					title?: string
+					step1?: string
+					step2?: string
+					step3?: string
+					step4?: string
+					step5?: string
+			  }
 		extraFields?: Array<{
 			fieldName: string
 			fieldLabel?: string

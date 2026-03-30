@@ -5,7 +5,9 @@ import { toast } from "sonner"
 import { LoaderCircle, FileText, Copy, Check, StopCircle, List, Layers } from "lucide-react"
 
 import type { Run, TaskMetrics as _TaskMetrics, Task } from "@roo-code/evals"
-import type { ToolName } from "@roo-code/types"
+import { toolNames } from "@roo-code/types"
+
+type ToolName = (typeof toolNames)[number]
 
 import { formatCurrency, formatDuration, formatTokens, formatToolUsageSuccessRate } from "@/lib/formatters"
 import { useRunStatus } from "@/hooks/use-run-status"
