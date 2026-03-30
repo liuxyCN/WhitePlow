@@ -1,4 +1,5 @@
 import { z } from "zod"
+import { DynamicProvider, LocalProvider } from "./provider-settings.js"
 
 /**
  * ReasoningEffort
@@ -97,6 +98,16 @@ export const modelInfoSchema = z.object({
 	outputPrice: z.number().optional(),
 	cacheWritesPrice: z.number().optional(),
 	cacheReadsPrice: z.number().optional(),
+	longContextPricing: z
+		.object({
+			thresholdTokens: z.number(),
+			inputPriceMultiplier: z.number().optional(),
+			outputPriceMultiplier: z.number().optional(),
+			cacheWritesPriceMultiplier: z.number().optional(),
+			cacheReadsPriceMultiplier: z.number().optional(),
+			appliesToServiceTiers: z.array(serviceTierSchema).optional(),
+		})
+		.optional(),
 	description: z.string().optional(),
 	// Default effort value for models that support reasoning effort
 	reasoningEffort: reasoningEffortExtendedSchema.optional(),
@@ -109,10 +120,6 @@ export const modelInfoSchema = z.object({
 	isStealthModel: z.boolean().optional(),
 	// Flag to indicate if the model is free (no cost)
 	isFree: z.boolean().optional(),
-	// Flag to indicate if the model supports native tool calling (OpenAI-style function calling)
-	supportsNativeTools: z.boolean().optional(),
-	// Default tool protocol preferred by this model (if not specified, falls back to capability/provider defaults)
-	defaultToolProtocol: z.enum(["xml", "native"]).optional(),
 	// Exclude specific native tools from being available (only applies to native protocol)
 	// These tools will be removed from the set of tools available to the model
 	excludedTools: z.array(z.string()).optional(),
@@ -140,3 +147,7 @@ export const modelInfoSchema = z.object({
 })
 
 export type ModelInfo = z.infer<typeof modelInfoSchema>
+
+export type ModelRecord = Record<string, ModelInfo>
+
+export type RouterModels = Record<DynamicProvider | LocalProvider, ModelRecord>

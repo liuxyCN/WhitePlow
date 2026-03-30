@@ -30,7 +30,9 @@ import {
 	BEDROCK_GLOBAL_INFERENCE_MODEL_IDS,
 	BEDROCK_SERVICE_TIER_MODEL_IDS,
 	BEDROCK_SERVICE_TIER_PRICING,
+	ApiProviderError,
 } from "@roo-code/types"
+import { TelemetryService } from "@roo-code/telemetry"
 
 import { ApiStream } from "../transform/stream"
 import { BaseProvider } from "./base-provider"
@@ -41,6 +43,7 @@ import { ModelInfo as CacheModelInfo } from "../transform/cache-strategy/types"
 import { convertToBedrockConverseMessages as sharedConverter } from "../transform/bedrock-converse-format"
 import { getModelParams } from "../transform/model-params"
 import { shouldUseReasoningBudget } from "../../shared/api"
+import { normalizeToolSchema } from "../../utils/json-schema"
 import type { SingleCompletionHandler, ApiHandlerCreateMessageMetadata } from "../index"
 
 /************************************************************************************
@@ -197,6 +200,7 @@ export class AwsBedrockHandler extends BaseProvider implements SingleCompletionH
 	protected options: ProviderSettings
 	private client: BedrockRuntimeClient
 	private arnInfo: any
+	private readonly providerName = "Bedrock"
 
 	constructor(options: ProviderSettings) {
 		super()
@@ -353,16 +357,9 @@ export class AwsBedrockHandler extends BaseProvider implements SingleCompletionH
 		},
 	): ApiStream {
 		const modelConfig = this.getModel()
-		const usePromptCache = Boolean(this.options.awsUsePromptCache && this.supportsAwsPromptCache(modelConfig))
-
-		// Determine early if native tools should be used (needed for message conversion)
-		const supportsNativeTools = modelConfig.info.supportsNativeTools ?? false
-		const useNativeTools =
-			supportsNativeTools &&
-			metadata?.tools &&
-			metadata.tools.length > 0 &&
-			metadata?.toolProtocol !== "xml" &&
-			metadata?.tool_choice !== "none"
+		const usePromptCache = Boolean(
+			(this.options.awsUsePromptCache ?? true) && this.supportsAwsPromptCache(modelConfig),
+		)
 
 		const conversationId =
 			messages.length > 0
@@ -379,7 +376,6 @@ export class AwsBedrockHandler extends BaseProvider implements SingleCompletionH
 			usePromptCache,
 			modelConfig.info,
 			conversationId,
-			useNativeTools,
 		)
 
 		let additionalModelRequestFields: BedrockAdditionalModelFields | undefined
@@ -414,34 +410,11 @@ export class AwsBedrockHandler extends BaseProvider implements SingleCompletionH
 			temperature: modelConfig.temperature ?? (this.options.modelTemperature as number),
 		}
 
-		// Check if 1M context is enabled for Claude Sonnet 4
+		// Check if 1M context is enabled for supported Claude 4 models
 		// Use parseBaseModelId to handle cross-region inference prefixes
 		const baseModelId = this.parseBaseModelId(modelConfig.id)
 		const is1MContextEnabled =
 			BEDROCK_1M_CONTEXT_MODEL_IDS.includes(baseModelId as any) && this.options.awsBedrock1MContext
-
-		// Add anthropic_beta headers for various features
-		// Start with an empty array and add betas as needed
-		const anthropicBetas: string[] = []
-
-		// Add 1M context beta if enabled
-		if (is1MContextEnabled) {
-			anthropicBetas.push("context-1m-2025-08-07")
-		}
-
-		// Add fine-grained tool streaming beta when native tools are used with Claude models
-		// This enables proper tool use streaming for Anthropic models on Bedrock
-		if (useNativeTools && baseModelId.includes("claude")) {
-			anthropicBetas.push("fine-grained-tool-streaming-2025-05-14")
-		}
-
-		// Apply anthropic_beta to additionalModelRequestFields if any betas are needed
-		if (anthropicBetas.length > 0) {
-			if (!additionalModelRequestFields) {
-				additionalModelRequestFields = {} as BedrockAdditionalModelFields
-			}
-			additionalModelRequestFields.anthropic_beta = anthropicBetas
-		}
 
 		// Determine if service tier should be applied (checked later when building payload)
 		const useServiceTier =
@@ -454,13 +427,32 @@ export class AwsBedrockHandler extends BaseProvider implements SingleCompletionH
 			})
 		}
 
-		// Build tool configuration if native tools are enabled
-		let toolConfig: ToolConfiguration | undefined
-		if (useNativeTools && metadata?.tools) {
-			toolConfig = {
-				tools: this.convertToolsForBedrock(metadata.tools),
-				toolChoice: this.convertToolChoiceForBedrock(metadata.tool_choice),
+		// Add anthropic_beta headers for various features
+		// Start with an empty array and add betas as needed
+		const anthropicBetas: string[] = []
+
+		// Add 1M context beta if enabled
+		if (is1MContextEnabled) {
+			anthropicBetas.push("context-1m-2025-08-07")
+		}
+
+		// Add fine-grained tool streaming beta for Claude models
+		// This enables proper tool use streaming for Anthropic models on Bedrock
+		if (baseModelId.includes("claude")) {
+			anthropicBetas.push("fine-grained-tool-streaming-2025-05-14")
+		}
+
+		// Apply anthropic_beta to additionalModelRequestFields if any betas are needed
+		if (anthropicBetas.length > 0) {
+			if (!additionalModelRequestFields) {
+				additionalModelRequestFields = {} as BedrockAdditionalModelFields
 			}
+			additionalModelRequestFields.anthropic_beta = anthropicBetas
+		}
+
+		const toolConfig: ToolConfiguration = {
+			tools: this.convertToolsForBedrock(metadata?.tools ?? []),
+			toolChoice: this.convertToolChoiceForBedrock(metadata?.tool_choice),
 		}
 
 		// Build payload with optional service_tier at top level
@@ -474,7 +466,7 @@ export class AwsBedrockHandler extends BaseProvider implements SingleCompletionH
 			...(additionalModelRequestFields && { additionalModelRequestFields }),
 			// Add anthropic_version at top level when using thinking features
 			...(thinkingEnabled && { anthropic_version: "bedrock-2023-05-31" }),
-			...(toolConfig && { toolConfig }),
+			toolConfig,
 			// Add service_tier as a top-level parameter (not inside additionalModelRequestFields)
 			...(useServiceTier && { service_tier: this.options.awsBedrockServiceTier }),
 		}
@@ -690,6 +682,11 @@ export class AwsBedrockHandler extends BaseProvider implements SingleCompletionH
 			// Clear timeout on error
 			clearTimeout(timeoutId)
 
+			// Capture error in telemetry before processing
+			const errorMessage = error instanceof Error ? error.message : String(error)
+			const apiError = new ApiProviderError(errorMessage, this.providerName, modelConfig.id, "createMessage")
+			TelemetryService.instance.captureException(apiError)
+
 			// Check if this is a throttling error that should trigger retry logic
 			const errorType = this.getErrorType(error)
 
@@ -793,6 +790,12 @@ export class AwsBedrockHandler extends BaseProvider implements SingleCompletionH
 			}
 			return ""
 		} catch (error) {
+			// Capture error in telemetry
+			const model = this.getModel()
+			const telemetryErrorMessage = error instanceof Error ? error.message : String(error)
+			const apiError = new ApiProviderError(telemetryErrorMessage, this.providerName, model.id, "completePrompt")
+			TelemetryService.instance.captureException(apiError)
+
 			// Use the extracted error handling method for all errors
 			const errorResult = this.handleBedrockError(error, false) // false for non-streaming context
 			// Since we're in a non-streaming context, we know the result is a string
@@ -829,12 +832,9 @@ export class AwsBedrockHandler extends BaseProvider implements SingleCompletionH
 		usePromptCache: boolean = false,
 		modelInfo?: any,
 		conversationId?: string, // Optional conversation ID to track cache points across messages
-		useNativeTools: boolean = false, // Whether native tool calling is being used
 	): { system: SystemContentBlock[]; messages: Message[] } {
 		// First convert messages using shared converter for proper image handling
-		const convertedMessages = sharedConverter(anthropicMessages as Anthropic.Messages.MessageParam[], {
-			useNativeTools,
-		})
+		const convertedMessages = sharedConverter(anthropicMessages as Anthropic.Messages.MessageParam[])
 
 		// If prompt caching is disabled, return the converted messages directly
 		if (!usePromptCache) {
@@ -914,8 +914,12 @@ export class AwsBedrockHandler extends BaseProvider implements SingleCompletionH
 		 * represent literal characters in the AWS ARN format, not filesystem paths. This regex will function consistently across Windows,
 		 * macOS, Linux, and any other operating system where JavaScript runs.
 		 *
+		 * Supports any AWS partition (aws, aws-us-gov, aws-cn, or future partitions).
+		 * The partition is not captured since we don't need to use it.
+		 *
 		 *  This matches ARNs like:
 		 *  - Foundation Model: arn:aws:bedrock:us-west-2::foundation-model/anthropic.claude-v2
+		 *  - GovCloud Inference Profile: arn:aws-us-gov:bedrock:us-gov-west-1:123456789012:inference-profile/us-gov.anthropic.claude-sonnet-4-5-20250929-v1:0
 		 *  - Prompt Router: arn:aws:bedrock:us-west-2:123456789012:prompt-router/anthropic-claude
 		 *  - Inference Profile: arn:aws:bedrock:us-west-2:123456789012:inference-profile/anthropic.claude-v2
 		 *  - Cross Region Inference Profile: arn:aws:bedrock:us-west-2:123456789012:inference-profile/us.anthropic.claude-3-5-sonnet-20241022-v2:0
@@ -923,13 +927,13 @@ export class AwsBedrockHandler extends BaseProvider implements SingleCompletionH
 		 *  - Imported Model: arn:aws:bedrock:us-west-2:123456789012:imported-model/my-imported-model
 		 *
 		 * match[0] - The entire matched string
-		 * match[1] - The region (e.g., "us-east-1")
+		 * match[1] - The region (e.g., "us-east-1", "us-gov-west-1")
 		 * match[2] - The account ID (can be empty string for AWS-managed resources)
 		 * match[3] - The resource type (e.g., "foundation-model")
 		 * match[4] - The resource ID (e.g., "anthropic.claude-3-sonnet-20240229-v1:0")
 		 */
 
-		const arnRegex = /^arn:aws:(?:bedrock|sagemaker):([^:]+):([^:]*):(?:([^\/]+)\/([\w\.\-:]+)|([^\/]+))$/
+		const arnRegex = /^arn:[^:]+:(?:bedrock|sagemaker):([^:]+):([^:]*):(?:([^\/]+)\/([\w\.\-:]+)|([^\/]+))$/
 		let match = arn.match(arnRegex)
 
 		if (match && match[1] && match[3] && match[4]) {
@@ -1095,14 +1099,19 @@ export class AwsBedrockHandler extends BaseProvider implements SingleCompletionH
 			}
 		}
 
-		// Check if 1M context is enabled for Claude Sonnet 4 / 4.5
+		// Check if 1M context is enabled for supported Claude 4 models
 		// Use parseBaseModelId to handle cross-region inference prefixes
 		const baseModelId = this.parseBaseModelId(modelConfig.id)
 		if (BEDROCK_1M_CONTEXT_MODEL_IDS.includes(baseModelId as any) && this.options.awsBedrock1MContext) {
-			// Update context window to 1M tokens when 1M context beta is enabled
+			// Update context window and pricing to 1M tier when 1M context beta is enabled
+			const tier = modelConfig.info.tiers?.[0]
 			modelConfig.info = {
 				...modelConfig.info,
-				contextWindow: 1_000_000,
+				contextWindow: tier?.contextWindow ?? 1_000_000,
+				inputPrice: tier?.inputPrice ?? modelConfig.info.inputPrice,
+				outputPrice: tier?.outputPrice ?? modelConfig.info.outputPrice,
+				cacheWritesPrice: tier?.cacheWritesPrice ?? modelConfig.info.cacheWritesPrice,
+				cacheReadsPrice: tier?.cacheReadsPrice ?? modelConfig.info.cacheReadsPrice,
 			}
 		}
 
@@ -1194,6 +1203,7 @@ export class AwsBedrockHandler extends BaseProvider implements SingleCompletionH
 
 	/**
 	 * Convert OpenAI tool definitions to Bedrock Converse format
+	 * Transforms JSON Schema to draft 2020-12 compliant format required by Claude models.
 	 * @param tools Array of OpenAI ChatCompletionTool definitions
 	 * @returns Array of Bedrock Tool definitions
 	 */
@@ -1207,7 +1217,9 @@ export class AwsBedrockHandler extends BaseProvider implements SingleCompletionH
 							name: tool.function.name,
 							description: tool.function.description,
 							inputSchema: {
-								json: tool.function.parameters as Record<string, unknown>,
+								// Normalize schema to JSON Schema draft 2020-12 compliant format
+								// This converts type: ["T", "null"] to anyOf: [{type: "T"}, {type: "null"}]
+								json: normalizeToolSchema(tool.function.parameters as Record<string, unknown>),
 							},
 						},
 					}) as Tool,
@@ -1337,8 +1349,6 @@ Please verify:
 1. Reducing the frequency of requests
 2. If using a provisioned model, check its throughput settings
 3. Contact AWS support to request a quota increase if needed
-
-
 
 `,
 			logLevel: "error",

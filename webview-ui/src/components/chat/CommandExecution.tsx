@@ -3,11 +3,9 @@ import { useEvent } from "react-use"
 import { t } from "i18next"
 import { ChevronDown, OctagonX } from "lucide-react"
 
-import { CommandExecutionStatus, commandExecutionStatusSchema } from "@roo-code/types"
+import { type ExtensionMessage, type CommandExecutionStatus, commandExecutionStatusSchema } from "@roo-code/types"
 
-import { ExtensionMessage } from "@roo/ExtensionMessage"
-import { safeJsonParse } from "@roo/safeJsonParse"
-
+import { safeJsonParse } from "@roo/core"
 import { COMMAND_OUTPUT_STRING } from "@roo/combineCommandSequences"
 import { parseCommand } from "@roo/parse-command"
 
@@ -20,6 +18,7 @@ import { Button, StandardTooltip } from "@src/components/ui"
 import CodeBlock from "@src/components/common/CodeBlock"
 
 import { CommandPatternSelector } from "./CommandPatternSelector"
+import { TerminalOutput } from "./TerminalOutput"
 
 interface CommandPattern {
 	pattern: string
@@ -227,7 +226,7 @@ const OutputContainerInternal = ({ isExpanded, output }: { isExpanded: boolean; 
 			"max-h-0": !isExpanded,
 			"max-h-[100%] mt-1 pt-1 border-t border-border/25": isExpanded,
 		})}>
-		{output.length > 0 && <CodeBlock source={output} language="log" />}
+		{output.length > 0 && <TerminalOutput content={output} />}
 	</div>
 )
 

@@ -4,7 +4,6 @@ import {
 	type DynamicProvider,
 	type LocalProvider,
 	ANTHROPIC_DEFAULT_MAX_TOKENS,
-	CLAUDE_CODE_DEFAULT_MAX_OUTPUT_TOKENS,
 	isDynamicProvider,
 	isLocalProvider,
 } from "@roo-code/types"
@@ -39,12 +38,6 @@ export function toRouterName(value?: string): RouterName {
 
 	throw new Error(`Invalid router name: ${value}`)
 }
-
-// RouterModels
-
-export type ModelRecord = Record<string, ModelInfo>
-
-export type RouterModels = Record<RouterName, ModelRecord>
 
 // Reasoning
 
@@ -120,11 +113,6 @@ export const getModelMaxOutputTokens = ({
 	settings?: ProviderSettings
 	format?: "anthropic" | "openai" | "gemini" | "openrouter"
 }): number | undefined => {
-	// Check for Claude Code specific max output tokens setting
-	if (settings?.apiProvider === "claude-code") {
-		return settings.claudeCodeMaxOutputTokens || CLAUDE_CODE_DEFAULT_MAX_OUTPUT_TOKENS
-	}
-
 	if (shouldUseReasoningBudget({ model, settings })) {
 		return settings?.modelMaxTokens || DEFAULT_HYBRID_REASONING_MODEL_MAX_TOKENS
 	}
@@ -183,16 +171,12 @@ type CommonFetchParams = {
 const dynamicProviderExtras = {
 	openrouter: {} as {}, // eslint-disable-line @typescript-eslint/no-empty-object-type
 	"vercel-ai-gateway": {} as {}, // eslint-disable-line @typescript-eslint/no-empty-object-type
-	huggingface: {} as {}, // eslint-disable-line @typescript-eslint/no-empty-object-type
 	litellm: {} as { apiKey: string; baseUrl: string },
-	deepinfra: {} as { apiKey?: string; baseUrl?: string },
-	"io-intelligence": {} as { apiKey: string },
 	requesty: {} as { apiKey?: string; baseUrl?: string },
 	unbound: {} as { apiKey?: string },
 	ollama: {} as {}, // eslint-disable-line @typescript-eslint/no-empty-object-type
 	lmstudio: {} as {}, // eslint-disable-line @typescript-eslint/no-empty-object-type
 	roo: {} as { apiKey?: string; baseUrl?: string },
-	chutes: {} as { apiKey?: string },
 } as const satisfies Record<RouterName, object>
 
 // Build the dynamic options union from the map, intersected with CommonFetchParams

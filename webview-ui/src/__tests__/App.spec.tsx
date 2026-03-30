@@ -90,15 +90,6 @@ vi.mock("@src/components/cloud/CloudView", () => ({
 
 const mockUseExtensionState = vi.fn()
 
-// Mock the HumanRelayDialog component
-vi.mock("@src/components/human-relay/HumanRelayDialog", () => ({
-	HumanRelayDialog: ({ _children, isOpen, onClose }: any) => (
-		<div data-testid="human-relay-dialog" data-open={isOpen} onClick={onClose}>
-			Human Relay Dialog
-		</div>
-	),
-}))
-
 // Mock i18next and react-i18next
 vi.mock("i18next", () => {
 	const tFunction = (key: string) => key
@@ -202,7 +193,7 @@ describe("App", () => {
 		const chatView = screen.getByTestId("chat-view")
 		expect(chatView).toBeInTheDocument()
 		expect(chatView.getAttribute("data-hidden")).toBe("false")
-	})
+	}, 10000)
 
 	it("switches to settings view when receiving settingsButtonClicked action", async () => {
 		render(<AppWithProviders />)

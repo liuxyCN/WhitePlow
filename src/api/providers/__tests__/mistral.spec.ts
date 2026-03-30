@@ -1,3 +1,13 @@
+// Mock TelemetryService - must come before other imports
+const mockCaptureException = vi.hoisted(() => vi.fn())
+vi.mock("@roo-code/telemetry", () => ({
+	TelemetryService: {
+		instance: {
+			captureException: mockCaptureException,
+		},
+	},
+}))
+
 // Mock Mistral client - must come before other imports
 const mockCreate = vi.fn()
 const mockComplete = vi.fn()
@@ -59,6 +69,7 @@ describe("MistralHandler", () => {
 		handler = new MistralHandler(mockOptions)
 		mockCreate.mockClear()
 		mockComplete.mockClear()
+		mockCaptureException.mockClear()
 	})
 
 	describe("constructor", () => {
@@ -108,12 +119,17 @@ describe("MistralHandler", () => {
 			const iterator = handler.createMessage(systemPrompt, messages)
 			const result = await iterator.next()
 
-			expect(mockCreate).toHaveBeenCalledWith({
-				model: mockOptions.apiModelId,
-				messages: expect.any(Array),
-				maxTokens: expect.any(Number),
-				temperature: 0,
-			})
+			expect(mockCreate).toHaveBeenCalledWith(
+				expect.objectContaining({
+					model: mockOptions.apiModelId,
+					messages: expect.any(Array),
+					maxTokens: expect.any(Number),
+					temperature: 0,
+					// Tools are now always present (minimum 6 from ALWAYS_AVAILABLE_TOOLS)
+					tools: expect.any(Array),
+					toolChoice: "any",
+				}),
+			)
 
 			expect(result.value).toBeDefined()
 			expect(result.done).toBe(false)
@@ -251,11 +267,10 @@ describe("MistralHandler", () => {
 			},
 		]
 
-		it("should include tools in request when toolProtocol is native", async () => {
+		it("should include tools in request by default (native is default)", async () => {
 			const metadata: ApiHandlerCreateMessageMetadata = {
 				taskId: "test-task",
 				tools: mockTools,
-				toolProtocol: "native",
 			}
 
 			const iterator = handler.createMessage(systemPrompt, messages, metadata)
@@ -278,19 +293,19 @@ describe("MistralHandler", () => {
 			)
 		})
 
-		it("should not include tools when toolProtocol is xml", async () => {
+		it("should always include tools in request (tools are always present after PR #10841)", async () => {
 			const metadata: ApiHandlerCreateMessageMetadata = {
 				taskId: "test-task",
-				tools: mockTools,
-				toolProtocol: "xml",
 			}
 
 			const iterator = handler.createMessage(systemPrompt, messages, metadata)
 			await iterator.next()
 
+			// Tools are now always present (minimum 6 from ALWAYS_AVAILABLE_TOOLS)
 			expect(mockCreate).toHaveBeenCalledWith(
-				expect.not.objectContaining({
-					tools: expect.anything(),
+				expect.objectContaining({
+					tools: expect.any(Array),
+					toolChoice: "any",
 				}),
 			)
 		})
@@ -329,7 +344,6 @@ describe("MistralHandler", () => {
 			const metadata: ApiHandlerCreateMessageMetadata = {
 				taskId: "test-task",
 				tools: mockTools,
-				toolProtocol: "native",
 			}
 
 			const iterator = handler.createMessage(systemPrompt, messages, metadata)
@@ -393,7 +407,6 @@ describe("MistralHandler", () => {
 			const metadata: ApiHandlerCreateMessageMetadata = {
 				taskId: "test-task",
 				tools: mockTools,
-				toolProtocol: "native",
 			}
 
 			const iterator = handler.createMessage(systemPrompt, messages, metadata)
@@ -427,7 +440,6 @@ describe("MistralHandler", () => {
 			const metadata: ApiHandlerCreateMessageMetadata = {
 				taskId: "test-task",
 				tools: mockTools,
-				toolProtocol: "native",
 				tool_choice: "auto", // This should be ignored
 			}
 

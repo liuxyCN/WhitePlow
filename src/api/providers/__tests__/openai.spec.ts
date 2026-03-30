@@ -295,6 +295,10 @@ describe("OpenAiHandler", () => {
 				name: undefined,
 				arguments: '"value"}',
 			})
+
+			// Verify tool_call_end event is emitted when finish_reason is "tool_calls"
+			const toolCallEndChunks = chunks.filter((chunk) => chunk.type === "tool_call_end")
+			expect(toolCallEndChunks).toHaveLength(1)
 		})
 
 		it("should yield tool calls even when finish_reason is not set (fallback behavior)", async () => {
@@ -629,11 +633,14 @@ describe("OpenAiHandler", () => {
 					stream: true,
 					stream_options: { include_usage: true },
 					temperature: 0,
+					tools: undefined,
+					tool_choice: undefined,
+					parallel_tool_calls: true,
 				},
 				{ path: "/models/chat/completions" },
 			)
 
-			// Verify max_tokens is NOT included when includeMaxTokens is not set
+			// Verify max_tokens is NOT included when not explicitly set
 			const callArgs = mockCreate.mock.calls[0][0]
 			expect(callArgs).not.toHaveProperty("max_completion_tokens")
 		})
@@ -675,11 +682,14 @@ describe("OpenAiHandler", () => {
 						{ role: "system", content: systemPrompt },
 						{ role: "user", content: "Hello!" },
 					],
+					tools: undefined,
+					tool_choice: undefined,
+					parallel_tool_calls: true,
 				},
 				{ path: "/models/chat/completions" },
 			)
 
-			// Verify max_tokens is NOT included when includeMaxTokens is not set
+			// Verify max_tokens is NOT included when not explicitly set
 			const callArgs = mockCreate.mock.calls[0][0]
 			expect(callArgs).not.toHaveProperty("max_completion_tokens")
 		})
@@ -855,6 +865,10 @@ describe("OpenAiHandler", () => {
 				name: undefined,
 				arguments: "{}",
 			})
+
+			// Verify tool_call_end event is emitted when finish_reason is "tool_calls"
+			const toolCallEndChunks = chunks.filter((chunk) => chunk.type === "tool_call_end")
+			expect(toolCallEndChunks).toHaveLength(1)
 		})
 
 		it("should yield tool calls for O3 model even when finish_reason is not set (fallback behavior)", async () => {

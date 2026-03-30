@@ -81,7 +81,17 @@ export default defineConfig(({ mode }) => {
 		define["process.env.PKG_OUTPUT_CHANNEL"] = JSON.stringify("Roo-Code-Nightly")
 	}
 
-	const plugins: PluginOption[] = [react(), tailwindcss(), persistPortPlugin(), wasmPlugin(), sourcemapPlugin()]
+	const plugins: PluginOption[] = [
+		react({
+			babel: {
+				plugins: [["babel-plugin-react-compiler", { target: "18" }]],
+			},
+		}),
+		tailwindcss(),
+		persistPortPlugin(),
+		wasmPlugin(),
+		sourcemapPlugin(),
+	]
 
 	return {
 		plugins,
@@ -90,6 +100,9 @@ export default defineConfig(({ mode }) => {
 				"@": resolve(__dirname, "./src"),
 				"@src": resolve(__dirname, "./src"),
 				"@roo": resolve(__dirname, "../src/shared"),
+				// Shared code (e.g. modes.ts → roo-config → ripgrep) imports `vscode`; only the
+				// extension host has the real module — stub for dev/build resolution.
+				vscode: resolve(__dirname, "./src/vite-stubs/vscode.ts"),
 			},
 		},
 		build: {
@@ -100,12 +113,15 @@ export default defineConfig(({ mode }) => {
 			sourcemap: true,
 			// Ensure source maps are properly included in the build
 			minify: mode === "production" ? "esbuild" : false,
-			// Use a single combined CSS bundle so both webviews share styles
+			// Use a single combined CSS bundle so all webviews share styles
 			cssCodeSplit: false,
 			rollupOptions: {
+				// Externalize vscode module - it's imported by file-search.ts which is
+				// dynamically imported by roo-config/index.ts, but should never be bundled
+				// in the webview since it's not available in the browser context
+				external: ["vscode"],
 				input: {
 					index: resolve(__dirname, "index.html"),
-					"browser-panel": resolve(__dirname, "browser-panel.html"),
 				},
 				output: {
 					entryFileNames: `assets/[name].js`,
@@ -175,8 +191,7 @@ export default defineConfig(({ mode }) => {
 		optimizeDeps: {
 			include: [
 				"mermaid",
-				"dagre", // Explicitly include dagre for pre-bundling
-				// Add other known large mermaid dependencies if identified
+				// Mermaid pulls graph layout via `dagre-d3-es`, not a top-level `dagre` package.
 			],
 			exclude: ["@vscode/codicons", "vscode-oniguruma", "shiki"],
 		},

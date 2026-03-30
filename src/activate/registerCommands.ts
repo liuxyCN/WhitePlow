@@ -9,8 +9,6 @@ import { getCommand } from "../utils/commands"
 import { ClineProvider } from "../core/webview/ClineProvider"
 import { ContextProxy } from "../core/config/ContextProxy"
 import { focusPanel } from "../utils/focusPanel"
-
-import { registerHumanRelayCallback, unregisterHumanRelayCallback, handleHumanRelayResponse } from "./humanRelay"
 import { handleNewTask } from "./handleTask"
 import { CodeIndexManager } from "../services/code-index/manager"
 import { importSettingsWithFeedback } from "../core/config/importExport"
@@ -116,9 +114,10 @@ const getCommandsMap = ({ context, outputChannel, provider }: RegisterCommandOpt
 
 		TelemetryService.instance.captureTitleButtonClicked("settings")
 
-		const settingsButtonEnabled = vscode.workspace.getConfiguration(Package.name).get<boolean>("settingsButtonEnabled") ?? true
+		const settingsButtonEnabled =
+			vscode.workspace.getConfiguration(Package.name).get<boolean>("settingsButtonEnabled") ?? true
 
-		if(settingsButtonEnabled){
+		if (settingsButtonEnabled) {
 			visibleProvider.postMessageToWebview({ type: "action", action: "settingsButtonClicked" })
 			// Also explicitly post the visibility message to trigger scroll reliably
 			visibleProvider.postMessageToWebview({ type: "action", action: "didBecomeVisible" })
@@ -133,7 +132,7 @@ const getCommandsMap = ({ context, outputChannel, provider }: RegisterCommandOpt
 
 		TelemetryService.instance.captureTitleButtonClicked("history")
 
-	visibleProvider.postMessageToWebview({ type: "action", action: "historyButtonClicked" })
+		visibleProvider.postMessageToWebview({ type: "action", action: "historyButtonClicked" })
 	},
 	mcpButtonClicked: () => {
 		const visibleProvider = getVisibleProviderOrLog(outputChannel)
@@ -151,20 +150,6 @@ const getCommandsMap = ({ context, outputChannel, provider }: RegisterCommandOpt
 		if (!visibleProvider) return
 		visibleProvider.postMessageToWebview({ type: "action", action: "marketplaceButtonClicked" })
 	},
-	showHumanRelayDialog: (params: { requestId: string; promptText: string }) => {
-		const panel = getPanel()
-
-		if (panel) {
-			panel?.webview.postMessage({
-				type: "showHumanRelayDialog",
-				requestId: params.requestId,
-				promptText: params.promptText,
-			})
-		}
-	},
-	registerHumanRelayCallback: registerHumanRelayCallback,
-	unregisterHumanRelayCallback: unregisterHumanRelayCallback,
-	handleHumanRelayResponse: handleHumanRelayResponse,
 	newTask: handleNewTask,
 	setCustomStoragePath: async () => {
 		const { promptForCustomStoragePath } = await import("../utils/storage")

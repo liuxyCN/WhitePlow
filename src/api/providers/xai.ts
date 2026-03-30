@@ -1,7 +1,8 @@
 import { Anthropic } from "@anthropic-ai/sdk"
 import OpenAI from "openai"
 
-import { type XAIModelId, xaiDefaultModelId, xaiModels } from "@roo-code/types"
+import { type XAIModelId, xaiDefaultModelId, xaiModels, ApiProviderError } from "@roo-code/types"
+import { TelemetryService } from "@roo-code/telemetry"
 
 import { NativeToolCallParser } from "../../core/assistant-message/NativeToolCallParser"
 import type { ApiHandlerOptions } from "../../shared/api"
@@ -42,7 +43,13 @@ export class XAIHandler extends BaseProvider implements SingleCompletionHandler 
 				: xaiDefaultModelId
 
 		const info = xaiModels[id]
-		const params = getModelParams({ format: "openai", modelId: id, model: info, settings: this.options })
+		const params = getModelParams({
+			format: "openai",
+			modelId: id,
+			model: info,
+			settings: this.options,
+			defaultTemperature: XAI_DEFAULT_TEMPERATURE,
+		})
 		return { id, info, ...params }
 	}
 
@@ -52,11 +59,6 @@ export class XAIHandler extends BaseProvider implements SingleCompletionHandler 
 		metadata?: ApiHandlerCreateMessageMetadata,
 	): ApiStream {
 		const { id: modelId, info: modelInfo, reasoning } = this.getModel()
-
-		// Check if model supports native tools and tools are provided with native protocol
-		const supportsNativeTools = modelInfo.supportsNativeTools ?? false
-		const useNativeTools =
-			supportsNativeTools && metadata?.tools && metadata.tools.length > 0 && metadata?.toolProtocol !== "xml"
 
 		// Use the OpenAI-compatible API.
 		const requestOptions = {
@@ -70,15 +72,18 @@ export class XAIHandler extends BaseProvider implements SingleCompletionHandler 
 			stream: true as const,
 			stream_options: { include_usage: true },
 			...(reasoning && reasoning),
-			...(useNativeTools && { tools: this.convertToolsForOpenAI(metadata.tools) }),
-			...(useNativeTools && metadata.tool_choice && { tool_choice: metadata.tool_choice }),
-			...(useNativeTools && { parallel_tool_calls: metadata?.parallelToolCalls ?? false }),
+			tools: this.convertToolsForOpenAI(metadata?.tools),
+			tool_choice: metadata?.tool_choice,
+			parallel_tool_calls: metadata?.parallelToolCalls ?? true,
 		}
 
 		let stream
 		try {
 			stream = await this.client.chat.completions.create(requestOptions)
 		} catch (error) {
+			const errorMessage = error instanceof Error ? error.message : String(error)
+			const apiError = new ApiProviderError(errorMessage, this.providerName, modelId, "createMessage")
+			TelemetryService.instance.captureException(apiError)
 			throw handleOpenAIError(error, this.providerName)
 		}
 
@@ -158,6 +163,9 @@ export class XAIHandler extends BaseProvider implements SingleCompletionHandler 
 
 			return response.choices[0]?.message.content || ""
 		} catch (error) {
+			const errorMessage = error instanceof Error ? error.message : String(error)
+			const apiError = new ApiProviderError(errorMessage, this.providerName, modelId, "completePrompt")
+			TelemetryService.instance.captureException(apiError)
 			throw handleOpenAIError(error, this.providerName)
 		}
 	}

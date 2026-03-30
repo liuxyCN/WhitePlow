@@ -1,5 +1,6 @@
 import { Anthropic } from "@anthropic-ai/sdk"
 import { ConversationRole, Message, ContentBlock } from "@aws-sdk/client-bedrock-runtime"
+import { sanitizeOpenAiCallId } from "../../utils/tool-id"
 
 interface BedrockMessageContent {
 	type: "text" | "image" | "video" | "tool_use" | "tool_result"
@@ -25,14 +26,8 @@ interface BedrockMessageContent {
 /**
  * Convert Anthropic messages to Bedrock Converse format
  * @param anthropicMessages Messages in Anthropic format
- * @param options Optional configuration for conversion
- * @param options.useNativeTools When true, keeps tool_use input as JSON object instead of XML string
  */
-export function convertToBedrockConverseMessages(
-	anthropicMessages: Anthropic.Messages.MessageParam[],
-	options?: { useNativeTools?: boolean },
-): Message[] {
-	const useNativeTools = options?.useNativeTools ?? false
+export function convertToBedrockConverseMessages(anthropicMessages: Anthropic.Messages.MessageParam[]): Message[] {
 	return anthropicMessages.map((anthropicMessage) => {
 		// Map Anthropic roles to Bedrock roles
 		const role: ConversationRole = anthropicMessage.role === "assistant" ? "assistant" : "user"
@@ -93,31 +88,24 @@ export function convertToBedrockConverseMessages(
 			}
 
 			if (messageBlock.type === "tool_use") {
-				if (useNativeTools) {
-					// For native tool calling, keep input as JSON object for Bedrock's toolUse format
-					return {
-						toolUse: {
-							toolUseId: messageBlock.id || "",
-							name: messageBlock.name || "",
-							input: messageBlock.input || {},
-						},
-					} as ContentBlock
-				} else {
-					// Convert tool use to XML text format for XML-based tool calling
-					return {
-						text: `<tool_use>\n<tool_name>${messageBlock.name}</tool_name>\n<tool_input>${JSON.stringify(messageBlock.input)}</tool_input>\n</tool_use>`,
-					} as ContentBlock
-				}
+				// Native-only: keep input as JSON object for Bedrock's toolUse format
+				return {
+					toolUse: {
+						toolUseId: sanitizeOpenAiCallId(messageBlock.id || ""),
+						name: messageBlock.name || "",
+						input: messageBlock.input || {},
+					},
+				} as ContentBlock
 			}
 
 			if (messageBlock.type === "tool_result") {
-				// Handle content field - can be string or array
+				// Handle content field - can be string or array (native tool format)
 				if (messageBlock.content) {
 					// Content is a string
 					if (typeof messageBlock.content === "string") {
 						return {
 							toolResult: {
-								toolUseId: messageBlock.tool_use_id || "",
+								toolUseId: sanitizeOpenAiCallId(messageBlock.tool_use_id || ""),
 								content: [
 									{
 										text: messageBlock.content,
@@ -131,7 +119,7 @@ export function convertToBedrockConverseMessages(
 					if (Array.isArray(messageBlock.content)) {
 						return {
 							toolResult: {
-								toolUseId: messageBlock.tool_use_id || "",
+								toolUseId: sanitizeOpenAiCallId(messageBlock.tool_use_id || ""),
 								content: messageBlock.content.map((item) => ({
 									text: typeof item === "string" ? item : item.text || String(item),
 								})),
@@ -145,7 +133,7 @@ export function convertToBedrockConverseMessages(
 				if (messageBlock.output && typeof messageBlock.output === "string") {
 					return {
 						toolResult: {
-							toolUseId: messageBlock.tool_use_id || "",
+							toolUseId: sanitizeOpenAiCallId(messageBlock.tool_use_id || ""),
 							content: [
 								{
 									text: messageBlock.output,
@@ -159,7 +147,7 @@ export function convertToBedrockConverseMessages(
 				if (Array.isArray(messageBlock.output)) {
 					return {
 						toolResult: {
-							toolUseId: messageBlock.tool_use_id || "",
+							toolUseId: sanitizeOpenAiCallId(messageBlock.tool_use_id || ""),
 							content: messageBlock.output.map((part) => {
 								if (typeof part === "object" && "text" in part) {
 									return { text: part.text }
@@ -178,7 +166,7 @@ export function convertToBedrockConverseMessages(
 				// Default case
 				return {
 					toolResult: {
-						toolUseId: messageBlock.tool_use_id || "",
+						toolUseId: sanitizeOpenAiCallId(messageBlock.tool_use_id || ""),
 						content: [
 							{
 								text: String(messageBlock.output || ""),

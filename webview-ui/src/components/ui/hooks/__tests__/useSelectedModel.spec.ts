@@ -5,7 +5,13 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 import { renderHook } from "@testing-library/react"
 import type { Mock } from "vitest"
 
-import { ProviderSettings, ModelInfo, BEDROCK_1M_CONTEXT_MODEL_IDS, litellmDefaultModelInfo } from "@roo-code/types"
+import {
+	ProviderSettings,
+	ModelInfo,
+	BEDROCK_1M_CONTEXT_MODEL_IDS,
+	litellmDefaultModelInfo,
+	openAiModelInfoSaneDefaults,
+} from "@roo-code/types"
 
 import { useSelectedModel } from "../useSelectedModel"
 import { useRouterModels } from "../useRouterModels"
@@ -55,9 +61,7 @@ describe("useSelectedModel", () => {
 						"test-model": baseModelInfo,
 					},
 					requesty: {},
-					unbound: {},
 					litellm: {},
-					"io-intelligence": {},
 				},
 				isLoading: false,
 				isError: false,
@@ -118,9 +122,7 @@ describe("useSelectedModel", () => {
 						},
 					},
 					requesty: {},
-					unbound: {},
 					litellm: {},
-					"io-intelligence": {},
 				},
 				isLoading: false,
 				isError: false,
@@ -185,9 +187,7 @@ describe("useSelectedModel", () => {
 						"test-model": baseModelInfo,
 					},
 					requesty: {},
-					unbound: {},
 					litellm: {},
-					"io-intelligence": {},
 				},
 				isLoading: false,
 				isError: false,
@@ -239,9 +239,7 @@ describe("useSelectedModel", () => {
 				data: {
 					openrouter: { "test-model": baseModelInfo },
 					requesty: {},
-					unbound: {},
 					litellm: {},
-					"io-intelligence": {},
 				},
 				isLoading: false,
 				isError: false,
@@ -282,9 +280,7 @@ describe("useSelectedModel", () => {
 						},
 					},
 					requesty: {},
-					unbound: {},
 					litellm: {},
-					"io-intelligence": {},
 				},
 				isLoading: false,
 				isError: false,
@@ -344,7 +340,7 @@ describe("useSelectedModel", () => {
 
 		it("should NOT set loading when openrouter provider metadata is loading but provider is static (anthropic)", () => {
 			mockUseRouterModels.mockReturnValue({
-				data: { openrouter: {}, requesty: {}, unbound: {}, litellm: {}, "io-intelligence": {} },
+				data: { openrouter: {}, requesty: {}, litellm: {} },
 				isLoading: false,
 				isError: false,
 			} as any)
@@ -406,74 +402,35 @@ describe("useSelectedModel", () => {
 		})
 	})
 
-	describe("claude-code provider", () => {
-		it("should return claude-code model with supportsImages disabled", () => {
+	describe("anthropic provider with 1M context", () => {
+		beforeEach(() => {
 			mockUseRouterModels.mockReturnValue({
-				data: {
-					openrouter: {},
-					requesty: {},
-					unbound: {},
-					litellm: {},
-					"io-intelligence": {},
-				},
+				data: undefined,
 				isLoading: false,
 				isError: false,
 			} as any)
 
 			mockUseOpenRouterModelProviders.mockReturnValue({
-				data: {},
+				data: undefined,
 				isLoading: false,
 				isError: false,
 			} as any)
-
-			const apiConfiguration: ProviderSettings = {
-				apiProvider: "claude-code",
-				apiModelId: "claude-sonnet-4-20250514",
-			}
-
-			const wrapper = createWrapper()
-			const { result } = renderHook(() => useSelectedModel(apiConfiguration), { wrapper })
-
-			expect(result.current.provider).toBe("claude-code")
-			expect(result.current.id).toBe("claude-sonnet-4-20250514")
-			expect(result.current.info).toBeDefined()
-			expect(result.current.info?.supportsImages).toBe(false)
-			expect(result.current.info?.supportsPromptCache).toBe(true) // Claude Code now supports prompt cache
-			// Verify it inherits other properties from anthropic models
-			expect(result.current.info?.maxTokens).toBe(64_000)
-			expect(result.current.info?.contextWindow).toBe(200_000)
 		})
 
-		it("should use default claude-code model when no modelId is specified", () => {
-			mockUseRouterModels.mockReturnValue({
-				data: {
-					openrouter: {},
-					requesty: {},
-					unbound: {},
-					litellm: {},
-					"io-intelligence": {},
-				},
-				isLoading: false,
-				isError: false,
-			} as any)
-
-			mockUseOpenRouterModelProviders.mockReturnValue({
-				data: {},
-				isLoading: false,
-				isError: false,
-			} as any)
-
+		it("should apply 1M pricing tier for Claude Sonnet 4.6 when enabled", () => {
 			const apiConfiguration: ProviderSettings = {
-				apiProvider: "claude-code",
+				apiProvider: "anthropic",
+				apiModelId: "claude-sonnet-4-6",
+				anthropicBeta1MContext: true,
 			}
 
 			const wrapper = createWrapper()
 			const { result } = renderHook(() => useSelectedModel(apiConfiguration), { wrapper })
 
-			expect(result.current.provider).toBe("claude-code")
-			expect(result.current.id).toBe("claude-sonnet-4-5") // Default model
-			expect(result.current.info).toBeDefined()
-			expect(result.current.info?.supportsImages).toBe(false)
+			expect(result.current.id).toBe("claude-sonnet-4-6")
+			expect(result.current.info?.contextWindow).toBe(1_000_000)
+			expect(result.current.info?.inputPrice).toBe(6.0)
+			expect(result.current.info?.outputPrice).toBe(22.5)
 		})
 	})
 
@@ -483,9 +440,7 @@ describe("useSelectedModel", () => {
 				data: {
 					openrouter: {},
 					requesty: {},
-					unbound: {},
 					litellm: {},
-					"io-intelligence": {},
 				},
 				isLoading: false,
 				isError: false,
@@ -541,6 +496,52 @@ describe("useSelectedModel", () => {
 		})
 	})
 
+	describe("bedrock provider with custom ARN", () => {
+		beforeEach(() => {
+			mockUseRouterModels.mockReturnValue({
+				data: {
+					openrouter: {},
+					requesty: {},
+					litellm: {},
+				},
+				isLoading: false,
+				isError: false,
+			} as any)
+
+			mockUseOpenRouterModelProviders.mockReturnValue({
+				data: {},
+				isLoading: false,
+				isError: false,
+			} as any)
+		})
+
+		it("should enable supportsPromptCache for custom-arn model", () => {
+			const apiConfiguration: ProviderSettings = {
+				apiProvider: "bedrock",
+				apiModelId: "custom-arn",
+			}
+
+			const wrapper = createWrapper()
+			const { result } = renderHook(() => useSelectedModel(apiConfiguration), { wrapper })
+
+			expect(result.current.id).toBe("custom-arn")
+			expect(result.current.info?.supportsPromptCache).toBe(true)
+		})
+
+		it("should enable supportsImages for custom-arn model", () => {
+			const apiConfiguration: ProviderSettings = {
+				apiProvider: "bedrock",
+				apiModelId: "custom-arn",
+			}
+
+			const wrapper = createWrapper()
+			const { result } = renderHook(() => useSelectedModel(apiConfiguration), { wrapper })
+
+			expect(result.current.id).toBe("custom-arn")
+			expect(result.current.info?.supportsImages).toBe(true)
+		})
+	})
+
 	describe("litellm provider", () => {
 		beforeEach(() => {
 			mockUseOpenRouterModelProviders.mockReturnValue({
@@ -555,9 +556,7 @@ describe("useSelectedModel", () => {
 				data: {
 					openrouter: {},
 					requesty: {},
-					unbound: {},
 					litellm: {},
-					"io-intelligence": {},
 				},
 				isLoading: false,
 				isError: false,
@@ -576,7 +575,6 @@ describe("useSelectedModel", () => {
 			expect(result.current.id).toBe("claude-3-7-sonnet-20250219")
 			// Should use litellmDefaultModelInfo as fallback
 			expect(result.current.info).toEqual(litellmDefaultModelInfo)
-			expect(result.current.info?.supportsNativeTools).toBe(true)
 		})
 
 		it("should use litellmDefaultModelInfo when selected model not found in routerModels", () => {
@@ -584,17 +582,14 @@ describe("useSelectedModel", () => {
 				data: {
 					openrouter: {},
 					requesty: {},
-					unbound: {},
 					litellm: {
 						"existing-model": {
 							maxTokens: 4096,
 							contextWindow: 8192,
 							supportsImages: false,
 							supportsPromptCache: false,
-							supportsNativeTools: true,
 						},
 					},
-					"io-intelligence": {},
 				},
 				isLoading: false,
 				isError: false,
@@ -613,16 +608,14 @@ describe("useSelectedModel", () => {
 			expect(result.current.id).toBe("claude-3-7-sonnet-20250219")
 			// Should use litellmDefaultModelInfo as fallback since default model also not in router models
 			expect(result.current.info).toEqual(litellmDefaultModelInfo)
-			expect(result.current.info?.supportsNativeTools).toBe(true)
 		})
 
-		it("should use model info from routerModels when model exists", () => {
+		it("should return routerModels info when model exists", () => {
 			const customModelInfo: ModelInfo = {
 				maxTokens: 16384,
 				contextWindow: 128000,
 				supportsImages: true,
 				supportsPromptCache: true,
-				supportsNativeTools: true,
 				description: "Custom LiteLLM model",
 			}
 
@@ -630,11 +623,9 @@ describe("useSelectedModel", () => {
 				data: {
 					openrouter: {},
 					requesty: {},
-					unbound: {},
 					litellm: {
 						"custom-model": customModelInfo,
 					},
-					"io-intelligence": {},
 				},
 				isLoading: false,
 				isError: false,
@@ -650,9 +641,88 @@ describe("useSelectedModel", () => {
 
 			expect(result.current.provider).toBe("litellm")
 			expect(result.current.id).toBe("custom-model")
-			// Should use the model info from routerModels, not the fallback
 			expect(result.current.info).toEqual(customModelInfo)
-			expect(result.current.info?.supportsNativeTools).toBe(true)
+		})
+	})
+
+	describe("openai provider", () => {
+		beforeEach(() => {
+			mockUseRouterModels.mockReturnValue({
+				data: {
+					openrouter: {},
+					requesty: {},
+					litellm: {},
+				},
+				isLoading: false,
+				isError: false,
+			} as any)
+
+			mockUseOpenRouterModelProviders.mockReturnValue({
+				data: {},
+				isLoading: false,
+				isError: false,
+			} as any)
+		})
+
+		it("should use openAiModelInfoSaneDefaults when no custom model info is provided", () => {
+			const apiConfiguration: ProviderSettings = {
+				apiProvider: "openai",
+				openAiModelId: "gpt-4o",
+			}
+
+			const wrapper = createWrapper()
+			const { result } = renderHook(() => useSelectedModel(apiConfiguration), { wrapper })
+
+			expect(result.current.provider).toBe("openai")
+			expect(result.current.id).toBe("gpt-4o")
+			expect(result.current.info).toEqual(openAiModelInfoSaneDefaults)
+		})
+
+		it("should return custom model info when provided", () => {
+			const customModelInfo: ModelInfo = {
+				maxTokens: 16384,
+				contextWindow: 128000,
+				supportsImages: true,
+				supportsPromptCache: false,
+				inputPrice: 0.01,
+				outputPrice: 0.03,
+				description: "Custom OpenAI-compatible model",
+			}
+
+			const apiConfiguration: ProviderSettings = {
+				apiProvider: "openai",
+				openAiModelId: "custom-model",
+				openAiCustomModelInfo: customModelInfo,
+			}
+
+			const wrapper = createWrapper()
+			const { result } = renderHook(() => useSelectedModel(apiConfiguration), { wrapper })
+
+			expect(result.current.provider).toBe("openai")
+			expect(result.current.id).toBe("custom-model")
+			expect(result.current.info).toEqual(customModelInfo)
+		})
+
+		it("should return custom model info as-is", () => {
+			const customModelInfo: ModelInfo = {
+				maxTokens: 8192,
+				contextWindow: 32000,
+				supportsImages: false,
+				supportsPromptCache: false,
+			}
+
+			const apiConfiguration: ProviderSettings = {
+				apiProvider: "openai",
+				openAiModelId: "custom-model-no-tools",
+				openAiCustomModelInfo: customModelInfo,
+			}
+
+			const wrapper = createWrapper()
+			const { result } = renderHook(() => useSelectedModel(apiConfiguration), { wrapper })
+
+			expect(result.current.provider).toBe("openai")
+			expect(result.current.id).toBe("custom-model-no-tools")
+			expect(result.current.info).toEqual(customModelInfo)
 		})
 	})
 })

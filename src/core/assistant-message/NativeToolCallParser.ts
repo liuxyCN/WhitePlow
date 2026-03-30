@@ -1,19 +1,22 @@
+import { parseJSON } from "partial-json"
+
 import { type ToolName, toolNames, type FileEntry } from "@roo-code/types"
+import { customToolRegistry } from "@roo-code/core"
+
 import {
 	type ToolUse,
 	type McpToolUse,
 	type ToolParamName,
-	toolParamNames,
 	type NativeToolArgs,
+	toolParamNames,
 } from "../../shared/tools"
 import { resolveToolAlias } from "../prompts/tools/filter-tools-for-mode"
-import { parseJSON } from "partial-json"
 import type {
 	ApiStreamToolCallStartChunk,
 	ApiStreamToolCallDeltaChunk,
 	ApiStreamToolCallEndChunk,
 } from "../../api/transform/stream"
-import { MCP_TOOL_PREFIX, MCP_TOOL_SEPARATOR, parseMcpToolName } from "../../utils/mcp-name"
+import { MCP_TOOL_PREFIX, MCP_TOOL_SEPARATOR, parseMcpToolName, normalizeMcpToolName } from "../../utils/mcp-name"
 
 /**
  * Helper type to extract properly typed native arguments for a given tool.
@@ -49,7 +52,7 @@ export type ToolCallStreamEvent = ApiStreamToolCallStartChunk | ApiStreamToolCal
  */
 export class NativeToolCallParser {
 	// Streaming state management for argument accumulation (keyed by tool call id)
-	// Note: name is string to accommodate dynamic MCP tools (mcp_serverName_toolName)
+	// Note: name is string to accommodate dynamic MCP tools (mcp--serverName--toolName)
 	private static streamingToolCalls = new Map<
 		string,
 		{
@@ -69,6 +72,22 @@ export class NativeToolCallParser {
 			deltaBuffer: string[]
 		}
 	>()
+
+	private static coerceOptionalBoolean(value: unknown): boolean | undefined {
+		if (typeof value === "boolean") {
+			return value
+		}
+		if (typeof value === "string") {
+			const lower = value.trim().toLowerCase()
+			if (lower === "true") {
+				return true
+			}
+			if (lower === "false") {
+				return false
+			}
+		}
+		return undefined
+	}
 
 	/**
 	 * Process a raw tool call chunk from the API stream.
@@ -196,7 +215,7 @@ export class NativeToolCallParser {
 	/**
 	 * Start streaming a new tool call.
 	 * Initializes tracking for incremental argument parsing.
-	 * Accepts string to support both ToolName and dynamic MCP tools (mcp_serverName_toolName).
+	 * Accepts string to support both ToolName and dynamic MCP tools (mcp--serverName--toolName).
 	 */
 	public static startStreamingToolCall(id: string, name: string): void {
 		this.streamingToolCalls.set(id, {
@@ -231,7 +250,6 @@ export class NativeToolCallParser {
 	public static processStreamingChunk(id: string, chunk: string): ToolUse | null {
 		const toolCall = this.streamingToolCalls.get(id)
 		if (!toolCall) {
-			console.warn(`[NativeToolCallParser] Received chunk for unknown tool call: ${id}`)
 			return null
 		}
 
@@ -276,7 +294,6 @@ export class NativeToolCallParser {
 	public static finalizeStreamingToolCall(id: string): ToolUse | McpToolUse | null {
 		const toolCall = this.streamingToolCalls.get(id)
 		if (!toolCall) {
-			console.warn(`[NativeToolCallParser] Attempting to finalize unknown tool call: ${id}`)
 			return null
 		}
 
@@ -288,15 +305,36 @@ export class NativeToolCallParser {
 			arguments: toolCall.argumentsAccumulator,
 		})
 
-		// Clean up streaming state
-		this.streamingToolCalls.delete(id)
+		// Only drop accumulator on successful parse. Premature tool_call_end (or truncated JSON)
+		// would otherwise lose deltas still in flight; a later end or stream shutdown can retry.
+		if (finalToolUse) {
+			this.streamingToolCalls.delete(id)
+		}
 
 		return finalToolUse
 	}
 
+	/** Drop streaming state for a tool call id without producing a final tool (terminal failure path). */
+	public static discardStreamingToolCall(id: string): void {
+		this.streamingToolCalls.delete(id)
+	}
+
+	private static coerceOptionalNumber(value: unknown): number | undefined {
+		if (typeof value === "number" && Number.isFinite(value)) {
+			return value
+		}
+		if (typeof value === "string") {
+			const n = Number(value)
+			if (Number.isFinite(n)) {
+				return n
+			}
+		}
+		return undefined
+	}
+
 	/**
 	 * Convert raw file entries from API (with line_ranges) to FileEntry objects
-	 * (with lineRanges). Handles multiple formats for compatibility:
+	 * (with lineRanges). Handles multiple formats for backward compatibility:
 	 *
 	 * New tuple format: { path: string, line_ranges: [[1, 50], [100, 150]] }
 	 * Object format: { path: string, line_ranges: [{ start: 1, end: 50 }] }
@@ -304,19 +342,21 @@ export class NativeToolCallParser {
 	 *
 	 * Returns: { path: string, lineRanges: [{ start: 1, end: 50 }] }
 	 */
-	private static convertFileEntries(files: any[]): FileEntry[] {
-		return files.map((file: any) => {
-			const entry: FileEntry = { path: file.path }
-			if (file.line_ranges && Array.isArray(file.line_ranges)) {
-				entry.lineRanges = file.line_ranges
-					.map((range: any) => {
+	private static convertFileEntries(files: unknown[]): FileEntry[] {
+		return files.map((file: unknown) => {
+			const f = file as Record<string, unknown>
+			const entry: FileEntry = { path: f.path as string }
+			if (f.line_ranges && Array.isArray(f.line_ranges)) {
+				entry.lineRanges = (f.line_ranges as unknown[])
+					.map((range: unknown) => {
 						// Handle tuple format: [start, end]
 						if (Array.isArray(range) && range.length >= 2) {
 							return { start: Number(range[0]), end: Number(range[1]) }
 						}
 						// Handle object format: { start: number, end: number }
 						if (typeof range === "object" && range !== null && "start" in range && "end" in range) {
-							return { start: Number(range.start), end: Number(range.end) }
+							const r = range as { start: unknown; end: unknown }
+							return { start: Number(r.start), end: Number(r.end) }
 						}
 						// Handle legacy string format: "1-50"
 						if (typeof range === "string") {
@@ -327,7 +367,7 @@ export class NativeToolCallParser {
 						}
 						return null
 					})
-					.filter(Boolean)
+					.filter((r): r is { start: number; end: number } => r !== null)
 			}
 			return entry
 		})
@@ -345,9 +385,9 @@ export class NativeToolCallParser {
 		partial: boolean,
 		originalName?: string,
 	): ToolUse | null {
-		// Build legacy params for display
+		// Build stringified params for display/partial-progress UI.
 		// NOTE: For streaming partial updates, we MUST populate params even for complex types
-		// because tool.handlePartial() methods rely on params to show UI updates
+		// because tool.handlePartial() methods rely on params to show UI updates.
 		const params: Partial<Record<ToolParamName, string>> = {}
 
 		for (const [key, value] of Object.entries(partialArgs)) {
@@ -359,10 +399,60 @@ export class NativeToolCallParser {
 		// Build partial nativeArgs based on what we have so far
 		let nativeArgs: any = undefined
 
+		// Track if legacy format was used (for telemetry)
+		let usedLegacyFormat = false
+
 		switch (name) {
 			case "read_file":
-				if (partialArgs.files && Array.isArray(partialArgs.files)) {
-					nativeArgs = { files: this.convertFileEntries(partialArgs.files) }
+				// Check for legacy format first: { files: [...] }
+				// Handle both array and stringified array (some models double-stringify)
+				if (partialArgs.files !== undefined) {
+					let filesArray: unknown[] | null = null
+
+					if (Array.isArray(partialArgs.files)) {
+						filesArray = partialArgs.files
+					} else if (typeof partialArgs.files === "string") {
+						// Handle double-stringified case: files is a string containing JSON array
+						try {
+							const parsed = JSON.parse(partialArgs.files)
+							if (Array.isArray(parsed)) {
+								filesArray = parsed
+							}
+						} catch {
+							// Not valid JSON, ignore
+						}
+					}
+
+					if (filesArray && filesArray.length > 0) {
+						usedLegacyFormat = true
+						nativeArgs = {
+							files: this.convertFileEntries(filesArray),
+							_legacyFormat: true as const,
+						}
+					}
+				}
+				// New format: { path: "...", mode: "..." }
+				if (!nativeArgs && partialArgs.path !== undefined) {
+					nativeArgs = {
+						path: partialArgs.path,
+						mode: partialArgs.mode,
+						offset: this.coerceOptionalNumber(partialArgs.offset),
+						limit: this.coerceOptionalNumber(partialArgs.limit),
+						indentation:
+							partialArgs.indentation && typeof partialArgs.indentation === "object"
+								? {
+										anchor_line: this.coerceOptionalNumber(partialArgs.indentation.anchor_line),
+										max_levels: this.coerceOptionalNumber(partialArgs.indentation.max_levels),
+										max_lines: this.coerceOptionalNumber(partialArgs.indentation.max_lines),
+										include_siblings: this.coerceOptionalBoolean(
+											partialArgs.indentation.include_siblings,
+										),
+										include_header: this.coerceOptionalBoolean(
+											partialArgs.indentation.include_header,
+										),
+									}
+								: undefined,
+					}
 				}
 				break
 
@@ -377,6 +467,7 @@ export class NativeToolCallParser {
 					nativeArgs = {
 						command: partialArgs.command,
 						cwd: partialArgs.cwd,
+						timeout: partialArgs.timeout,
 					}
 				}
 				break
@@ -408,32 +499,11 @@ export class NativeToolCallParser {
 				}
 				break
 
-			case "browser_action":
-				if (partialArgs.action !== undefined) {
-					nativeArgs = {
-						action: partialArgs.action,
-						url: partialArgs.url,
-						coordinate: partialArgs.coordinate,
-						size: partialArgs.size,
-						text: partialArgs.text,
-						path: partialArgs.path,
-					}
-				}
-				break
-
 			case "codebase_search":
 				if (partialArgs.query !== undefined) {
 					nativeArgs = {
 						query: partialArgs.query,
 						path: partialArgs.path,
-					}
-				}
-				break
-
-			case "fetch_instructions":
-				if (partialArgs.task !== undefined) {
-					nativeArgs = {
-						task: partialArgs.task,
 					}
 				}
 				break
@@ -452,6 +522,15 @@ export class NativeToolCallParser {
 				if (partialArgs.command !== undefined) {
 					nativeArgs = {
 						command: partialArgs.command,
+						args: partialArgs.args,
+					}
+				}
+				break
+
+			case "skill":
+				if (partialArgs.skill !== undefined) {
+					nativeArgs = {
+						skill: partialArgs.skill,
 						args: partialArgs.args,
 					}
 				}
@@ -516,11 +595,52 @@ export class NativeToolCallParser {
 				}
 				break
 
+			case "edit":
 			case "search_and_replace":
-				if (partialArgs.path !== undefined || partialArgs.operations !== undefined) {
+				if (
+					partialArgs.file_path !== undefined ||
+					partialArgs.old_string !== undefined ||
+					partialArgs.new_string !== undefined
+				) {
+					nativeArgs = {
+						file_path: partialArgs.file_path,
+						old_string: partialArgs.old_string,
+						new_string: partialArgs.new_string,
+						replace_all: this.coerceOptionalBoolean(partialArgs.replace_all),
+					}
+				}
+				break
+
+			case "edit_file":
+				if (
+					partialArgs.file_path !== undefined ||
+					partialArgs.old_string !== undefined ||
+					partialArgs.new_string !== undefined
+				) {
+					nativeArgs = {
+						file_path: partialArgs.file_path,
+						old_string: partialArgs.old_string,
+						new_string: partialArgs.new_string,
+						expected_replacements: partialArgs.expected_replacements,
+					}
+				}
+				break
+
+			case "list_files":
+				if (partialArgs.path !== undefined) {
 					nativeArgs = {
 						path: partialArgs.path,
-						operations: partialArgs.operations,
+						recursive: this.coerceOptionalBoolean(partialArgs.recursive),
+					}
+				}
+				break
+
+			case "new_task":
+				if (partialArgs.mode !== undefined || partialArgs.message !== undefined) {
+					nativeArgs = {
+						mode: partialArgs.mode,
+						message: partialArgs.message,
+						todos: partialArgs.todos,
 					}
 				}
 				break
@@ -542,6 +662,11 @@ export class NativeToolCallParser {
 			result.originalName = originalName
 		}
 
+		// Track legacy format usage for telemetry
+		if (usedLegacyFormat) {
+			result.usedLegacyFormat = true
+		}
+
 		return result
 	}
 
@@ -557,16 +682,23 @@ export class NativeToolCallParser {
 		arguments: string
 	}): ToolUse<TName> | McpToolUse | null {
 		// Check if this is a dynamic MCP tool (mcp--serverName--toolName)
+		// Also handle models that output underscores instead of hyphens (mcp__serverName__toolName)
 		const mcpPrefix = MCP_TOOL_PREFIX + MCP_TOOL_SEPARATOR
-		if (typeof toolCall.name === "string" && toolCall.name.startsWith(mcpPrefix)) {
-			return this.parseDynamicMcpTool(toolCall)
+
+		if (typeof toolCall.name === "string") {
+			// Normalize the tool name to handle models that output underscores instead of hyphens
+			const normalizedName = normalizeMcpToolName(toolCall.name)
+			if (normalizedName.startsWith(mcpPrefix)) {
+				// Pass the original tool call but with normalized name for parsing
+				return this.parseDynamicMcpTool({ ...toolCall, name: normalizedName })
+			}
 		}
 
-		// Resolve tool alias to canonical name (e.g., "edit_file" -> "apply_diff", "temp_edit_file" -> "search_and_replace")
+		// Resolve tool alias to canonical name
 		const resolvedName = resolveToolAlias(toolCall.name as string) as TName
 
-		// Validate tool name (after alias resolution)
-		if (!toolNames.includes(resolvedName as ToolName)) {
+		// Validate tool name (after alias resolution).
+		if (!toolNames.includes(resolvedName as ToolName) && !customToolRegistry.has(resolvedName)) {
 			console.error(`Invalid tool name: ${toolCall.name} (resolved: ${resolvedName})`)
 			console.error(`Valid tool names:`, toolNames)
 			return null
@@ -574,22 +706,15 @@ export class NativeToolCallParser {
 
 		try {
 			// Parse the arguments JSON string
-			const args = JSON.parse(toolCall.arguments)
+			const args = toolCall.arguments === "" ? {} : JSON.parse(toolCall.arguments)
 
-			// Build legacy params object for backward compatibility with XML protocol and UI.
-			// Native execution path uses nativeArgs instead, which has proper typing.
+			// Build stringified params for display/logging.
+			// Tool execution MUST use nativeArgs (typed) and does not support legacy fallbacks.
 			const params: Partial<Record<ToolParamName, string>> = {}
 
 			for (const [key, value] of Object.entries(args)) {
-				// Skip complex parameters that have been migrated to nativeArgs.
-				// For read_file, the 'files' parameter is a FileEntry[] array that can't be
-				// meaningfully stringified. The properly typed data is in nativeArgs instead.
-				if (resolvedName === "read_file" && key === "files") {
-					continue
-				}
-
 				// Validate parameter name
-				if (!toolParamNames.includes(key as ToolParamName)) {
+				if (!toolParamNames.includes(key as ToolParamName) && !customToolRegistry.has(resolvedName)) {
 					console.warn(`Unknown parameter '${key}' for tool '${resolvedName}'`)
 					console.warn(`Valid param names:`, toolParamNames)
 					continue
@@ -600,20 +725,63 @@ export class NativeToolCallParser {
 				params[key as ToolParamName] = stringValue
 			}
 
-			// Build typed nativeArgs for tools that support it.
-			// This switch statement serves two purposes:
-			// 1. Validation: Ensures required parameters are present before constructing nativeArgs
-			// 2. Transformation: Converts raw JSON to properly typed structures
-			//
+			// Build typed nativeArgs for tool execution.
 			// Each case validates the minimum required parameters and constructs a properly typed
-			// nativeArgs object. If validation fails, nativeArgs remains undefined and the tool
-			// will fall back to legacy parameter parsing if supported.
+			// nativeArgs object. If validation fails, we treat the tool call as invalid and fail fast.
 			let nativeArgs: NativeArgsFor<TName> | undefined = undefined
+
+			// Track if legacy format was used (for telemetry)
+			let usedLegacyFormat = false
 
 			switch (resolvedName) {
 				case "read_file":
-					if (args.files && Array.isArray(args.files)) {
-						nativeArgs = { files: this.convertFileEntries(args.files) } as NativeArgsFor<TName>
+					// Check for legacy format first: { files: [...] }
+					// Handle both array and stringified array (some models double-stringify)
+					if (args.files !== undefined) {
+						let filesArray: unknown[] | null = null
+
+						if (Array.isArray(args.files)) {
+							filesArray = args.files
+						} else if (typeof args.files === "string") {
+							// Handle double-stringified case: files is a string containing JSON array
+							try {
+								const parsed = JSON.parse(args.files)
+								if (Array.isArray(parsed)) {
+									filesArray = parsed
+								}
+							} catch {
+								// Not valid JSON, ignore
+							}
+						}
+
+						if (filesArray && filesArray.length > 0) {
+							usedLegacyFormat = true
+							nativeArgs = {
+								files: this.convertFileEntries(filesArray),
+								_legacyFormat: true as const,
+							} as NativeArgsFor<TName>
+						}
+					}
+					// New format: { path: "...", mode: "..." }
+					if (!nativeArgs && args.path !== undefined) {
+						nativeArgs = {
+							path: args.path,
+							mode: args.mode,
+							offset: this.coerceOptionalNumber(args.offset),
+							limit: this.coerceOptionalNumber(args.limit),
+							indentation:
+								args.indentation && typeof args.indentation === "object"
+									? {
+											anchor_line: this.coerceOptionalNumber(args.indentation.anchor_line),
+											max_levels: this.coerceOptionalNumber(args.indentation.max_levels),
+											max_lines: this.coerceOptionalNumber(args.indentation.max_lines),
+											include_siblings: this.coerceOptionalBoolean(
+												args.indentation.include_siblings,
+											),
+											include_header: this.coerceOptionalBoolean(args.indentation.include_header),
+										}
+									: undefined,
+						} as NativeArgsFor<TName>
 					}
 					break
 
@@ -628,6 +796,7 @@ export class NativeToolCallParser {
 						nativeArgs = {
 							command: args.command,
 							cwd: args.cwd,
+							timeout: args.timeout,
 						} as NativeArgsFor<TName>
 					}
 					break
@@ -641,11 +810,18 @@ export class NativeToolCallParser {
 					}
 					break
 
+				case "edit":
 				case "search_and_replace":
-					if (args.path !== undefined && args.operations !== undefined && Array.isArray(args.operations)) {
+					if (
+						args.file_path !== undefined &&
+						args.old_string !== undefined &&
+						args.new_string !== undefined
+					) {
 						nativeArgs = {
-							path: args.path,
-							operations: args.operations,
+							file_path: args.file_path,
+							old_string: args.old_string,
+							new_string: args.new_string,
+							replace_all: this.coerceOptionalBoolean(args.replace_all),
 						} as NativeArgsFor<TName>
 					}
 					break
@@ -659,32 +835,11 @@ export class NativeToolCallParser {
 					}
 					break
 
-				case "browser_action":
-					if (args.action !== undefined) {
-						nativeArgs = {
-							action: args.action,
-							url: args.url,
-							coordinate: args.coordinate,
-							size: args.size,
-							text: args.text,
-							path: args.path,
-						} as NativeArgsFor<TName>
-					}
-					break
-
 				case "codebase_search":
 					if (args.query !== undefined) {
 						nativeArgs = {
 							query: args.query,
 							path: args.path,
-						} as NativeArgsFor<TName>
-					}
-					break
-
-				case "fetch_instructions":
-					if (args.task !== undefined) {
-						nativeArgs = {
-							task: args.task,
 						} as NativeArgsFor<TName>
 					}
 					break
@@ -703,6 +858,15 @@ export class NativeToolCallParser {
 					if (args.command !== undefined) {
 						nativeArgs = {
 							command: args.command,
+							args: args.args,
+						} as NativeArgsFor<TName>
+					}
+					break
+
+				case "skill":
+					if (args.skill !== undefined) {
+						nativeArgs = {
+							skill: args.skill,
 							args: args.args,
 						} as NativeArgsFor<TName>
 					}
@@ -731,6 +895,17 @@ export class NativeToolCallParser {
 					if (args.todos !== undefined) {
 						nativeArgs = {
 							todos: args.todos,
+						} as NativeArgsFor<TName>
+					}
+					break
+
+				case "read_command_output":
+					if (args.artifact_id !== undefined) {
+						nativeArgs = {
+							artifact_id: args.artifact_id,
+							search: args.search,
+							offset: args.offset,
+							limit: args.limit,
 						} as NativeArgsFor<TName>
 					}
 					break
@@ -785,8 +960,56 @@ export class NativeToolCallParser {
 					}
 					break
 
-				default:
+				case "edit_file":
+					if (
+						args.file_path !== undefined &&
+						args.old_string !== undefined &&
+						args.new_string !== undefined
+					) {
+						nativeArgs = {
+							file_path: args.file_path,
+							old_string: args.old_string,
+							new_string: args.new_string,
+							expected_replacements: args.expected_replacements,
+						} as NativeArgsFor<TName>
+					}
 					break
+
+				case "list_files":
+					if (args.path !== undefined) {
+						nativeArgs = {
+							path: args.path,
+							recursive: this.coerceOptionalBoolean(args.recursive),
+						} as NativeArgsFor<TName>
+					}
+					break
+
+				case "new_task":
+					if (args.mode !== undefined && args.message !== undefined) {
+						nativeArgs = {
+							mode: args.mode,
+							message: args.message,
+							todos: args.todos,
+						} as NativeArgsFor<TName>
+					}
+					break
+
+				default:
+					if (customToolRegistry.has(resolvedName)) {
+						nativeArgs = args as NativeArgsFor<TName>
+					}
+
+					break
+			}
+
+			// Native-only: core tools must always have typed nativeArgs.
+			// If we couldn't construct it, the model produced an invalid tool call payload.
+			if (!nativeArgs && !customToolRegistry.has(resolvedName)) {
+				throw new Error(
+					`[NativeToolCallParser] Invalid arguments for tool '${resolvedName}'. ` +
+						`Native tool calls require a valid JSON payload matching the tool schema. ` +
+						`Received: ${JSON.stringify(args)}`,
+				)
 			}
 
 			const result: ToolUse<TName> = {
@@ -800,6 +1023,11 @@ export class NativeToolCallParser {
 			// Preserve original name for API history when an alias was used
 			if (toolCall.name !== resolvedName) {
 				result.originalName = toolCall.name
+			}
+
+			// Track legacy format usage for telemetry
+			if (usedLegacyFormat) {
+				result.usedLegacyFormat = true
 			}
 
 			return result
@@ -817,21 +1045,21 @@ export class NativeToolCallParser {
 	 * Parse dynamic MCP tools (named mcp--serverName--toolName).
 	 * These are generated dynamically by getMcpServerTools() and are returned
 	 * as McpToolUse objects that preserve the original tool name.
-	 *
-	 * In native mode, MCP tools are NOT converted to use_mcp_tool - they keep
-	 * their original name so it appears correctly in API conversation history.
-	 * The use_mcp_tool wrapper is only used in XML mode.
 	 */
 	public static parseDynamicMcpTool(toolCall: { id: string; name: string; arguments: string }): McpToolUse | null {
 		try {
 			// Parse the arguments - these are the actual tool arguments passed directly
 			const args = JSON.parse(toolCall.arguments || "{}")
 
+			// Normalize the tool name to handle models that output underscores instead of hyphens
+			// e.g., mcp__serverName__toolName -> mcp--serverName--toolName
+			const normalizedName = normalizeMcpToolName(toolCall.name)
+
 			// Extract server_name and tool_name from the tool name itself
 			// Format: mcp--serverName--toolName (using -- separator)
-			const parsed = parseMcpToolName(toolCall.name)
+			const parsed = parseMcpToolName(normalizedName)
 			if (!parsed) {
-				console.error(`Invalid dynamic MCP tool name format: ${toolCall.name}`)
+				console.error(`Invalid dynamic MCP tool name format: ${toolCall.name} (normalized: ${normalizedName})`)
 				return null
 			}
 

@@ -25,16 +25,18 @@
 		"sharingDisabledByOrganization": "Berbagi dinonaktifkan oleh organisasi",
 		"shareSuccessOrganization": "Tautan organisasi disalin ke clipboard",
 		"shareSuccessPublic": "Tautan publik disalin ke clipboard",
-		"openInCloud": "Buka tugas di Roo Code Cloud",
-		"openInCloudIntro": "Terus pantau atau berinteraksi dengan Roo dari mana saja. Pindai, klik atau salin untuk membuka.",
 		"openApiHistory": "Buka Riwayat API",
-		"openUiHistory": "Buka Riwayat UI"
+		"openUiHistory": "Buka Riwayat UI",
+		"backToParentTask": "Tugas Induk"
 	},
 	"history": {
 		"title": "Riwayat"
 	},
 	"unpin": "Lepas Pin",
 	"pin": "Pin",
+	"fileChangesInConversation": {
+		"header": "{{count}} file diubah dalam percakapan ini"
+	},
 	"retry": {
 		"title": "Coba Lagi",
 		"tooltip": "Coba operasi lagi"
@@ -57,7 +59,10 @@
 	"tokenProgress": {
 		"availableSpace": "Ruang tersedia: {{amount}} token",
 		"tokensUsed": "Token digunakan: {{used}} dari {{total}}",
-		"reservedForResponse": "Dicadangkan untuk respons model: {{amount}} token"
+		"reservedForResponse": "Dicadangkan untuk respons model: {{amount}} token",
+		"tokensUsedLabel": "Token digunakan",
+		"reservedForResponseLabel": "Dicadangkan untuk respons",
+		"availableSpaceLabel": "Ruang tersedia"
 	},
 	"reject": {
 		"title": "Tolak",
@@ -71,6 +76,22 @@
 	"read-batch": {
 		"approve": {
 			"title": "Setujui Semua"
+		},
+		"deny": {
+			"title": "Tolak Semua"
+		}
+	},
+	"list-batch": {
+		"approve": {
+			"title": "Setujui Semua"
+		},
+		"deny": {
+			"title": "Tolak Semua"
+		}
+	},
+	"edit-batch": {
+		"approve": {
+			"title": "Simpan Semua"
 		},
 		"deny": {
 			"title": "Tolak Semua"
@@ -96,10 +117,15 @@
 		"title": "Hentikan",
 		"tooltip": "Akhiri tugas saat ini"
 	},
+	"stop": {
+		"title": "Stop",
+		"tooltip": "Hentikan tugas saat ini"
+	},
 	"cancel": {
 		"title": "Batal",
 		"tooltip": "Batalkan operasi saat ini"
 	},
+	"enqueueMessage": "Tambahkan pesan ke antrean (akan dikirim setelah tugas saat ini selesai)",
 	"scrollToBottom": "Gulir ke bawah chat",
 	"about": "Roo Code adalah seluruh tim pengembang AI di editor Anda.",
 	"docs": "Lihat <DocsLink>dokumentasi</DocsLink> kami untuk mempelajari lebih lanjut.",
@@ -116,6 +142,8 @@
 	},
 	"selectMode": "Pilih mode untuk interaksi",
 	"selectApiConfig": "Pilih konfigurasi API",
+	"lockApiConfigAcrossModes": "Kunci konfigurasi API di semua mode dalam workspace ini",
+	"unlockApiConfigAcrossModes": "Konfigurasi API terkunci di semua mode dalam workspace ini (klik untuk membuka kunci)",
 	"enhancePrompt": "Tingkatkan prompt dengan konteks tambahan",
 	"enhancePromptDescription": "Tombol 'Tingkatkan Prompt' membantu memperbaiki prompt kamu dengan memberikan konteks tambahan, klarifikasi, atau penyusunan ulang. Coba ketik prompt di sini dan klik tombol lagi untuk melihat cara kerjanya.",
 	"modeSelector": {
@@ -147,17 +175,20 @@
 		"streaming": "Permintaan API...",
 		"cancelled": "Permintaan API Dibatalkan",
 		"streamingFailed": "Streaming API Gagal",
-		"errorTitle": "Kesalahan API {{code}}",
+		"rateLimitWait": "Pembatasan rate",
+		"errorTitle": "Kesalahan Penyedia {{code}}",
 		"errorMessage": {
-			"docs": "Dokumentasi",
 			"400": "Penyedia tidak dapat memproses permintaan seperti yang dibuat. Hentikan tugas dan coba pendekatan berbeda.",
 			"401": "Tidak dapat mengautentikasi dengan penyedia. Harap periksa konfigurasi kunci API Anda.",
 			"402": "Tampaknya Anda telah kehabisan dana/kredit di akun Anda. Pergi ke penyedia Anda dan tambahkan lebih banyak untuk melanjutkan.",
 			"403": "Tidak sah. Kunci API Anda valid, tetapi penyedia menolak untuk menyelesaikan permintaan ini.",
 			"429": "Terlalu banyak permintaan. Anda dibatasi tingkat oleh penyedia. Harap tunggu sebentar sebelum panggilan API berikutnya Anda.",
 			"500": "Kesalahan server penyedia. Ada yang salah di sisi penyedia, tidak ada yang salah dengan permintaan Anda.",
+			"docs": "Dokumentasi",
+			"goToSettings": "Pengaturan",
 			"unknown": "Kesalahan API yang tidak diketahui. Harap hubungi dukungan Roo Code.",
-			"connection": "Kesalahan koneksi. Pastikan Anda memiliki koneksi internet yang berfungsi."
+			"connection": "Kesalahan koneksi. Pastikan Anda memiliki koneksi internet yang berfungsi.",
+			"claudeCodeNotAuthenticated": "Anda perlu masuk untuk menggunakan Claude Code. Buka Pengaturan dan klik \"Masuk ke Claude Code\" untuk mengautentikasi."
 		}
 	},
 	"checkpoint": {
@@ -193,6 +224,10 @@
 			"messagesRemoved_other": "{{count}} pesan dihapus",
 			"description": "Pesan lama telah dihapus dari percakapan untuk tetap dalam batas jendela konteks. Ini adalah pendekatan yang cepat tetapi kurang mempertahankan konteks dibandingkan dengan kondensasi."
 		}
+	},
+	"skill": {
+		"wantsToLoad": "Roo ingin memuat keterampilan",
+		"didLoad": "Roo telah memuat keterampilan"
 	},
 	"instructions": {
 		"wantsToFetch": "Roo ingin mengambil instruksi detail untuk membantu tugas saat ini"
@@ -230,7 +265,8 @@
 		"wantsToViewTopLevelOutsideWorkspace": "Roo ingin melihat file tingkat atas di direktori ini (di luar workspace)",
 		"didViewTopLevelOutsideWorkspace": "Roo melihat file tingkat atas di direktori ini (di luar workspace)",
 		"wantsToViewRecursiveOutsideWorkspace": "Roo ingin melihat semua file secara rekursif di direktori ini (di luar workspace)",
-		"didViewRecursiveOutsideWorkspace": "Roo melihat semua file secara rekursif di direktori ini (di luar workspace)"
+		"didViewRecursiveOutsideWorkspace": "Roo melihat semua file secara rekursif di direktori ini (di luar workspace)",
+		"wantsToViewMultipleDirectories": "Roo ingin melihat beberapa direktori"
 	},
 	"codebaseSearch": {
 		"wantsToSearch": "Roo ingin mencari codebase untuk <code>{{query}}</code>",
@@ -281,21 +317,32 @@
 		"completionContent": "Subtugas Selesai",
 		"resultContent": "Hasil Subtugas",
 		"defaultResult": "Silakan lanjutkan ke tugas berikutnya.",
-		"completionInstructions": "Subtugas selesai! Kamu bisa meninjau hasilnya dan menyarankan koreksi atau langkah selanjutnya. Jika semuanya terlihat baik, konfirmasi untuk mengembalikan hasil ke tugas induk."
+		"completionInstructions": "Subtugas selesai! Kamu bisa meninjau hasilnya dan menyarankan koreksi atau langkah selanjutnya. Jika semuanya terlihat baik, konfirmasi untuk mengembalikan hasil ke tugas induk.",
+		"goToSubtask": "Lihat tugas"
 	},
 	"questions": {
 		"hasQuestion": "Roo punya pertanyaan"
 	},
 	"taskCompleted": "Tugas Selesai",
 	"error": "Error",
+	"modelResponseIncomplete": "Respons Model Tidak Lengkap",
+	"modelResponseErrors": {
+		"noToolsUsed": "Model gagal menggunakan alat apa pun dalam responsnya. Ini biasanya terjadi ketika model hanya memberikan teks/penalaran tanpa memanggil alat yang diperlukan untuk menyelesaikan tugas.",
+		"noToolsUsedDetails": "Model memberikan teks/penalaran tetapi tidak memanggil alat yang diperlukan. Ini biasanya menunjukkan bahwa model salah memahami tugas atau mengalami kesulitan menentukan alat mana yang akan digunakan. Model telah secara otomatis diminta untuk mencoba lagi dengan penggunaan alat yang tepat.",
+		"noAssistantMessages": "Model tidak memberikan konten respons apa pun. Ini mungkin menunjukkan masalah dengan API atau output model.",
+		"noAssistantMessagesDetails": "Model bahasa mengembalikan respons kosong tanpa teks atau panggilan alat apa pun. Ini dapat terjadi karena masalah API, pembatasan laju, atau masalah khusus model. Model telah secara otomatis diminta untuk mencoba lagi."
+	},
 	"diffError": {
 		"title": "Edit Tidak Berhasil"
 	},
 	"troubleMessage": "Roo mengalami masalah...",
 	"errorDetails": {
+		"link": "Details",
 		"title": "Detail Kesalahan",
 		"copyToClipboard": "Salin ke Clipboard",
-		"copied": "Disalin!"
+		"copied": "Disalin!",
+		"diagnostics": "Dapatkan informasi kesalahan terperinci",
+		"proxyProvider": "Tampaknya kamu menggunakan penyedia berbasis proxy. Pastikan untuk memeriksa log-nya dan memastikan tidak menulis ulang permintaan Roo."
 	},
 	"powershell": {
 		"issues": "Sepertinya kamu mengalami masalah Windows PowerShell, silakan lihat ini"
@@ -316,7 +363,7 @@
 		"triggerLabel_zero": "0 disetujui otomatis",
 		"triggerLabel_one": "1 disetujui otomatis",
 		"triggerLabel_other": "{{count}} disetujui otomatis",
-		"triggerLabelAll": "YOLO"
+		"triggerLabelAll": "BRRR"
 	},
 	"announcement": {
 		"title": "Roo Code {{version}} Dirilis",
@@ -329,9 +376,12 @@
 			"goToSettingsButton": "Pergi ke Pengaturan"
 		},
 		"release": {
-			"heading": "Terbaru:",
-			"contextRewind": "Kondensasi konteks yang ditingkatkan sekarang memungkinkan Anda mengembalikan konteks sebelumnya secara penuh saat memutar ulang ke checkpoint",
-			"rooProvider": "Penyedia Roo Code Cloud sekarang mempertahankan konten penalaran dan menggunakan alat asli secara default untuk kinerja yang lebih baik"
+			"heading": "Yang Baru:",
+			"gpt54": "Dukungan OpenAI GPT-5.4: OpenAI GPT-5.4 dan GPT-5.3 Chat Latest kini ditambahkan agar kamu bisa memakai model chat OpenAI terbaru di Roo Code.",
+			"slashSkills": "Skill sebagai slash command: Skill sekarang bisa diekspos sebagai slash command dengan eksekusi fallback supaya workflow bisa berjalan lebih cepat.",
+			"geminiPro": "Dukungan Gemini 3.1 Pro: Dukungan model Gemini 3.1 Pro telah ditambahkan dan ditetapkan sebagai model Gemini default untuk performa yang lebih baik.",
+			"cliNdjson": "Protokol NDJSON CLI: Protokol NDJSON stdin baru, subperintah list, dan perintah run yang dimodularisasi untuk alur kerja CLI yang lebih fleksibel.",
+			"cliRelease": "CLI v0.1.0: CLI Roo Code mencapai rilis resmi pertamanya dengan antarmuka perintah yang stabil."
 		},
 		"cloudAgents": {
 			"heading": "Baru di Cloud:",
@@ -349,42 +399,10 @@
 		"copyToInput": "Salin ke input (sama dengan shift + klik)",
 		"timerPrefix": "Persetujuan otomatis diaktifkan. Memilih dalam {{seconds}}s…"
 	},
-	"browser": {
-		"session": "Sesi Browser",
-		"rooWantsToUse": "Roo ingin menggunakan browser",
-		"consoleLogs": "Log Konsol",
-		"noNewLogs": "(Tidak ada log baru)",
-		"screenshot": "Screenshot browser",
-		"cursor": "kursor",
-		"navigation": {
-			"step": "Langkah {{current}} dari {{total}}",
-			"previous": "Sebelumnya",
-			"next": "Selanjutnya"
-		},
-		"sessionStarted": "Sesi Browser Dimulai",
-		"actions": {
-			"title": "Aksi Browser: ",
-			"launched": "Browser diluncurkan",
-			"launch": "Luncurkan browser di {{url}}",
-			"clicked": "Diklik ({{coordinate}})",
-			"click": "Klik ({{coordinate}})",
-			"typed": "Diketik: {{text}}",
-			"type": "Ketik \"{{text}}\"",
-			"pressed": "Ditekan: {{key}}",
-			"press": "Tekan {{key}}",
-			"scrolledDown": "Digulir ke bawah",
-			"scrollDown": "Gulir ke bawah",
-			"scrolledUp": "Digulir ke atas",
-			"scrollUp": "Gulir ke atas",
-			"hovered": "Diarahkan ({{coordinate}})",
-			"hover": "Arahkan ({{coordinate}})",
-			"resized": "Ukuran diubah ke: {{size}}",
-			"resize": "Ubah ukuran ke {{size}}",
-			"screenshotSaved": "Screenshot disimpan",
-			"screenshot": "Simpan screenshot ke {{path}}",
-			"closed": "Browser ditutup",
-			"close": "Tutup browser"
-		}
+	"costs": {
+		"totalWithSubtasks": "Total Biaya (termasuk subtugas): ${{cost}}",
+		"total": "Total Biaya: ${{cost}}",
+		"includesSubtasks": "Termasuk biaya subtugas"
 	},
 	"codeblock": {
 		"tooltips": {
@@ -393,7 +411,6 @@
 			"copy_code": "Salin kode"
 		}
 	},
-	"systemPromptWarning": "PERINGATAN: Override system prompt kustom aktif. Ini dapat merusak fungsionalitas secara serius dan menyebabkan perilaku yang tidak terduga.",
 	"profileViolationWarning": "Profil saat ini tidak kompatibel dengan pengaturan organisasi kamu",
 	"shellIntegration": {
 		"title": "Peringatan Eksekusi Perintah",
@@ -417,7 +434,8 @@
 		"indexing": "Mengindeks {{percentage}}%",
 		"indexed": "Terindeks",
 		"error": "Error indeks",
-		"status": "Status indeks"
+		"status": "Status indeks",
+		"stopping": "Menghentikan pengindeksan..."
 	},
 	"versionIndicator": {
 		"ariaLabel": "Versi {{version}} - Klik untuk melihat catatan rilis"
@@ -473,5 +491,22 @@
 		"updated": "Memperbarui daftar to-do",
 		"completed": "Selesai",
 		"started": "Dimulai"
+	},
+	"tooManyTools": {
+		"title": "Terlalu banyak alat diaktifkan",
+		"toolsPart_one": "{{count}} alat",
+		"toolsPart_other": "{{count}} alat",
+		"serversPart_one": "{{count}} server MCP",
+		"serversPart_other": "{{count}} server MCP",
+		"messageTemplate": "Anda memiliki {{tools}} diaktifkan melalui {{servers}}. Jumlah yang begitu besar dapat membingungkan model dan menyebabkan kesalahan. Cobalah untuk menjaganya di bawah {{threshold}}.",
+		"openMcpSettings": "Buka Pengaturan MCP"
+	},
+	"readCommandOutput": {
+		"title": "Roo read command output"
+	},
+	"retiredProvider": {
+		"title": "Penyedia tidak lagi didukung",
+		"message": "Maaf, penyedia ini tidak lagi didukung. Kami melihat sangat sedikit pengguna Roo yang benar-benar menggunakannya dan kami perlu mengurangi cakupan kode kami agar bisa terus bergerak cepat dan melayani komunitas kami dengan baik. Ini adalah keputusan yang sangat sulit, tapi ini memungkinkan kami fokus pada apa yang paling penting bagimu. Memang menyebalkan, kami tahu.",
+		"openSettings": "Buka Pengaturan"
 	}
 }

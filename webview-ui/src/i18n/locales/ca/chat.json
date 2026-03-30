@@ -25,17 +25,22 @@
 		"sharingDisabledByOrganization": "Compartició deshabilitada per l'organització",
 		"shareSuccessOrganization": "Enllaç d'organització copiat al porta-retalls",
 		"shareSuccessPublic": "Enllaç públic copiat al porta-retalls",
-		"openInCloud": "Obrir tasca a Roo Code Cloud",
-		"openInCloudIntro": "Continua monitoritzant o interactuant amb Roo des de qualsevol lloc. Escaneja, fes clic o copia per obrir.",
 		"openApiHistory": "Obrir historial d'API",
-		"openUiHistory": "Obrir historial d'UI"
+		"openUiHistory": "Obrir historial d'UI",
+		"backToParentTask": "Tasca principal"
 	},
 	"unpin": "Desfixar",
 	"pin": "Fixar",
+	"fileChangesInConversation": {
+		"header": "{{count}} fitxer(s) canviat(s) en aquesta conversa"
+	},
 	"tokenProgress": {
 		"availableSpace": "Espai disponible: {{amount}} tokens",
 		"tokensUsed": "Tokens utilitzats: {{used}} de {{total}}",
-		"reservedForResponse": "Reservat per a resposta del model: {{amount}} tokens"
+		"reservedForResponse": "Reservat per a resposta del model: {{amount}} tokens",
+		"tokensUsedLabel": "Tokens utilitzats",
+		"reservedForResponseLabel": "Reservat per a resposta",
+		"availableSpaceLabel": "Espai disponible"
 	},
 	"retry": {
 		"title": "Tornar a intentar",
@@ -82,10 +87,15 @@
 		"title": "Finalitzar",
 		"tooltip": "Finalitza la tasca actual"
 	},
+	"stop": {
+		"title": "Atura",
+		"tooltip": "Atura la tasca actual"
+	},
 	"cancel": {
 		"title": "Cancel·lar",
 		"tooltip": "Cancel·la l'operació actual"
 	},
+	"enqueueMessage": "Afegeix el missatge a la cua (s'enviarà quan acabi la tasca actual)",
 	"scrollToBottom": "Desplaça't al final del xat",
 	"about": "Roo Code és tot un equip de desenvolupament d'IA al teu editor.",
 	"docs": "Consulta els nostres <DocsLink>documents</DocsLink> per a més informació.",
@@ -102,6 +112,8 @@
 	},
 	"selectMode": "Selecciona el mode d'interacció",
 	"selectApiConfig": "Seleccioneu la configuració de l'API",
+	"lockApiConfigAcrossModes": "Bloqueja la configuració de l'API a tots els modes en aquest espai de treball",
+	"unlockApiConfigAcrossModes": "La configuració de l'API està bloquejada a tots els modes en aquest espai de treball (fes clic per desbloquejar)",
 	"enhancePrompt": "Millora la sol·licitud amb context addicional",
 	"addImages": "Afegeix imatges al missatge",
 	"sendMessage": "Envia el missatge",
@@ -138,17 +150,20 @@
 		"streaming": "Sol·licitud API...",
 		"cancelled": "Sol·licitud API cancel·lada",
 		"streamingFailed": "Transmissió API ha fallat",
-		"errorTitle": "Error API {{code}}",
+		"rateLimitWait": "Limitació de taxa",
+		"errorTitle": "Error de proveïdor {{code}}",
 		"errorMessage": {
-			"docs": "Documentació",
 			"400": "El proveïdor no ha pogut processar la sol·licitud tal com es va fer. Interromp la tasca i prova una abordatge diferent.",
 			"401": "No s'ha pogut autenticar amb el proveïdor. Si us plau, verifica la teva configuració de clau API.",
 			"402": "Sembla que se t'han acabat els fons/crèdits al teu compte. Vés al teu proveïdor i afegeix més per continuar.",
 			"403": "No autoritzat. La teva clau API és vàlida, però el proveïdor ha rebutjat completar aquesta sol·licitud.",
 			"429": "Massa sol·licituds. Estàs sent limitat pel proveïdor. Si us plau espera una mica abans de la teva propera crida API.",
 			"500": "Error del servidor del proveïdor. Quelcom va malament del costat del proveïdor, no hi ha res de malament amb la teva sol·licitud.",
+			"docs": "Documentació",
+			"goToSettings": "Configuració",
 			"unknown": "Error API desconegut. Si us plau contacta amb el suport de Roo Code.",
-			"connection": "Error de connexió. Assegureu-vos que teniu una connexió a Internet funcional."
+			"connection": "Error de connexió. Assegureu-vos que teniu una connexió a Internet funcional.",
+			"claudeCodeNotAuthenticated": "Has d'iniciar sessió per utilitzar Claude Code. Vés a Configuració i fes clic a \"Iniciar sessió a Claude Code\" per autenticar-te."
 		}
 	},
 	"checkpoint": {
@@ -206,7 +221,8 @@
 		"wantsToViewTopLevelOutsideWorkspace": "Roo vol veure els fitxers de nivell superior en aquest directori (fora de l'espai de treball)",
 		"didViewTopLevelOutsideWorkspace": "Roo ha vist els fitxers de nivell superior en aquest directori (fora de l'espai de treball)",
 		"wantsToViewRecursiveOutsideWorkspace": "Roo vol veure recursivament tots els fitxers en aquest directori (fora de l'espai de treball)",
-		"didViewRecursiveOutsideWorkspace": "Roo ha vist recursivament tots els fitxers en aquest directori (fora de l'espai de treball)"
+		"didViewRecursiveOutsideWorkspace": "Roo ha vist recursivament tots els fitxers en aquest directori (fora de l'espai de treball)",
+		"wantsToViewMultipleDirectories": "Roo vol veure diversos directoris"
 	},
 	"commandOutput": "Sortida de la comanda",
 	"commandExecution": {
@@ -250,16 +266,27 @@
 		"completionContent": "Subtasca completada",
 		"resultContent": "Resultats de la subtasca",
 		"defaultResult": "Si us plau, continua amb la següent tasca.",
-		"completionInstructions": "Subtasca completada! Pots revisar els resultats i suggerir correccions o següents passos. Si tot sembla correcte, confirma per tornar el resultat a la tasca principal."
+		"completionInstructions": "Subtasca completada! Pots revisar els resultats i suggerir correccions o següents passos. Si tot sembla correcte, confirma per tornar el resultat a la tasca principal.",
+		"goToSubtask": "Veure tasca"
 	},
 	"questions": {
 		"hasQuestion": "Roo té una pregunta"
 	},
 	"taskCompleted": "Tasca completada",
+	"modelResponseIncomplete": "Resposta del model incompleta",
+	"modelResponseErrors": {
+		"noToolsUsed": "El model no ha utilitzat cap eina en la seva resposta. Això sol passar quan el model només proporciona text/raonament sense cridar les eines necessàries per completar la tasca.",
+		"noToolsUsedDetails": "El model ha proporcionat text/raonament però no ha cridat cap de les eines necessàries. Això sol indicar que el model ha entès malament la tasca o té dificultats per determinar quina eina utilitzar. El model ha estat sol·licitat automàticament per tornar-ho a provar amb l'ús adequat de les eines.",
+		"noAssistantMessages": "El model no ha proporcionat cap contingut de resposta. Això pot indicar un problema amb l'API o la sortida del model.",
+		"noAssistantMessagesDetails": "El model de llenguatge ha retornat una resposta buida sense text ni crides a eines. Això pot passar a causa de problemes d'API, limitació de velocitat o problemes específics del model. El model ha estat sol·licitat automàticament per tornar-ho a provar."
+	},
 	"errorDetails": {
+		"link": "Details",
 		"title": "Detalls de l'error",
 		"copyToClipboard": "Copiar al porta-retalls",
-		"copied": "Copiat!"
+		"copied": "Copiat!",
+		"diagnostics": "Obtenir informació d'error detallada",
+		"proxyProvider": "Sembla que estàs utilitzant un proveïdor basat en proxy. Assegura't de comprovar els seus registres i de garantir que no estàs reescrivint les sol·licituds de Roo."
 	},
 	"powershell": {
 		"issues": "Sembla que estàs tenint problemes amb Windows PowerShell, si us plau consulta aquesta documentació per a més informació."
@@ -280,7 +307,7 @@
 		"triggerLabel_zero": "0 aprovacions automàtiques",
 		"triggerLabel_one": "1 aprovació automàtica",
 		"triggerLabel_other": "{{count}} aprovacions automàtiques",
-		"triggerLabelAll": "YOLO"
+		"triggerLabelAll": "BRRR"
 	},
 	"reasoning": {
 		"thinking": "Pensant",
@@ -301,6 +328,10 @@
 			"description": "S'han eliminat missatges més antics de la conversa per mantenir-se dins del límit de la finestra de context. Aquest és un enfocament ràpid però menys conservador del context en comparació amb la condensació."
 		}
 	},
+	"skill": {
+		"wantsToLoad": "En Roo vol carregar una habilitat",
+		"didLoad": "En Roo ha carregat una habilitat"
+	},
 	"followUpSuggest": {
 		"copyToInput": "Copiar a l'entrada (o Shift + clic)",
 		"timerPrefix": "Aprovació automàtica habilitada. Seleccionant en {{seconds}}s…"
@@ -316,9 +347,12 @@
 			"goToSettingsButton": "Anar a Configuració"
 		},
 		"release": {
-			"heading": "Novetats:",
-			"contextRewind": "La condensació millorada del context et permet restaurar el context anterior complet quan rebobines a un punt de control",
-			"rooProvider": "El proveïdor de Roo Code Cloud ara conserva el contingut del raonament i utilitza per defecte les eines natives per a un millor rendiment"
+			"heading": "Què hi ha de nou:",
+			"gpt54": "Compatibilitat amb OpenAI GPT-5.4: Hem afegit OpenAI GPT-5.4 i GPT-5.3 Chat Latest perquè puguis fer servir els models de xat més nous d’OpenAI a Roo Code.",
+			"slashSkills": "Skills com a ordres slash: Ara les skills es poden exposar com a ordres slash amb execució de reserva per accelerar els fluxos de treball.",
+			"geminiPro": "Suport per Gemini 3.1 Pro: S'ha afegit el suport per al model Gemini 3.1 Pro i s'ha establert com a model Gemini per defecte per a un millor rendiment.",
+			"cliNdjson": "Protocol NDJSON del CLI: Nou protocol NDJSON via stdin, subcomandes de llistat i comanda d'execució modularitzada per a fluxos de treball CLI més flexibles.",
+			"cliRelease": "CLI v0.1.0: El CLI de Roo Code arriba a la seva primera versió oficial amb una interfície de comandes estable."
 		},
 		"cloudAgents": {
 			"heading": "Novetats al núvol:",
@@ -328,42 +362,10 @@
 		},
 		"careers": "A més, <careersLink>estem contractant!</careersLink>"
 	},
-	"browser": {
-		"session": "Sessió del navegador",
-		"rooWantsToUse": "Roo vol utilitzar el navegador",
-		"consoleLogs": "Registres de consola",
-		"noNewLogs": "(Cap registre nou)",
-		"screenshot": "Captura de pantalla del navegador",
-		"cursor": "cursor",
-		"navigation": {
-			"step": "Pas {{current}} de {{total}}",
-			"previous": "Anterior",
-			"next": "Següent"
-		},
-		"sessionStarted": "Sessió de navegador iniciada",
-		"actions": {
-			"title": "Acció del navegador: ",
-			"launched": "Navegador iniciat",
-			"launch": "Iniciar navegador a {{url}}",
-			"clicked": "Fet clic ({{coordinate}})",
-			"click": "Clic ({{coordinate}})",
-			"typed": "Escrit: {{text}}",
-			"type": "Escriure \"{{text}}\"",
-			"pressed": "Premut: {{key}}",
-			"press": "Prem {{key}}",
-			"scrolledDown": "Desplaçat avall",
-			"scrollDown": "Desplaçar avall",
-			"scrolledUp": "Desplaçat amunt",
-			"scrollUp": "Desplaçar amunt",
-			"hovered": "Planat sobre ({{coordinate}})",
-			"hover": "Plana sobre ({{coordinate}})",
-			"resized": "Mida canviada a: {{size}}",
-			"resize": "Canvia la mida a {{size}}",
-			"screenshotSaved": "Captura de pantalla guardada",
-			"screenshot": "Guarda la captura de pantalla a {{path}}",
-			"closed": "Navegador tancat",
-			"close": "Tancar navegador"
-		}
+	"costs": {
+		"totalWithSubtasks": "Cost total (subtasques incloses): ${{cost}}",
+		"total": "Cost total: ${{cost}}",
+		"includesSubtasks": "Inclou els costos de les subtasques"
 	},
 	"codeblock": {
 		"tooltips": {
@@ -372,7 +374,6 @@
 			"copy_code": "Copiar codi"
 		}
 	},
-	"systemPromptWarning": "ADVERTÈNCIA: S'ha activat una substitució personalitzada d'instruccions del sistema. Això pot trencar greument la funcionalitat i causar un comportament impredictible.",
 	"profileViolationWarning": "El perfil actual no és compatible amb la configuració de la teva organització",
 	"shellIntegration": {
 		"title": "Advertència d'execució d'ordres",
@@ -406,12 +407,29 @@
 			"title": "Denegar tot"
 		}
 	},
+	"list-batch": {
+		"approve": {
+			"title": "Aprovar tot"
+		},
+		"deny": {
+			"title": "Denegar tot"
+		}
+	},
+	"edit-batch": {
+		"approve": {
+			"title": "Desar tot"
+		},
+		"deny": {
+			"title": "Denegar tot"
+		}
+	},
 	"indexingStatus": {
 		"ready": "Índex preparat",
 		"indexing": "Indexant {{percentage}}%",
 		"indexed": "Indexat",
 		"error": "Error d'índex",
-		"status": "Estat de l'índex"
+		"status": "Estat de l'índex",
+		"stopping": "Aturant la indexació..."
 	},
 	"versionIndicator": {
 		"ariaLabel": "Versió {{version}} - Feu clic per veure les notes de llançament"
@@ -467,5 +485,22 @@
 		"updated": "S'ha actualitzat la llista de tasques pendents",
 		"completed": "Completat",
 		"started": "Iniciat"
+	},
+	"tooManyTools": {
+		"title": "Massa eines habilitades",
+		"toolsPart_one": "{{count}} eina",
+		"toolsPart_other": "{{count}} eines",
+		"serversPart_one": "{{count}} servidor MCP",
+		"serversPart_other": "{{count}} servidors MCP",
+		"messageTemplate": "Tens {{tools}} habilitades via {{servers}}. Un nombre tant alt pot confondre el model i portar a errors. Intenta mantenir-lo per sota de {{threshold}}.",
+		"openMcpSettings": "Obrir configuració de MCP"
+	},
+	"readCommandOutput": {
+		"title": "Roo read command output"
+	},
+	"retiredProvider": {
+		"title": "Proveïdor ja no compatible",
+		"message": "Ho sentim, aquest proveïdor ja no és compatible. Hem vist molt pocs usuaris de Roo que realment l'utilitzaven i necessitem reduir l'abast del nostre codi per poder seguir avançant ràpidament i servir bé la nostra comunitat en aquest espai. Va ser una decisió molt difícil, però ens permet centrar-nos en el que més t'importa. Ho sabem, és una llàstima.",
+		"openSettings": "Obrir configuració"
 	}
 }

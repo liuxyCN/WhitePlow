@@ -395,7 +395,36 @@ describe("WebAuthService", () => {
 			await authService.handleCallback("auth-code", storedState, null, "xai/grok-code-fast-1")
 
 			expect(mockContext.globalState.update).toHaveBeenCalledWith("roo-provider-model", "xai/grok-code-fast-1")
+			expect(mockContext.globalState.update).toHaveBeenCalledWith("roo-auth-skip-model", undefined)
 			expect(mockLog).toHaveBeenCalledWith("[auth] Stored provider model: xai/grok-code-fast-1")
+		})
+
+		it("should set skip model flag when provider model is NOT provided in callback", async () => {
+			const storedState = "valid-state"
+			mockContext.globalState.get.mockReturnValue(storedState)
+
+			// Mock successful Clerk sign-in response
+			const mockResponse = {
+				ok: true,
+				json: () =>
+					Promise.resolve({
+						response: { created_session_id: "session-123" },
+					}),
+				headers: {
+					get: (header: string) => (header === "authorization" ? "Bearer token-123" : null),
+				},
+			}
+			mockFetch.mockResolvedValue(mockResponse)
+
+			const vscode = await import("vscode")
+			const mockShowInfo = vi.fn()
+			vi.mocked(vscode.window.showInformationMessage).mockImplementation(mockShowInfo)
+
+			// Call without provider model
+			await authService.handleCallback("auth-code", storedState, null)
+
+			expect(mockContext.globalState.update).toHaveBeenCalledWith("roo-auth-skip-model", true)
+			expect(mockLog).toHaveBeenCalledWith("[auth] No provider model selected during signup")
 		})
 
 		it("should handle Clerk API errors", async () => {
@@ -607,7 +636,6 @@ describe("WebAuthService", () => {
 					name: "John Doe",
 					email: "john@example.com",
 					picture: "https://example.com/avatar.jpg",
-					extensionBridgeEnabled: true,
 				},
 			})
 		})
@@ -772,7 +800,6 @@ describe("WebAuthService", () => {
 				name: "Jane Smith",
 				email: "jane@example.com",
 				picture: "https://example.com/jane.jpg",
-				extensionBridgeEnabled: true,
 			})
 		})
 
@@ -840,7 +867,6 @@ describe("WebAuthService", () => {
 				name: "Jane Smith",
 				email: "jane@example.com",
 				picture: "https://example.com/jane.jpg",
-				extensionBridgeEnabled: false,
 				organizationId: "org_1",
 				organizationName: "Org 1",
 				organizationRole: "member",
@@ -891,7 +917,6 @@ describe("WebAuthService", () => {
 				name: "John Doe",
 				email: undefined,
 				picture: undefined,
-				extensionBridgeEnabled: true,
 			})
 		})
 	})
@@ -1016,7 +1041,6 @@ describe("WebAuthService", () => {
 					name: "Test User",
 					email: undefined,
 					picture: undefined,
-					extensionBridgeEnabled: true,
 				},
 			})
 		})

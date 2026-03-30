@@ -25,17 +25,22 @@
 		"sharingDisabledByOrganization": "组织已禁用分享功能",
 		"shareSuccessOrganization": "组织链接已复制到剪贴板",
 		"shareSuccessPublic": "公开链接已复制到剪贴板",
-		"openInCloud": "在 Roo Code Cloud 中打开任务",
-		"openInCloudIntro": "从任何地方继续监控或与 NeonTractor 交互。扫描、点击或复制以打开。",
 		"openApiHistory": "打开 API 历史",
-		"openUiHistory": "打开 UI 历史"
+		"openUiHistory": "打开 UI 历史",
+		"backToParentTask": "父任务"
 	},
 	"unpin": "取消置顶",
 	"pin": "置顶",
+	"fileChangesInConversation": {
+		"header": "此对话中已更改 {{count}} 个文件"
+	},
 	"tokenProgress": {
 		"availableSpace": "可用: {{amount}}",
 		"tokensUsed": "已使用: {{used}} / {{total}}",
-		"reservedForResponse": "已保留: {{amount}}"
+		"reservedForResponse": "已保留: {{amount}}",
+		"tokensUsedLabel": "已使用 Token",
+		"reservedForResponseLabel": "为回复保留",
+		"availableSpaceLabel": "可用空间"
 	},
 	"retry": {
 		"title": "重试",
@@ -86,6 +91,11 @@
 		"title": "取消",
 		"tooltip": "取消当前操作"
 	},
+	"stop": {
+		"title": "停止",
+		"tooltip": "停止当前任务"
+	},
+	"enqueueMessage": "将消息加入队列（当前任务完成后发送）",
 	"scrollToBottom": "滚动到聊天底部",
 	"about": "NeonTractor 霓虹拖拉机",
 	"docs": "查看我们的 <DocsLink>文档</DocsLink> 了解更多信息。",
@@ -102,6 +112,8 @@
 	},
 	"selectMode": "选择交互模式",
 	"selectApiConfig": "选择 API 配置",
+	"lockApiConfigAcrossModes": "锁定此工作区所有模式的 API 配置",
+	"unlockApiConfigAcrossModes": "此工作区所有模式的 API 配置已锁定（点击解锁）",
 	"enhancePrompt": "增强提示词",
 	"addImages": "添加图片到消息",
 	"sendMessage": "发送消息",
@@ -138,17 +150,30 @@
 		"streaming": "API请求...",
 		"cancelled": "API请求已取消",
 		"streamingFailed": "API流式传输失败",
-		"errorTitle": "API 错误 {{code}}",
+		"rateLimitWait": "请求频率限制",
+		"details": {
+			"title": "API 请求详情",
+			"viewButton": "查看详情",
+			"viewDetails": "查看API请求详情",
+			"request": "请求数据",
+			"response": "响应数据",
+			"noData": "无可用的调试数据",
+			"proceedToSend": "发送 API 请求",
+			"previewBeforeSendHint": "请查看下方的请求体。点击继续或关闭对话框后才会向模型发送请求。"
+		},
+		"errorTitle": "提供商错误 {{code}}",
 		"errorMessage": {
-			"docs": "文档",
 			"400": "提供商无法按此方式处理请求。请停止任务并尝试不同方法。",
 			"401": "无法向提供商进行身份验证。请检查您的 API 密钥配置。",
 			"402": "您的账户余额/积分似乎已用尽。请前往提供商处充值以继续。",
 			"403": "无权限。您的 API 密钥有效，但提供商拒绝完成此请求。",
 			"429": "请求过于频繁。提供商已对您的请求进行速率限制。请在下一次 API 调用前稍候。",
 			"500": "提供商服务器错误。提供商端出现问题，您的请求无问题。",
+			"docs": "文档",
+			"goToSettings": "设置",
 			"unknown": "未知 API 错误。请联系 NeonTractor 支持。",
-			"connection": "连接错误。确保您有可用的互联网连接。"
+			"connection": "连接错误。确保您有可用的互联网连接。",
+			"claudeCodeNotAuthenticated": "你需要登录才能使用 Claude Code。前往设置并点击「登录到 Claude Code」进行身份验证。"
 		}
 	},
 	"checkpoint": {
@@ -206,7 +231,8 @@
 		"wantsToViewTopLevelOutsideWorkspace": "需要查看目录文件列表（工作区外）",
 		"didViewTopLevelOutsideWorkspace": "已查看目录文件列表（工作区外）",
 		"wantsToViewRecursiveOutsideWorkspace": "需要查看目录所有文件（工作区外）",
-		"didViewRecursiveOutsideWorkspace": "已查看目录所有文件（工作区外）"
+		"didViewRecursiveOutsideWorkspace": "已查看目录所有文件（工作区外）",
+		"wantsToViewMultipleDirectories": "NeonTractor 想要查看多个目录"
 	},
 	"commandOutput": "命令输出",
 	"commandExecution": {
@@ -251,16 +277,27 @@
 		"completionContent": "子任务已完成",
 		"resultContent": "子任务结果",
 		"defaultResult": "请继续下一个任务。",
-		"completionInstructions": "子任务已完成！您可以查看结果并提出修改或下一步建议。如果一切正常，请确认以将结果返回给主任务。"
+		"completionInstructions": "子任务已完成！您可以查看结果并提出修改或下一步建议。如果一切正常，请确认以将结果返回给主任务。",
+		"goToSubtask": "查看任务"
 	},
 	"questions": {
 		"hasQuestion": "NeonTractor有一个问题"
 	},
 	"taskCompleted": "任务完成",
+	"modelResponseIncomplete": "模型响应不完整",
+	"modelResponseErrors": {
+		"noToolsUsed": "模型在响应中未使用任何工具。这通常发生在模型仅提供文本/推理而未调用完成任务所需的工具时。",
+		"noToolsUsedDetails": "模型提供了文本/推理，但未调用任何必需的工具。这通常表明模型误解了任务，或在确定使用哪个工具时遇到困难。系统已自动提示模型使用正确的工具重试。",
+		"noAssistantMessages": "模型未提供任何响应内容。这可能表示 API 或模型输出存在问题。",
+		"noAssistantMessagesDetails": "语言模型返回了一个没有任何文本或工具调用的空响应。这可能是由于 API 问题、速率限制或模型特定问题所导致。系统已自动提示模型重试。"
+	},
 	"errorDetails": {
+		"link": "详情",
 		"title": "错误详情",
 		"copyToClipboard": "复制到剪贴板",
-		"copied": "已复制!"
+		"copied": "已复制!",
+		"diagnostics": "获取详细错误信息",
+		"proxyProvider": "看起来你在使用基于代理的提供商。请检查日志并确保它不会重写 NeonTractor 的请求。"
 	},
 	"powershell": {
 		"issues": "看起来您遇到了Windows PowerShell问题，请参阅此"
@@ -281,7 +318,7 @@
 		"triggerLabel_zero": "0 个自动批准",
 		"triggerLabel_one": "1 个自动批准",
 		"triggerLabel_other": "{{count}} 个自动批准",
-		"triggerLabelAll": "YOLO"
+		"triggerLabelAll": "BRRR"
 	},
 	"reasoning": {
 		"thinking": "思考中",
@@ -302,6 +339,10 @@
 			"description": "为保持在上下文窗口限制内，已从对话中移除较旧的消息。与压缩相比，这是一种快速但上下文保留较少的方法。"
 		}
 	},
+	"skill": {
+		"wantsToLoad": "NeonTractor 想要加载技能",
+		"didLoad": "NeonTractor 加载了技能"
+	},
 	"followUpSuggest": {
 		"copyToInput": "复制到输入框（或按住Shift点击）",
 		"timerPrefix": "自动批准已启用。{{seconds}}秒后选择中…"
@@ -317,9 +358,12 @@
 			"goToSettingsButton": "前往设置"
 		},
 		"release": {
-			"heading": "最新功能：",
-			"contextRewind": "改进的上下文压缩现在允许您在回到存档点时恢复完整的之前上下文",
-			"rooProvider": "Roo Code Cloud 提供商现在保留推理内容，并默认使用原生工具以获得更好的性能"
+			"heading": "新增功能：",
+			"gpt54": "OpenAI GPT-5.4 支持：已添加 OpenAI GPT-5.4 和 GPT-5.3 Chat Latest，让你可以在 Roo Code 中使用 OpenAI 最新的聊天模型。",
+			"slashSkills": "Slash 命令技能：现在 skills 可以作为 slash 命令公开，并支持 fallback execution，让工作流触发更快。",
+			"geminiPro": "Gemini 3.1 Pro 支持：添加了 Gemini 3.1 Pro 模型支持，并将其设为默认 Gemini 模型以提升性能。",
+			"cliNdjson": "CLI NDJSON 协议：新增 NDJSON stdin 协议、list 子命令，以及模块化的 run 命令，提供更灵活的 CLI 工作流。",
+			"cliRelease": "CLI v0.1.0：Roo Code CLI 以稳定的命令接口达成首个正式版本。"
 		},
 		"cloudAgents": {
 			"heading": "云端新功能：",
@@ -329,42 +373,10 @@
 		},
 		"careers": "此外，<careersLink>我们正在招聘！</careersLink>"
 	},
-	"browser": {
-		"session": "浏览器会话",
-		"rooWantsToUse": "NeonTractor想使用浏览器",
-		"consoleLogs": "控制台日志",
-		"noNewLogs": "(没有新日志)",
-		"screenshot": "浏览器截图",
-		"cursor": "光标",
-		"navigation": {
-			"step": "步骤 {{current}} / {{total}}",
-			"previous": "上一步",
-			"next": "下一步"
-		},
-		"sessionStarted": "浏览器会话已启动",
-		"actions": {
-			"title": "浏览器操作: ",
-			"launched": "浏览器已启动",
-			"launch": "访问 {{url}}",
-			"clicked": "点击位置: {{coordinate}}",
-			"click": "点击 ({{coordinate}})",
-			"typed": "输入: {{text}}",
-			"type": "输入 \"{{text}}\"",
-			"pressed": "已按 {{key}}",
-			"press": "按 {{key}}",
-			"scrolledDown": "已向下滚动",
-			"scrollDown": "向下滚动",
-			"scrolledUp": "已向上滚动",
-			"scrollUp": "向上滚动",
-			"hovered": "悬停位置: {{coordinate}}",
-			"hover": "悬停 ({{coordinate}})",
-			"resized": "大小已更改: {{size}}",
-			"resize": "调整大小为 {{size}}",
-			"screenshotSaved": "截图已保存",
-			"screenshot": "将截图保存到 {{path}}",
-			"closed": "浏览器已关闭",
-			"close": "关闭浏览器"
-		}
+	"costs": {
+		"totalWithSubtasks": "总成本（包括子任务）: ${{cost}}",
+		"total": "总成本: ${{cost}}",
+		"includesSubtasks": "包括子任务成本"
 	},
 	"codeblock": {
 		"tooltips": {
@@ -373,7 +385,6 @@
 			"copy_code": "复制代码"
 		}
 	},
-	"systemPromptWarning": "警告：自定义系统提示词覆盖已激活。这可能严重破坏功能并导致不可预测的行为。",
 	"profileViolationWarning": "当前配置文件与您的组织设置不兼容",
 	"shellIntegration": {
 		"title": "命令执行警告",
@@ -407,12 +418,29 @@
 			"title": "全部拒绝"
 		}
 	},
+	"list-batch": {
+		"approve": {
+			"title": "全部批准"
+		},
+		"deny": {
+			"title": "全部拒绝"
+		}
+	},
+	"edit-batch": {
+		"approve": {
+			"title": "全部保存"
+		},
+		"deny": {
+			"title": "全部拒绝"
+		}
+	},
 	"indexingStatus": {
 		"ready": "索引就绪",
 		"indexing": "索引中 {{percentage}}%",
 		"indexed": "已索引",
 		"error": "索引错误",
-		"status": "索引状态"
+		"status": "索引状态",
+		"stopping": "正在停止索引..."
 	},
 	"versionIndicator": {
 		"ariaLabel": "版本 {{version}} - 点击查看发布说明"
@@ -468,5 +496,22 @@
 		"updated": "已更新待办事项列表",
 		"completed": "已完成",
 		"started": "已开始"
+	},
+	"tooManyTools": {
+		"title": "启用的工具过多",
+		"toolsPart_one": "{{count}} 个工具",
+		"toolsPart_other": "{{count}} 个工具",
+		"serversPart_one": "{{count}} 个 MCP 服务",
+		"serversPart_other": "{{count}} 个 MCP 服务",
+		"messageTemplate": "你通过 {{servers}} 启用了 {{tools}}。这么多数量会混淆模型并导致错误。建议将其保持在 {{threshold}} 以下。",
+		"openMcpSettings": "打开 MCP 设置"
+	},
+	"readCommandOutput": {
+		"title": "NeonTractor read command output"
+	},
+	"retiredProvider": {
+		"title": "供应商不再受支持",
+		"message": "抱歉，此供应商已不再受支持。我们发现实际使用它的 Roo 用户非常少，我们需要缩减代码库的范围，以便继续快速交付并更好地服务社区。这是一个非常艰难的决定，但它能让我们专注于对你最重要的事情。我们知道这很遗憾。",
+		"openSettings": "打开设置"
 	}
 }

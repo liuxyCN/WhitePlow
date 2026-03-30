@@ -8,13 +8,13 @@ import {
 	VSCodePanelView,
 	VSCodeTextField,
 } from "@vscode/webview-ui-toolkit/react"
-import { Webhook } from "lucide-react"
 
-import { McpServer } from "@roo/mcp"
+import type { McpServer } from "@roo-code/types"
 
 import { vscode } from "@src/utils/vscode"
 import { useExtensionState } from "@src/context/ExtensionStateContext"
 import { useAppTranslation } from "@src/i18n/TranslationContext"
+import { useTooManyTools } from "@src/hooks/useTooManyTools"
 import {
 	Button,
 	Dialog,
@@ -40,8 +40,6 @@ const McpView = () => {
 		mcpServers: servers,
 		alwaysAllowMcp,
 		mcpEnabled,
-		enableMcpServerCreation,
-		setEnableMcpServerCreation,
 		mcpGatewayEnabled,
 		setMcpGatewayEnabled,
 		mcpGatewayUrl,
@@ -53,15 +51,11 @@ const McpView = () => {
 	} = useExtensionState()
 
 	const { t } = useAppTranslation()
+	const { isOverThreshold, title, message } = useTooManyTools()
 
 	return (
 		<div>
-			<SectionHeader>
-				<div className="flex items-center gap-2">
-					<Webhook className="w-4" />
-					<div>{t("mcp:title")}</div>
-				</div>
-			</SectionHeader>
+			<SectionHeader>{t("mcp:title")}</SectionHeader>
 
 			<Section>
 				<div
@@ -84,35 +78,30 @@ const McpView = () => {
 
 				{mcpEnabled && (
 					<>
-						<div style={{ marginBottom: 15 }}>
-							<VSCodeCheckbox
-								checked={enableMcpServerCreation}
-								onChange={(e: any) => {
-									setEnableMcpServerCreation(e.target.checked)
-									vscode.postMessage({ type: "enableMcpServerCreation", bool: e.target.checked })
-								}}>
-								<span style={{ fontWeight: "500" }}>{t("mcp:enableServerCreation.title")}</span>
-							</VSCodeCheckbox>
-							<div
-								style={{
-									fontSize: "12px",
-									marginTop: "5px",
-									color: "var(--vscode-descriptionForeground)",
-								}}>
-								<Trans i18nKey="mcp:enableServerCreation.description">
-									<VSCodeLink
-										href={buildDocLink(
-											"features/mcp/using-mcp-in-roo#how-to-use-roo-to-create-an-mcp-server",
-											"mcp_server_creation",
-										)}
-										style={{ display: "inline" }}>
-										Learn about server creation
-									</VSCodeLink>
-									<strong>new</strong>
-								</Trans>
-								<p style={{ marginTop: "8px" }}>{t("mcp:enableServerCreation.hint")}</p>
+						{/* Too Many Tools Warning */}
+						{isOverThreshold && (
+							<div style={{ marginBottom: 15 }}>
+								<div
+									style={{
+										display: "flex",
+										alignItems: "center",
+										gap: "6px",
+										fontWeight: "500",
+										color: "var(--vscode-editorWarning-foreground)",
+										marginBottom: "5px",
+									}}>
+									<span className="codicon codicon-warning" />
+									{title}
+								</div>
+								<div
+									style={{
+										fontSize: "12px",
+										color: "var(--vscode-descriptionForeground)",
+									}}>
+									{message}
+								</div>
 							</div>
-						</div>
+						)}
 
 						{/* MCP Gateway Configuration */}
 						<div style={{ marginBottom: 20 }}>
@@ -172,16 +161,21 @@ const McpView = () => {
 										style={{ width: "100%" }}>
 										<label style={{ fontWeight: "500" }}>{t("mcp:gateway.apiKey.label")}</label>
 									</VSCodeTextField>
-									
+
 									{/* MCP Gateway Always Allow Toggle */}
 									<div style={{ marginTop: 10 }}>
 										<VSCodeCheckbox
 											checked={mcpGatewayAlwaysAllow}
 											onChange={(e: any) => {
 												setMcpGatewayAlwaysAllow(e.target.checked)
-												vscode.postMessage({ type: "mcpGatewayAlwaysAllow", bool: e.target.checked })
+												vscode.postMessage({
+													type: "mcpGatewayAlwaysAllow",
+													bool: e.target.checked,
+												})
 											}}>
-											<span style={{ fontWeight: "500" }}>{t("mcp:gateway.alwaysAllow.title")}</span>
+											<span style={{ fontWeight: "500" }}>
+												{t("mcp:gateway.alwaysAllow.title")}
+											</span>
 										</VSCodeCheckbox>
 										<div
 											style={{
@@ -437,8 +431,7 @@ const ServerRow = ({ server, alwaysAllowMcp }: { server: McpServer; alwaysAllowM
 	}
 
 	// Check if server needs configuration
-	const needsConfiguration =
-		server.configStatus === "configured" || server.configStatus === "not_configured"
+	const needsConfiguration = server.configStatus === "configured" || server.configStatus === "not_configured"
 
 	return (
 		<div style={{ marginBottom: "10px" }}>
@@ -461,21 +454,13 @@ const ServerRow = ({ server, alwaysAllowMcp }: { server: McpServer; alwaysAllowM
 				)}
 				<span style={{ flex: 1 }}>
 					{server.name}
-					{server.source && (
-						<span style={getSourceBadgeStyle()}>
-							{server.source}
-						</span>
-					)}
+					{server.source && <span style={getSourceBadgeStyle()}>{server.source}</span>}
 				</span>
 				<div
 					style={{ display: "flex", alignItems: "center", marginRight: "8px" }}
 					onClick={(e) => e.stopPropagation()}>
 					{needsConfiguration && (
-						<Button
-							variant="ghost"
-							size="icon"
-							onClick={handleConfigClick}
-							style={{ marginRight: "8px" }}>
+						<Button variant="ghost" size="icon" onClick={handleConfigClick} style={{ marginRight: "8px" }}>
 							<span className="codicon codicon-settings-gear" style={{ fontSize: "14px" }}></span>
 						</Button>
 					)}
@@ -736,7 +721,8 @@ const ServerRow = ({ server, alwaysAllowMcp }: { server: McpServer; alwaysAllowM
 				<DialogContent style={{ maxWidth: "500px" }}>
 					<DialogHeader>
 						<DialogTitle>
-							{server.serverConfig?.fieldLabel || t("mcp:configDialog.title", { serverName: server.name })}
+							{server.serverConfig?.fieldLabel ||
+								t("mcp:configDialog.title", { serverName: server.name })}
 						</DialogTitle>
 						<DialogDescription>
 							{t("mcp:configDialog.description", { serverName: server.name })}
@@ -787,8 +773,7 @@ const ServerRow = ({ server, alwaysAllowMcp }: { server: McpServer; alwaysAllowM
 										? t("mcp:configDialog.authKey.configured")
 										: t("mcp:configDialog.authKey.notConfigured")
 								}
-								style={{ width: "100%" }}>
-							</VSCodeTextField>
+								style={{ width: "100%" }}></VSCodeTextField>
 							<Button
 								variant="primary"
 								size="sm"
@@ -801,7 +786,9 @@ const ServerRow = ({ server, alwaysAllowMcp }: { server: McpServer; alwaysAllowM
 
 						{server.serverConfig?.extraFields &&
 							server.serverConfig.extraFields.map((field) => (
-								<div key={field.fieldName} style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+								<div
+									key={field.fieldName}
+									style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
 									<VSCodeTextField
 										value={extraFieldValues[field.fieldName] || ""}
 										onInput={(e: any) => {
@@ -810,13 +797,19 @@ const ServerRow = ({ server, alwaysAllowMcp }: { server: McpServer; alwaysAllowM
 												[field.fieldName]: e.target.value,
 											})
 										}}
-										placeholder={t("mcp:configDialog.extraField.placeholder", { fieldLabel: field.fieldLabel })}
-										style={{ width: "100%" }}>
-									</VSCodeTextField>
+										placeholder={t("mcp:configDialog.extraField.placeholder", {
+											fieldLabel: field.fieldLabel,
+										})}
+										style={{ width: "100%" }}></VSCodeTextField>
 									<Button
 										variant="primary"
 										size="sm"
-										onClick={() => handleSaveExtraField(field.fieldName, extraFieldValues[field.fieldName] || "")}
+										onClick={() =>
+											handleSaveExtraField(
+												field.fieldName,
+												extraFieldValues[field.fieldName] || "",
+											)
+										}
 										disabled={!extraFieldValues[field.fieldName]?.trim()}
 										style={{ alignSelf: "flex-end", width: "auto" }}>
 										{t("mcp:configDialog.save")}

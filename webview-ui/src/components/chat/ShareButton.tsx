@@ -29,7 +29,7 @@ interface ShareButtonProps {
 export const ShareButton = ({ item, disabled = false }: ShareButtonProps) => {
 	// Hidden: Roo Code Cloud feature
 	return null
-	
+
 	const [shareDropdownOpen, setShareDropdownOpen] = useState(false)
 	const [shareSuccess, setShareSuccess] = useState<{ visibility: ShareVisibility; url: string } | null>(null)
 	const [wasConnectInitiatedFromShare, setWasConnectInitiatedFromShare] = useState(false)
@@ -44,6 +44,7 @@ export const ShareButton = ({ item, disabled = false }: ShareButtonProps) => {
 		handleConnect,
 		isAuthenticated: cloudIsAuthenticated,
 		sharingEnabled,
+		publicSharingEnabled,
 	} = useCloudUpsell({
 		onAuthSuccess: () => {
 			// Auto-open share dropdown after successful authentication
@@ -198,17 +199,21 @@ export const ShareButton = ({ item, disabled = false }: ShareButtonProps) => {
 												</div>
 											</CommandItem>
 										)}
-										<CommandItem onSelect={() => handleShare("public")} className="cursor-pointer">
-											<div className="flex items-center gap-2">
-												<span className="codicon codicon-globe text-sm"></span>
-												<div className="flex flex-col">
-													<span className="text-sm">{t("chat:task.sharePublicly")}</span>
-													<span className="text-xs text-vscode-descriptionForeground">
-														{t("chat:task.sharePubliclyDescription")}
-													</span>
+										{publicSharingEnabled && (
+											<CommandItem
+												onSelect={() => handleShare("public")}
+												className="cursor-pointer">
+												<div className="flex items-center gap-2">
+													<span className="codicon codicon-globe text-sm"></span>
+													<div className="flex flex-col">
+														<span className="text-sm">{t("chat:task.sharePublicly")}</span>
+														<span className="text-xs text-vscode-descriptionForeground">
+															{t("chat:task.sharePubliclyDescription")}
+														</span>
+													</div>
 												</div>
-											</div>
-										</CommandItem>
+											</CommandItem>
+										)}
 									</CommandGroup>
 								</CommandList>
 							</Command>

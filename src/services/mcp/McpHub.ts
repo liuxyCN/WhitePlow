@@ -1,3 +1,7 @@
+import * as fs from "fs/promises"
+import * as path from "path"
+
+import * as vscode from "vscode"
 import { Client } from "@modelcontextprotocol/sdk/client/index.js"
 import { StdioClientTransport, getDefaultEnvironment } from "@modelcontextprotocol/sdk/client/stdio.js"
 import { SSEClientTransport } from "@modelcontextprotocol/sdk/client/sse.js"
@@ -15,27 +19,28 @@ import axios from "axios"
 import chokidar, { FSWatcher } from "chokidar"
 import delay from "delay"
 import deepEqual from "fast-deep-equal"
-import * as fs from "fs/promises"
-import * as path from "path"
-import * as vscode from "vscode"
 import { z } from "zod"
-import { t } from "../../i18n"
 
-import { ClineProvider } from "../../core/webview/ClineProvider"
-import { GlobalFileNames } from "../../shared/globalFileNames"
-import {
+import type {
 	McpResource,
 	McpResourceResponse,
 	McpResourceTemplate,
 	McpServer,
 	McpTool,
 	McpToolCallResponse,
-} from "../../shared/mcp"
+} from "@roo-code/types"
+
+import { t } from "../../i18n"
+
+import { ClineProvider } from "../../core/webview/ClineProvider"
+
+import { GlobalFileNames } from "../../shared/globalFileNames"
+
 import { fileExistsAtPath } from "../../utils/fs"
 import { arePathsEqual, getWorkspacePath } from "../../utils/path"
 import { injectVariables } from "../../utils/config"
 import { safeWriteJson } from "../../utils/safeWriteJson"
-import { sanitizeMcpName } from "../../utils/mcp-name"
+import { sanitizeMcpName, toolNamesMatch } from "../../utils/mcp-name"
 
 // Discriminated union for connection states
 export type ConnectedMcpConnection = {
@@ -163,19 +168,34 @@ export class McpHub {
 	private isProgrammaticUpdate: boolean = false
 	private flagResetTimer?: NodeJS.Timeout
 	private sanitizedNameRegistry: Map<string, string> = new Map()
+	private initializationPromise: Promise<void>
 
 	constructor(provider: ClineProvider) {
 		this.providerRef = new WeakRef(provider)
 		this.watchMcpSettingsFile()
 		this.watchProjectMcpFile().catch(console.error)
 		this.setupWorkspaceFoldersWatcher()
-		// Load saved memory server tool states
-		this.loadMemoryServerToolStates().catch(console.error)
-		// Load saved memory server disabled states
-		this.loadMemoryServerDisabledStates().catch(console.error)
-		this.initializeGlobalMcpServers()
-		this.initializeProjectMcpServers()
-		this.initializeInMemoryFileCoolServer().catch(console.error)
+		// Load persisted memory MCP state first, then connect (fetchToolsList needs saved alwaysAllow/disabled)
+		this.initializationPromise = (async () => {
+			try {
+				await Promise.all([this.loadMemoryServerToolStates(), this.loadMemoryServerDisabledStates()])
+			} catch (error) {
+				console.error("Failed to load memory MCP server persisted state:", error)
+			}
+			await Promise.all([
+				this.initializeGlobalMcpServers(),
+				this.initializeProjectMcpServers(),
+				this.initializeInMemoryFileCoolServer(),
+			])
+		})()
+	}
+
+	/**
+	 * Waits until all MCP servers have finished their initial connection attempts.
+	 * Each server individually handles its own timeout, so this will not block indefinitely.
+	 */
+	async waitUntilReady(): Promise<void> {
+		await this.initializationPromise
 	}
 	/**
 	 * Save memory server tool states before refresh
@@ -230,7 +250,10 @@ export class McpHub {
 				| Record<string, { alwaysAllow: string[]; disabledTools: string[] }>
 				| undefined
 			if (stateObject) {
-				this.memoryServerToolStates = new Map(Object.entries(stateObject))
+				// Merge into existing map so a late load cannot wipe in-session updates
+				for (const [k, v] of Object.entries(stateObject)) {
+					this.memoryServerToolStates.set(k, v)
+				}
 			}
 		}
 	}
@@ -245,7 +268,9 @@ export class McpHub {
 				| Record<string, boolean>
 				| undefined
 			if (stateObject) {
-				this.memoryServerDisabledStates = new Map(Object.entries(stateObject))
+				for (const [k, v] of Object.entries(stateObject)) {
+					this.memoryServerDisabledStates.set(k, v)
+				}
 			}
 		}
 	}
@@ -547,8 +572,23 @@ export class McpHub {
 	}
 
 	getServers(): McpServer[] {
-		// Only return enabled servers
-		return this.connections.filter((conn) => !conn.server.disabled).map((conn) => conn.server)
+		// Only return enabled servers, deduplicating by name with project servers taking priority
+		const enabledConnections = this.connections.filter((conn) => !conn.server.disabled)
+
+		// Deduplicate by server name: project servers take priority over global servers
+		const serversByName = new Map<string, McpServer>()
+		for (const conn of enabledConnections) {
+			const existing = serversByName.get(conn.server.name)
+			if (!existing) {
+				serversByName.set(conn.server.name, conn.server)
+			} else if (conn.server.source === "project" && existing.source !== "project") {
+				// Project server overrides global server with the same name
+				serversByName.set(conn.server.name, conn.server)
+			}
+			// If existing is project and current is global, keep existing (project wins)
+		}
+
+		return Array.from(serversByName.values())
 	}
 
 	getAllServers(): McpServer[] {
@@ -1294,16 +1334,30 @@ export class McpHub {
 	 * Find a connection by sanitized server name.
 	 * This is used when parsing MCP tool responses where the server name has been
 	 * sanitized (e.g., hyphens replaced with underscores) for API compliance.
+	 * Uses fuzzy matching to handle cases where models convert hyphens to underscores.
 	 * @param sanitizedServerName The sanitized server name from the API tool call
 	 * @returns The original server name if found, or null if no match
 	 */
 	public findServerNameBySanitizedName(sanitizedServerName: string): string | null {
+		// First, check for an exact match
 		const exactMatch = this.connections.find((conn) => conn.server.name === sanitizedServerName)
 		if (exactMatch) {
 			return exactMatch.server.name
 		}
 
-		return this.sanitizedNameRegistry.get(sanitizedServerName) ?? null
+		// Check the registry for sanitized name mapping
+		const registryMatch = this.sanitizedNameRegistry.get(sanitizedServerName)
+		if (registryMatch) {
+			return registryMatch
+		}
+
+		// Use fuzzy matching: treat hyphens and underscores as equivalent
+		const fuzzyMatch = this.connections.find((conn) => toolNamesMatch(conn.server.name, sanitizedServerName))
+		if (fuzzyMatch) {
+			return fuzzyMatch.server.name
+		}
+
+		return null
 	}
 
 	private async fetchToolsList(serverName: string, source?: "global" | "project" | "memory"): Promise<McpTool[]> {
@@ -1372,6 +1426,9 @@ export class McpHub {
 				}
 			}
 
+			// Check if wildcard "*" is in the alwaysAllow config
+			const hasWildcard = alwaysAllowConfig.includes("*")
+
 			// Mark tools as always allowed and enabled for prompt based on settings
 			const tools = (response?.tools || []).map((tool) => {
 				// Determine if tool should be always allowed
@@ -1398,8 +1455,8 @@ export class McpHub {
 						shouldAlwaysAllow = alwaysAllowConfig.includes(tool.name)
 					}
 				} else {
-					// For non-memory servers: use the alwaysAllowConfig from settings
-					shouldAlwaysAllow = alwaysAllowConfig.includes(tool.name)
+					// For non-memory servers: use the alwaysAllowConfig from settings (including wildcard support)
+					shouldAlwaysAllow = hasWildcard || alwaysAllowConfig.includes(tool.name)
 				}
 
 				return {
@@ -1727,8 +1784,8 @@ export class McpHub {
 
 	public async refreshInMemoryServers(): Promise<void> {
 		try {
-			// Save current memory server tool states before refresh
-			this.saveMemoryServerToolStates()
+			// Save current memory server tool states before refresh (await so persist finishes before teardown)
+			await this.saveMemoryServerToolStates()
 
 			// Find and remove existing in-memory connections
 			const inMemoryConnections = this.connections.filter((conn) => conn.server.source === "memory")
@@ -1821,8 +1878,8 @@ export class McpHub {
 		const refreshingStatus = vscode.window.setStatusBarMessage(t("mcp:info.refreshing_all"), 3000)
 
 		try {
-			// Save current memory server tool states before refresh
-			this.saveMemoryServerToolStates()
+			// Save current memory server tool states before refresh (await so persist finishes before teardown)
+			await this.saveMemoryServerToolStates()
 
 			const globalPath = await this.getMcpSettingsFilePath()
 			let globalServers: Record<string, any> = {}
@@ -2237,7 +2294,7 @@ export class McpHub {
 		}
 		this.isProgrammaticUpdate = true
 		try {
-			await safeWriteJson(configPath, updatedConfig)
+			await safeWriteJson(configPath, updatedConfig, { prettyPrint: true })
 		} finally {
 			// Reset flag after watcher debounce period (non-blocking)
 			this.flagResetTimer = setTimeout(() => {
@@ -2336,7 +2393,7 @@ export class McpHub {
 					mcpServers: config.mcpServers,
 				}
 
-				await safeWriteJson(configPath, updatedConfig)
+				await safeWriteJson(configPath, updatedConfig, { prettyPrint: true })
 
 				// Update server connections with the correct source
 				await this.updateServerConnections(config.mcpServers, serverSource)
@@ -2542,7 +2599,7 @@ export class McpHub {
 		}
 		this.isProgrammaticUpdate = true
 		try {
-			await safeWriteJson(normalizedPath, config)
+			await safeWriteJson(normalizedPath, config, { prettyPrint: true })
 		} finally {
 			// Reset flag after watcher debounce period (non-blocking)
 			this.flagResetTimer = setTimeout(() => {
@@ -2648,16 +2705,16 @@ export class McpHub {
 	async dispose(): Promise<void> {
 		// Prevent multiple disposals
 		if (this.isDisposed) {
-			console.log("McpHub: Already disposed.")
 			return
 		}
-		console.log("McpHub: Disposing...")
+
 		this.isDisposed = true
 
 		// Clear all debounce timers
 		for (const timer of this.configChangeDebounceTimers.values()) {
 			clearTimeout(timer)
 		}
+
 		this.configChangeDebounceTimers.clear()
 
 		// Clear flag reset timer and reset programmatic update flag
@@ -2665,9 +2722,10 @@ export class McpHub {
 			clearTimeout(this.flagResetTimer)
 			this.flagResetTimer = undefined
 		}
-		this.isProgrammaticUpdate = false
 
+		this.isProgrammaticUpdate = false
 		this.removeAllFileWatchers()
+
 		for (const connection of this.connections) {
 			try {
 				await this.deleteConnection(connection.server.name, connection.server.source)
@@ -2675,15 +2733,19 @@ export class McpHub {
 				console.error(`Failed to close connection for ${connection.server.name}:`, error)
 			}
 		}
+
 		this.connections = []
+
 		if (this.settingsWatcher) {
 			this.settingsWatcher.dispose()
 			this.settingsWatcher = undefined
 		}
+
 		if (this.projectMcpWatcher) {
 			this.projectMcpWatcher.dispose()
 			this.projectMcpWatcher = undefined
 		}
+
 		this.disposables.forEach((d) => d.dispose())
 	}
 }

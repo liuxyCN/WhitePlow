@@ -2,11 +2,15 @@
 
 import {
 	organizationCloudSettingsSchema,
+	organizationDefaultSettingsSchema,
 	organizationFeaturesSchema,
 	organizationSettingsSchema,
+	userSettingsConfigSchema,
 	type OrganizationCloudSettings,
+	type OrganizationDefaultSettings,
 	type OrganizationFeatures,
 	type OrganizationSettings,
+	type UserSettingsConfig,
 	type WorkspaceTaskVisibility,
 } from "../cloud.js"
 
@@ -17,43 +21,9 @@ describe("organizationFeaturesSchema", () => {
 		expect(result.data).toEqual({})
 	})
 
-	it("should validate with roomoteControlEnabled as true", () => {
-		const input = { roomoteControlEnabled: true }
-		const result = organizationFeaturesSchema.safeParse(input)
-		expect(result.success).toBe(true)
-		expect(result.data).toEqual(input)
-	})
-
-	it("should validate with roomoteControlEnabled as false", () => {
-		const input = { roomoteControlEnabled: false }
-		const result = organizationFeaturesSchema.safeParse(input)
-		expect(result.success).toBe(true)
-		expect(result.data).toEqual(input)
-	})
-
-	it("should reject non-boolean roomoteControlEnabled", () => {
-		const input = { roomoteControlEnabled: "true" }
-		const result = organizationFeaturesSchema.safeParse(input)
-		expect(result.success).toBe(false)
-	})
-
-	it("should allow additional properties (for future extensibility)", () => {
-		const input = { roomoteControlEnabled: true, futureProperty: "test" }
-		const result = organizationFeaturesSchema.safeParse(input)
-		expect(result.success).toBe(true)
-		expect(result.data?.roomoteControlEnabled).toBe(true)
-		// Note: Additional properties are stripped by Zod, which is expected behavior
-	})
-
 	it("should have correct TypeScript type", () => {
-		// Type-only test to ensure TypeScript compilation
-		const features: OrganizationFeatures = {
-			roomoteControlEnabled: true,
-		}
-		expect(features.roomoteControlEnabled).toBe(true)
-
 		const emptyFeatures: OrganizationFeatures = {}
-		expect(emptyFeatures.roomoteControlEnabled).toBeUndefined()
+		expect(emptyFeatures).toEqual({})
 	})
 })
 
@@ -83,43 +53,7 @@ describe("organizationSettingsSchema with features", () => {
 		expect(result.data?.features).toEqual({})
 	})
 
-	it("should validate with features.roomoteControlEnabled as true", () => {
-		const input = {
-			...validBaseSettings,
-			features: {
-				roomoteControlEnabled: true,
-			},
-		}
-		const result = organizationSettingsSchema.safeParse(input)
-		expect(result.success).toBe(true)
-		expect(result.data?.features?.roomoteControlEnabled).toBe(true)
-	})
-
-	it("should validate with features.roomoteControlEnabled as false", () => {
-		const input = {
-			...validBaseSettings,
-			features: {
-				roomoteControlEnabled: false,
-			},
-		}
-		const result = organizationSettingsSchema.safeParse(input)
-		expect(result.success).toBe(true)
-		expect(result.data?.features?.roomoteControlEnabled).toBe(false)
-	})
-
-	it("should reject invalid features object", () => {
-		const input = {
-			...validBaseSettings,
-			features: {
-				roomoteControlEnabled: "invalid",
-			},
-		}
-		const result = organizationSettingsSchema.safeParse(input)
-		expect(result.success).toBe(false)
-	})
-
 	it("should have correct TypeScript type for features", () => {
-		// Type-only test to ensure TypeScript compilation
 		const settings: OrganizationSettings = {
 			version: 1,
 			defaultSettings: {},
@@ -127,11 +61,9 @@ describe("organizationSettingsSchema with features", () => {
 				allowAll: true,
 				providers: {},
 			},
-			features: {
-				roomoteControlEnabled: true,
-			},
+			features: {},
 		}
-		expect(settings.features?.roomoteControlEnabled).toBe(true)
+		expect(settings.features).toEqual({})
 
 		const settingsWithoutFeatures: OrganizationSettings = {
 			version: 1,
@@ -161,9 +93,7 @@ describe("organizationSettingsSchema with features", () => {
 					},
 				},
 			},
-			features: {
-				roomoteControlEnabled: true,
-			},
+			features: {},
 			hiddenMcps: ["test-mcp"],
 			hideMarketplaceMcps: true,
 			mcps: [],
@@ -172,6 +102,82 @@ describe("organizationSettingsSchema with features", () => {
 		const result = organizationSettingsSchema.safeParse(input)
 		expect(result.success).toBe(true)
 		expect(result.data).toEqual(input)
+	})
+})
+
+describe("organizationCloudSettingsSchema with allowPublicTaskSharing", () => {
+	it("should validate without allowPublicTaskSharing property", () => {
+		const input = {
+			recordTaskMessages: true,
+			enableTaskSharing: true,
+		}
+		const result = organizationCloudSettingsSchema.safeParse(input)
+		expect(result.success).toBe(true)
+		expect(result.data?.allowPublicTaskSharing).toBeUndefined()
+	})
+
+	it("should validate with allowPublicTaskSharing as true", () => {
+		const input = {
+			recordTaskMessages: true,
+			enableTaskSharing: true,
+			allowPublicTaskSharing: true,
+		}
+		const result = organizationCloudSettingsSchema.safeParse(input)
+		expect(result.success).toBe(true)
+		expect(result.data?.allowPublicTaskSharing).toBe(true)
+	})
+
+	it("should validate with allowPublicTaskSharing as false", () => {
+		const input = {
+			recordTaskMessages: true,
+			enableTaskSharing: true,
+			allowPublicTaskSharing: false,
+		}
+		const result = organizationCloudSettingsSchema.safeParse(input)
+		expect(result.success).toBe(true)
+		expect(result.data?.allowPublicTaskSharing).toBe(false)
+	})
+
+	it("should reject non-boolean allowPublicTaskSharing", () => {
+		const input = {
+			allowPublicTaskSharing: "true",
+		}
+		const result = organizationCloudSettingsSchema.safeParse(input)
+		expect(result.success).toBe(false)
+	})
+
+	it("should have correct TypeScript type", () => {
+		// Type-only test to ensure TypeScript compilation
+		const settings: OrganizationCloudSettings = {
+			recordTaskMessages: true,
+			enableTaskSharing: true,
+			allowPublicTaskSharing: true,
+		}
+		expect(settings.allowPublicTaskSharing).toBe(true)
+
+		const settingsWithoutPublicSharing: OrganizationCloudSettings = {
+			recordTaskMessages: false,
+		}
+		expect(settingsWithoutPublicSharing.allowPublicTaskSharing).toBeUndefined()
+	})
+
+	it("should validate in organizationSettingsSchema with allowPublicTaskSharing", () => {
+		const input = {
+			version: 1,
+			cloudSettings: {
+				recordTaskMessages: true,
+				enableTaskSharing: true,
+				allowPublicTaskSharing: false,
+			},
+			defaultSettings: {},
+			allowList: {
+				allowAll: true,
+				providers: {},
+			},
+		}
+		const result = organizationSettingsSchema.safeParse(input)
+		expect(result.success).toBe(true)
+		expect(result.data?.cloudSettings?.allowPublicTaskSharing).toBe(false)
 	})
 })
 
@@ -253,5 +259,182 @@ describe("organizationCloudSettingsSchema with workspaceTaskVisibility", () => {
 		const result = organizationSettingsSchema.safeParse(input)
 		expect(result.success).toBe(true)
 		expect(result.data?.cloudSettings?.workspaceTaskVisibility).toBe("list-only")
+	})
+})
+
+describe("organizationCloudSettingsSchema with llmEnhancedFeaturesEnabled", () => {
+	it("should validate without llmEnhancedFeaturesEnabled property", () => {
+		const input = {
+			recordTaskMessages: true,
+			enableTaskSharing: true,
+		}
+		const result = organizationCloudSettingsSchema.safeParse(input)
+		expect(result.success).toBe(true)
+		expect(result.data?.llmEnhancedFeaturesEnabled).toBeUndefined()
+	})
+
+	it("should validate with llmEnhancedFeaturesEnabled as true", () => {
+		const input = {
+			recordTaskMessages: true,
+			enableTaskSharing: true,
+			llmEnhancedFeaturesEnabled: true,
+		}
+		const result = organizationCloudSettingsSchema.safeParse(input)
+		expect(result.success).toBe(true)
+		expect(result.data?.llmEnhancedFeaturesEnabled).toBe(true)
+	})
+
+	it("should validate with llmEnhancedFeaturesEnabled as false", () => {
+		const input = {
+			recordTaskMessages: true,
+			enableTaskSharing: true,
+			llmEnhancedFeaturesEnabled: false,
+		}
+		const result = organizationCloudSettingsSchema.safeParse(input)
+		expect(result.success).toBe(true)
+		expect(result.data?.llmEnhancedFeaturesEnabled).toBe(false)
+	})
+
+	it("should reject non-boolean llmEnhancedFeaturesEnabled", () => {
+		const input = {
+			llmEnhancedFeaturesEnabled: "true",
+		}
+		const result = organizationCloudSettingsSchema.safeParse(input)
+		expect(result.success).toBe(false)
+	})
+
+	it("should have correct TypeScript type", () => {
+		// Type-only test to ensure TypeScript compilation
+		const settings: OrganizationCloudSettings = {
+			recordTaskMessages: true,
+			enableTaskSharing: true,
+			llmEnhancedFeaturesEnabled: true,
+		}
+		expect(settings.llmEnhancedFeaturesEnabled).toBe(true)
+
+		const settingsWithoutLlmFeatures: OrganizationCloudSettings = {
+			recordTaskMessages: false,
+		}
+		expect(settingsWithoutLlmFeatures.llmEnhancedFeaturesEnabled).toBeUndefined()
+	})
+
+	it("should validate in organizationSettingsSchema with llmEnhancedFeaturesEnabled", () => {
+		const input = {
+			version: 1,
+			cloudSettings: {
+				recordTaskMessages: true,
+				enableTaskSharing: true,
+				llmEnhancedFeaturesEnabled: false,
+			},
+			defaultSettings: {},
+			allowList: {
+				allowAll: true,
+				providers: {},
+			},
+		}
+		const result = organizationSettingsSchema.safeParse(input)
+		expect(result.success).toBe(true)
+		expect(result.data?.cloudSettings?.llmEnhancedFeaturesEnabled).toBe(false)
+	})
+})
+
+describe("userSettingsConfigSchema with llmEnhancedFeaturesEnabled", () => {
+	it("should validate without llmEnhancedFeaturesEnabled property", () => {
+		const input = {
+			taskSyncEnabled: true,
+		}
+		const result = userSettingsConfigSchema.safeParse(input)
+		expect(result.success).toBe(true)
+		expect(result.data?.llmEnhancedFeaturesEnabled).toBeUndefined()
+	})
+
+	it("should validate with llmEnhancedFeaturesEnabled as true", () => {
+		const input = {
+			taskSyncEnabled: true,
+			llmEnhancedFeaturesEnabled: true,
+		}
+		const result = userSettingsConfigSchema.safeParse(input)
+		expect(result.success).toBe(true)
+		expect(result.data?.llmEnhancedFeaturesEnabled).toBe(true)
+	})
+
+	it("should validate with llmEnhancedFeaturesEnabled as false", () => {
+		const input = {
+			taskSyncEnabled: true,
+			llmEnhancedFeaturesEnabled: false,
+		}
+		const result = userSettingsConfigSchema.safeParse(input)
+		expect(result.success).toBe(true)
+		expect(result.data?.llmEnhancedFeaturesEnabled).toBe(false)
+	})
+
+	it("should reject non-boolean llmEnhancedFeaturesEnabled", () => {
+		const input = {
+			llmEnhancedFeaturesEnabled: "true",
+		}
+		const result = userSettingsConfigSchema.safeParse(input)
+		expect(result.success).toBe(false)
+	})
+
+	it("should have correct TypeScript type", () => {
+		// Type-only test to ensure TypeScript compilation
+		const settings: UserSettingsConfig = {
+			taskSyncEnabled: true,
+			llmEnhancedFeaturesEnabled: true,
+		}
+		expect(settings.llmEnhancedFeaturesEnabled).toBe(true)
+
+		const settingsWithoutLlmFeatures: UserSettingsConfig = {}
+		expect(settingsWithoutLlmFeatures.llmEnhancedFeaturesEnabled).toBeUndefined()
+	})
+
+	it("should validate empty object", () => {
+		const result = userSettingsConfigSchema.safeParse({})
+		expect(result.success).toBe(true)
+		expect(result.data).toEqual({})
+	})
+
+	it("should validate with only llmEnhancedFeaturesEnabled", () => {
+		const input = {
+			llmEnhancedFeaturesEnabled: true,
+		}
+		const result = userSettingsConfigSchema.safeParse(input)
+		expect(result.success).toBe(true)
+		expect(result.data?.llmEnhancedFeaturesEnabled).toBe(true)
+	})
+})
+
+describe("organizationDefaultSettingsSchema with disabledTools", () => {
+	it("should accept disabledTools as an array of valid tool names", () => {
+		const input: OrganizationDefaultSettings = {
+			disabledTools: ["execute_command", "write_to_file"],
+		}
+		const result = organizationDefaultSettingsSchema.safeParse(input)
+		expect(result.success).toBe(true)
+		expect(result.data?.disabledTools).toEqual(["execute_command", "write_to_file"])
+	})
+
+	it("should accept empty disabledTools array", () => {
+		const input: OrganizationDefaultSettings = {
+			disabledTools: [],
+		}
+		const result = organizationDefaultSettingsSchema.safeParse(input)
+		expect(result.success).toBe(true)
+		expect(result.data?.disabledTools).toEqual([])
+	})
+
+	it("should accept omitted disabledTools", () => {
+		const input: OrganizationDefaultSettings = {}
+		const result = organizationDefaultSettingsSchema.safeParse(input)
+		expect(result.success).toBe(true)
+		expect(result.data?.disabledTools).toBeUndefined()
+	})
+
+	it("should reject invalid tool names in disabledTools", () => {
+		const input = {
+			disabledTools: ["not_a_real_tool"],
+		}
+		const result = organizationDefaultSettingsSchema.safeParse(input)
+		expect(result.success).toBe(false)
 	})
 })

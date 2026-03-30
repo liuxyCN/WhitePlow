@@ -1,9 +1,4 @@
-import {
-	type ModelInfo,
-	type ProviderSettings,
-	CLAUDE_CODE_DEFAULT_MAX_OUTPUT_TOKENS,
-	ANTHROPIC_DEFAULT_MAX_TOKENS,
-} from "@roo-code/types"
+import { type ModelInfo, type ProviderSettings, ANTHROPIC_DEFAULT_MAX_TOKENS } from "@roo-code/types"
 
 import { getModelMaxOutputTokens, shouldUseReasoningBudget, shouldUseReasoningEffort } from "../api"
 
@@ -14,22 +9,7 @@ describe("getModelMaxOutputTokens", () => {
 		supportsPromptCache: true,
 	}
 
-	test("should return claudeCodeMaxOutputTokens when using claude-code provider", () => {
-		const settings: ProviderSettings = {
-			apiProvider: "claude-code",
-			claudeCodeMaxOutputTokens: 16384,
-		}
-
-		const result = getModelMaxOutputTokens({
-			modelId: "claude-3-5-sonnet-20241022",
-			model: mockModel,
-			settings,
-		})
-
-		expect(result).toBe(16384)
-	})
-
-	test("should return model maxTokens when not using claude-code provider and maxTokens is within 20% of context window", () => {
+	test("should return model maxTokens when maxTokens is within 20% of context window", () => {
 		const settings: ProviderSettings = {
 			apiProvider: "anthropic",
 		}
@@ -43,21 +23,6 @@ describe("getModelMaxOutputTokens", () => {
 		})
 
 		expect(result).toBe(8192)
-	})
-
-	test("should return default CLAUDE_CODE_DEFAULT_MAX_OUTPUT_TOKENS when claude-code provider has no custom max tokens", () => {
-		const settings: ProviderSettings = {
-			apiProvider: "claude-code",
-			// No claudeCodeMaxOutputTokens set
-		}
-
-		const result = getModelMaxOutputTokens({
-			modelId: "claude-3-5-sonnet-20241022",
-			model: mockModel,
-			settings,
-		})
-
-		expect(result).toBe(CLAUDE_CODE_DEFAULT_MAX_OUTPUT_TOKENS)
 	})
 
 	test("should handle reasoning budget models correctly", () => {

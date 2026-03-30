@@ -4,137 +4,212 @@ import crypto from "crypto"
 import { TelemetryService } from "@roo-code/telemetry"
 
 import { t } from "../../i18n"
-import { ApiHandler } from "../../api"
+import { ApiHandler, ApiHandlerCreateMessageMetadata } from "../../api"
 import { ApiMessage } from "../task-persistence/apiMessages"
 import { maybeRemoveImageBlocks } from "../../api/transform/image-cleaning"
+import { findLast } from "../../shared/array"
+import { supportPrompt } from "../../shared/support-prompt"
+import { RooIgnoreController } from "../ignore/RooIgnoreController"
+import { generateFoldedFileContext } from "./foldedFileContext"
+
+export type { FoldedFileContextResult, FoldedFileContextOptions } from "./foldedFileContext"
 
 /**
- * Checks if a message contains tool_result blocks.
- * For native tools protocol, user messages with tool_result blocks require
- * corresponding tool_use blocks from the previous assistant turn.
+ * Converts a tool_use block to a text representation.
+ * This allows the conversation to be summarized without requiring the tools parameter.
  */
-function hasToolResultBlocks(message: ApiMessage): boolean {
-	if (message.role !== "user" || typeof message.content === "string") {
-		return false
+export function toolUseToText(block: Anthropic.Messages.ToolUseBlockParam): string {
+	let input: string
+	if (typeof block.input === "object" && block.input !== null) {
+		input = Object.entries(block.input)
+			.map(([key, value]) => {
+				const formattedValue =
+					typeof value === "object" && value !== null ? JSON.stringify(value, null, 2) : String(value)
+				return `${key}: ${formattedValue}`
+			})
+			.join("\n")
+	} else {
+		input = String(block.input)
 	}
-	return message.content.some((block) => block.type === "tool_result")
+	return `[Tool Use: ${block.name}]\n${input}`
 }
 
 /**
- * Gets the tool_use blocks from a message.
+ * Converts a tool_result block to a text representation.
+ * This allows the conversation to be summarized without requiring the tools parameter.
  */
-function getToolUseBlocks(message: ApiMessage): Anthropic.Messages.ToolUseBlock[] {
-	if (message.role !== "assistant" || typeof message.content === "string") {
-		return []
+export function toolResultToText(block: Anthropic.Messages.ToolResultBlockParam): string {
+	const errorSuffix = block.is_error ? " (Error)" : ""
+	if (typeof block.content === "string") {
+		return `[Tool Result${errorSuffix}]\n${block.content}`
+	} else if (Array.isArray(block.content)) {
+		const contentText = block.content
+			.map((contentBlock) => {
+				if (contentBlock.type === "text") {
+					return contentBlock.text
+				}
+				if (contentBlock.type === "image") {
+					return "[Image]"
+				}
+				// Handle any other content block types
+				return `[${(contentBlock as { type: string }).type}]`
+			})
+			.join("\n")
+		return `[Tool Result${errorSuffix}]\n${contentText}`
 	}
-	return message.content.filter((block) => block.type === "tool_use") as Anthropic.Messages.ToolUseBlock[]
+	return `[Tool Result${errorSuffix}]`
 }
 
 /**
- * Extracts tool_use blocks that need to be preserved to match tool_result blocks in keepMessages.
- * When the first kept message is a user message with tool_result blocks,
- * we need to find the corresponding tool_use blocks from the preceding assistant message.
- * These tool_use blocks will be appended to the summary message to maintain proper pairing.
+ * Converts all tool_use and tool_result blocks in a message's content to text representations.
+ * This is necessary for providers like Bedrock that require the tools parameter when tool blocks are present.
+ * By converting to text, we can send the conversation for summarization without the tools parameter.
  *
- * @param messages - The full conversation messages
- * @param keepCount - The number of messages to keep from the end
- * @returns Object containing keepMessages and any tool_use blocks to preserve
+ * @param content - The message content (string or array of content blocks)
+ * @returns The transformed content with tool blocks converted to text blocks
  */
-export function getKeepMessagesWithToolBlocks(
-	messages: ApiMessage[],
-	keepCount: number,
-): { keepMessages: ApiMessage[]; toolUseBlocksToPreserve: Anthropic.Messages.ToolUseBlock[] } {
-	if (messages.length <= keepCount) {
-		return { keepMessages: messages, toolUseBlocksToPreserve: [] }
+export function convertToolBlocksToText(
+	content: string | Anthropic.Messages.ContentBlockParam[],
+): string | Anthropic.Messages.ContentBlockParam[] {
+	if (typeof content === "string") {
+		return content
 	}
 
-	const startIndex = messages.length - keepCount
-	const keepMessages = messages.slice(startIndex)
+	return content.map((block) => {
+		if (block.type === "tool_use") {
+			return {
+				type: "text" as const,
+				text: toolUseToText(block),
+			}
+		}
+		if (block.type === "tool_result") {
+			return {
+				type: "text" as const,
+				text: toolResultToText(block),
+			}
+		}
+		return block
+	})
+}
 
-	// Check if the first kept message is a user message with tool_result blocks
-	if (keepMessages.length > 0 && hasToolResultBlocks(keepMessages[0])) {
-		// Look for the preceding assistant message with tool_use blocks
-		const precedingIndex = startIndex - 1
-		if (precedingIndex >= 0) {
-			const precedingMessage = messages[precedingIndex]
-			const toolUseBlocks = getToolUseBlocks(precedingMessage)
-			if (toolUseBlocks.length > 0) {
-				// Return the tool_use blocks to be merged into the summary message
-				return { keepMessages, toolUseBlocksToPreserve: toolUseBlocks }
+/**
+ * Transforms all messages by converting tool_use and tool_result blocks to text representations.
+ * This ensures the conversation can be sent for summarization without requiring the tools parameter.
+ *
+ * @param messages - The messages to transform
+ * @returns The transformed messages with tool blocks converted to text
+ */
+export function transformMessagesForCondensing<
+	T extends { role: string; content: string | Anthropic.Messages.ContentBlockParam[] },
+>(messages: T[]): T[] {
+	return messages.map((msg) => ({
+		...msg,
+		content: convertToolBlocksToText(msg.content),
+	}))
+}
+
+export const MIN_CONDENSE_THRESHOLD = 5 // Minimum percentage of context window to trigger condensing
+export const MAX_CONDENSE_THRESHOLD = 100 // Maximum percentage of context window to trigger condensing
+
+const SUMMARY_PROMPT = `You are a helpful AI assistant tasked with summarizing conversations.
+
+CRITICAL: This is a summarization-only request. DO NOT call any tools or functions.
+Your ONLY task is to analyze the conversation and produce a text summary.
+Respond with text only - no tool calls will be processed.
+
+CRITICAL: This summarization request is a SYSTEM OPERATION, not a user message.
+When analyzing "user requests" and "user intent", completely EXCLUDE this summarization message.
+The "most recent user request" and "next step" must be based on what the user was doing BEFORE this system message appeared.
+The goal is for work to continue seamlessly after condensation - as if it never happened.`
+
+/**
+ * Injects synthetic tool_results for orphan tool_calls that don't have matching results.
+ * This is necessary because OpenAI's Responses API rejects conversations with orphan tool_calls.
+ * This can happen when the user triggers condense after receiving a tool_call (like attempt_completion)
+ * but before responding to it.
+ *
+ * @param messages - The conversation messages to process
+ * @returns The messages with synthetic tool_results appended if needed
+ */
+export function injectSyntheticToolResults(messages: ApiMessage[]): ApiMessage[] {
+	// Find all tool_call IDs in assistant messages
+	const toolCallIds = new Set<string>()
+	// Find all tool_result IDs in user messages
+	const toolResultIds = new Set<string>()
+
+	for (const msg of messages) {
+		if (msg.role === "assistant" && Array.isArray(msg.content)) {
+			for (const block of msg.content) {
+				if (block.type === "tool_use") {
+					toolCallIds.add(block.id)
+				}
+			}
+		}
+		if (msg.role === "user" && Array.isArray(msg.content)) {
+			for (const block of msg.content) {
+				if (block.type === "tool_result") {
+					toolResultIds.add(block.tool_use_id)
+				}
 			}
 		}
 	}
 
-	return { keepMessages, toolUseBlocksToPreserve: [] }
+	// Find orphans (tool_calls without matching tool_results)
+	const orphanIds = [...toolCallIds].filter((id) => !toolResultIds.has(id))
+
+	if (orphanIds.length === 0) {
+		return messages
+	}
+
+	// Inject synthetic tool_results as a new user message
+	const syntheticResults: Anthropic.Messages.ToolResultBlockParam[] = orphanIds.map((id) => ({
+		type: "tool_result" as const,
+		tool_use_id: id,
+		content: "Context condensation triggered. Tool execution deferred.",
+	}))
+
+	const syntheticMessage: ApiMessage = {
+		role: "user",
+		content: syntheticResults,
+		ts: Date.now(),
+	}
+
+	return [...messages, syntheticMessage]
 }
 
-export const N_MESSAGES_TO_KEEP = 1
-export const MIN_CONDENSE_THRESHOLD = 3 // Minimum percentage of context window to trigger condensing
-export const MAX_CONDENSE_THRESHOLD = 100 // Maximum percentage of context window to trigger condensing
+/**
+ * Extracts <command> blocks from a message's content.
+ * These blocks represent active workflows that must be preserved across condensings.
+ *
+ * @param message - The message to extract command blocks from
+ * @returns A string containing all command blocks found, or empty string if none
+ */
+export function extractCommandBlocks(message: ApiMessage): string {
+	const content = message.content
+	let text: string
 
-const SUMMARY_PROMPT = `\
-你的任务是创建一份详细的对话摘要，请密切关注用户的明确请求和你之前的操作。
-这份摘要应该全面捕获专业标准、业务知识、分析方法和领域知识，这些对于继续对话和支持任何持续任务至关重要。本工具面向投资机构，专注于报告撰写、财务分析、风险管理、合规内控、投资分析、商业模式分析、背景调查、税务分析等专业工作。
+	if (typeof content === "string") {
+		text = content
+	} else if (Array.isArray(content)) {
+		// Concatenate all text blocks
+		text = content
+			.filter((block): block is Anthropic.Messages.TextBlockParam => block.type === "text")
+			.map((block) => block.text)
+			.join("\n")
+	} else {
+		return ""
+	}
 
-你的摘要应按以下结构组织：
-上下文：用于继续对话的上下文。根据当前任务，如果适用，应包括：
-  1. 之前的对话：概述整个对话过程中与用户讨论的主要内容。应能让阅读者理解整体对话流程。对于投资机构的专业领域（如财务分析、风险管理、合规内控、投资分析、商业模式分析、背景调查、税务分析、正式文档撰写），请保留关键的专业术语、标准和规范。
-  2. 当前工作：详细描述在本次压缩请求之前正在进行的工作。请特别关注对话中较新的消息。包括正在遵循的任何特定格式、模板或标准（例如：文档结构、分析框架、合规要求、报告格式、投资分析模型、商业模式框架、尽调清单、税务筹划方案）。
-  3. 关键概念和标准：列出所有重要的概念、专业标准、法规、分析框架或方法论，这些可能与继续工作相关。对于投资机构的专业场景，请保留：
-     - 专业标准和法规（例如：会计准则、税务法规、合规要求、文档格式标准、监管规定、投资监管政策）
-     - 分析框架和方法论（例如：财务分析模型、投资分析模型、商业模式分析框架、风险评估方法、合规检查流程、尽调方法论、税务筹划方法）
-     - 投资机构特定的术语和约定
-     - 业务概念和行业知识（例如：商业模式要素、市场分析、竞争分析、行业趋势）
-  4. 相关文件、文档和数据：如果适用，请列举为任务延续而检查、修改或创建的特定文件、文档或数据源。请特别关注最新的消息和变更。对于每个项目，包括：
-     - 重要性的总结
-     - 所做更改的总结（如有）
-     - 重要内容片段（文本、数据、表格或结构化信息）
-     - 数据源和引用（特别是对于财务分析、投资分析、背景调查、税务分析或正式文档）
-     - 关键数据和指标（例如：财务指标、投资回报指标、商业模式关键指标、税务数据）
-  5. 问题解决和分析：记录迄今为止解决的问题、已执行的分析或已识别的问题。对于投资机构的专业领域，请保留：
-     - 量化数据和计算（包括计算方法、公式和数据来源）
-     - 投资分析结果（例如：投资价值评估、投资回报率、估值分析、投资风险分析）
-     - 商业模式分析（例如：商业模式画布、盈利模式、价值链分析、竞争优势分析）
-     - 背景调查发现（例如：企业信用状况、法律风险、经营风险、关联方关系、历史沿革）
-     - 税务分析结果（例如：税务筹划方案、税务风险识别、税负分析、税务合规性检查）
-     - 风险评估和分类（风险等级、影响范围、控制措施）
-     - 合规差距和法规引用（具体法规条款、合规要求、整改措施）
-     - 文档结构和格式要求（报告格式、公文规范、分析框架）
-     - 投资决策相关的分析和建议
-  6. 待处理任务和下一步：概述你被明确要求处理的所有待处理任务，以及你将采取的所有未完成工作的下一步（如适用）。在有助于清晰理解的地方包含数据点、关键指标或结构化内容。对于任何下一步，请包含来自最近对话的直接引用，准确显示你正在处理的任务以及你停止的位置。这应该是逐字逐句的，以确保任务之间上下文不丢失信息。保留任何必须遵循的特定要求、截止日期、标准或格式规范。特别重要：如果对话中包含待办任务列表（todo list，通过 updateTodoList 工具调用创建），你必须完整保留所有待办任务的内容，包括每个待办项的完整文本、状态（pending、in_progress、completed）和ID，不要压缩或简化待办任务列表的内容，必须原样保留所有待办项的详细信息。
+	// Match all <command> blocks including their content
+	const commandRegex = /<command[^>]*>[\s\S]*?<\/command>/g
+	const matches = text.match(commandRegex)
 
-摘要结构示例：
-1. 之前的对话：
-  [详细描述，保留专业术语和上下文]
-2. 当前工作：
-  [详细描述，包括正在使用的任何标准、格式或框架]
-3. 关键概念和标准：
-  - 专业标准： [标准1]，[法规1]，[框架1]，[...]
-  - 分析方法： [方法1]，[方法2]，[...]
-  - 业务概念： [概念1]，[概念2]，[...]
-4. 相关文件、文档和数据：
-  - [文件/文档名称1]
-    - [重要性的总结]
-    - [所做更改的总结（如有）]
-    - [重要内容片段及上下文]
-    - [数据源或引用（如适用）]
-    - [关键数据和指标]
-  - [文件/文档名称2]
-    - [重要内容片段]
-  - [...]
-5. 问题解决和分析：
-  [详细描述，包括任何定量分析、投资分析、商业模式分析、背景调查发现、税务分析、风险评估、合规检查、格式要求或投资决策分析]
-6. 待处理任务和下一步：
-  - [任务1详情和下一步，包括任何特定要求或标准]
-  - [任务2详情和下一步，包括任何特定要求或标准]
-  - [...]
-  - 如果存在待办任务列表，必须完整列出所有待办项：
-    - [ ] 待办项1的完整内容（状态：pending/in_progress/completed）
-    - [ ] 待办项2的完整内容（状态：pending/in_progress/completed）
-    - [...]
+	if (!matches || matches.length === 0) {
+		return ""
+	}
 
-仅输出对话摘要，不要添加任何额外的评论或解释。确保所有专业术语、标准、数据点、关键指标和结构化信息都被准确保留。
-`
+	return matches.join("\n")
+}
 
 export type SummarizeResponse = {
 	messages: ApiMessage[] // The messages after summarization
@@ -142,134 +217,171 @@ export type SummarizeResponse = {
 	cost: number // The cost of the summarization operation
 	newContextTokens?: number // The number of tokens in the context for the next API request
 	error?: string // Populated iff the operation fails: error message shown to the user on failure (see Task.ts)
+	errorDetails?: string // Detailed error information including stack trace and API error info
 	condenseId?: string // The unique ID of the created Summary message, for linking to condense_context clineMessage
 }
 
+export type SummarizeConversationOptions = {
+	messages: ApiMessage[]
+	apiHandler: ApiHandler
+	systemPrompt: string
+	taskId: string
+	isAutomaticTrigger?: boolean
+	customCondensingPrompt?: string
+	metadata?: ApiHandlerCreateMessageMetadata
+	environmentDetails?: string
+	filesReadByRoo?: string[]
+	cwd?: string
+	rooIgnoreController?: RooIgnoreController
+}
+
 /**
- * Summarizes the conversation messages using an LLM call
+ * Summarizes the conversation messages using an LLM call.
  *
- * @param {ApiMessage[]} messages - The conversation messages
- * @param {ApiHandler} apiHandler - The API handler to use for token counting.
- * @param {string} systemPrompt - The system prompt for API requests, which should be considered in the context token count
- * @param {string} taskId - The task ID for the conversation, used for telemetry
- * @param {boolean} isAutomaticTrigger - Whether the summarization is triggered automatically
- * @returns {SummarizeResponse} - The result of the summarization operation (see above)
- */
-/**
- * Summarizes the conversation messages using an LLM call
+ * This implements the "fresh start" model where:
+ * - The summary becomes a user message (not assistant)
+ * - Post-condense, the model sees only the summary (true fresh start)
+ * - All messages are still stored but tagged with condenseParent
+ * - <command> blocks from the original task are preserved across condensings
+ * - File context (folded code definitions) can be preserved for continuity
  *
- * @param {ApiMessage[]} messages - The conversation messages
- * @param {ApiHandler} apiHandler - The API handler to use for token counting (fallback if condensingApiHandler not provided)
- * @param {string} systemPrompt - The system prompt for API requests (fallback if customCondensingPrompt not provided)
- * @param {string} taskId - The task ID for the conversation, used for telemetry
- * @param {number} prevContextTokens - The number of tokens currently in the context, used to ensure we don't grow the context
- * @param {boolean} isAutomaticTrigger - Whether the summarization is triggered automatically
- * @param {string} customCondensingPrompt - Optional custom prompt to use for condensing
- * @param {ApiHandler} condensingApiHandler - Optional specific API handler to use for condensing
- * @param {boolean} useNativeTools - Whether native tools protocol is being used (requires tool_use/tool_result pairing)
- * @returns {SummarizeResponse} - The result of the summarization operation (see above)
+ * Environment details handling:
+ * - For AUTOMATIC condensing (isAutomaticTrigger=true): Environment details are included
+ *   in the summary because the API request is already in progress and the next user
+ *   message won't have fresh environment details injected.
+ * - For MANUAL condensing (isAutomaticTrigger=false): Environment details are NOT included
+ *   because fresh environment details will be injected on the very next turn via
+ *   getEnvironmentDetails() in recursivelyMakeClineRequests().
  */
-export async function summarizeConversation(
-	messages: ApiMessage[],
-	apiHandler: ApiHandler,
-	systemPrompt: string,
-	taskId: string,
-	prevContextTokens: number,
-	isAutomaticTrigger?: boolean,
-	customCondensingPrompt?: string,
-	condensingApiHandler?: ApiHandler,
-	useNativeTools?: boolean,
-): Promise<SummarizeResponse> {
+export async function summarizeConversation(options: SummarizeConversationOptions): Promise<SummarizeResponse> {
+	const {
+		messages,
+		apiHandler,
+		systemPrompt,
+		taskId,
+		isAutomaticTrigger,
+		customCondensingPrompt,
+		metadata,
+		environmentDetails,
+		filesReadByRoo,
+		cwd,
+		rooIgnoreController,
+	} = options
 	TelemetryService.instance.captureContextCondensed(
 		taskId,
 		isAutomaticTrigger ?? false,
 		!!customCondensingPrompt?.trim(),
-		!!condensingApiHandler,
 	)
 
 	const response: SummarizeResponse = { messages, cost: 0, summary: "" }
 
-	// Always preserve the first message (which may contain slash command content)
-	const firstMessage = messages[0]
-
-	// Get keepMessages and any tool_use blocks that need to be preserved for tool_result pairing
-	// Only preserve tool_use blocks when using native tools protocol (XML protocol doesn't need them)
-	const { keepMessages, toolUseBlocksToPreserve } = useNativeTools
-		? getKeepMessagesWithToolBlocks(messages, N_MESSAGES_TO_KEEP)
-		: { keepMessages: messages.slice(-N_MESSAGES_TO_KEEP), toolUseBlocksToPreserve: [] }
-
-	const keepStartIndex = Math.max(messages.length - N_MESSAGES_TO_KEEP, 0)
-	const includeFirstKeptMessageInSummary = toolUseBlocksToPreserve.length > 0
-	const summarySliceEnd = includeFirstKeptMessageInSummary ? keepStartIndex + 1 : keepStartIndex
-	const messagesBeforeKeep = summarySliceEnd > 0 ? messages.slice(0, summarySliceEnd) : []
-
-	// Get messages to summarize, including the first message and excluding the last N messages
-	const messagesToSummarize = getMessagesSinceLastSummary(messagesBeforeKeep)
+	// Get messages to summarize (all messages since the last summary, if any)
+	const messagesToSummarize = getMessagesSinceLastSummary(messages)
 
 	if (messagesToSummarize.length <= 1) {
 		const error =
-			messages.length <= N_MESSAGES_TO_KEEP + 1
+			messages.length <= 1
 				? t("common:errors.condense_not_enough_messages")
 				: t("common:errors.condensed_recently")
 		return { ...response, error }
 	}
 
-	// Check if there's a recent summary in the messages we're keeping
-	const recentSummaryExists = keepMessages.some((message: ApiMessage) => message.isSummary)
+	// Check if there's a recent summary in the messages (edge case)
+	const recentSummaryExists = messagesToSummarize.some((message: ApiMessage) => message.isSummary)
 
-	if (recentSummaryExists) {
+	if (recentSummaryExists && messagesToSummarize.length <= 2) {
 		const error = t("common:errors.condensed_recently")
 		return { ...response, error }
 	}
 
+	// Use custom prompt if provided and non-empty, otherwise use the default CONDENSE prompt
+	// This respects user's custom condensing prompt setting
+	const condenseInstructions = customCondensingPrompt?.trim() || supportPrompt.default.CONDENSE
+
 	const finalRequestMessage: Anthropic.MessageParam = {
 		role: "user",
-		content: "Summarize the conversation so far, as described in the prompt instructions.",
+		content: condenseInstructions,
 	}
 
-	const requestMessages = maybeRemoveImageBlocks([...messagesToSummarize, finalRequestMessage], apiHandler).map(
-		({ role, content }) => ({ role, content }),
+	// Inject synthetic tool_results for orphan tool_calls to prevent API rejections
+	// (e.g., when user triggers condense after receiving attempt_completion but before responding)
+	const messagesWithToolResults = injectSyntheticToolResults(messagesToSummarize)
+
+	// Transform tool_use and tool_result blocks to text representations.
+	// This is necessary because some providers (like Bedrock via LiteLLM) require the `tools` parameter
+	// when tool blocks are present. By converting them to text, we can send the conversation for
+	// summarization without needing to pass the tools parameter.
+	const messagesWithTextToolBlocks = transformMessagesForCondensing(
+		maybeRemoveImageBlocks([...messagesWithToolResults, finalRequestMessage], apiHandler),
 	)
 
+	const requestMessages = messagesWithTextToolBlocks.map(({ role, content }) => ({ role, content }))
+
 	// Note: this doesn't need to be a stream, consider using something like apiHandler.completePrompt
-	// Use custom prompt if provided and non-empty, otherwise use the default SUMMARY_PROMPT
-	const promptToUse = customCondensingPrompt?.trim() ? customCondensingPrompt.trim() : SUMMARY_PROMPT
+	const promptToUse = SUMMARY_PROMPT
 
-	// Use condensing API handler if provided, otherwise use main API handler
-	let handlerToUse = condensingApiHandler || apiHandler
-
-	// Check if the chosen handler supports the required functionality
-	if (!handlerToUse || typeof handlerToUse.createMessage !== "function") {
-		console.warn(
-			"Chosen API handler for condensing does not support message creation or is invalid, falling back to main apiHandler.",
-		)
-
-		handlerToUse = apiHandler // Fallback to the main, presumably valid, apiHandler
-
-		// Ensure the main apiHandler itself is valid before this point or add another check.
-		if (!handlerToUse || typeof handlerToUse.createMessage !== "function") {
-			// This case should ideally not happen if main apiHandler is always valid.
-			// Consider throwing an error or returning a specific error response.
-			console.error("Main API handler is also invalid for condensing. Cannot proceed.")
-			// Return an appropriate error structure for SummarizeResponse
-			const error = t("common:errors.condense_handler_invalid")
-			return { ...response, error }
-		}
+	// Validate that the API handler supports message creation
+	if (!apiHandler || typeof apiHandler.createMessage !== "function") {
+		console.error("API handler is invalid for condensing. Cannot proceed.")
+		const error = t("common:errors.condense_handler_invalid")
+		return { ...response, error }
 	}
-
-	const stream = handlerToUse.createMessage(promptToUse, requestMessages)
 
 	let summary = ""
 	let cost = 0
 	let outputTokens = 0
 
-	for await (const chunk of stream) {
-		if (chunk.type === "text") {
-			summary += chunk.text
-		} else if (chunk.type === "usage") {
-			// Record final usage chunk only
-			cost = chunk.totalCost ?? 0
-			outputTokens = chunk.outputTokens ?? 0
+	try {
+		const stream = apiHandler.createMessage(promptToUse, requestMessages, metadata)
+
+		for await (const chunk of stream) {
+			if (chunk.type === "text") {
+				summary += chunk.text
+			} else if (chunk.type === "usage") {
+				// Record final usage chunk only
+				cost = chunk.totalCost ?? 0
+				outputTokens = chunk.outputTokens ?? 0
+			}
+		}
+	} catch (error) {
+		console.error("Error during condensing API call:", error)
+		const errorMessage = error instanceof Error ? error.message : String(error)
+
+		// Capture detailed error information for debugging
+		let errorDetails = ""
+		if (error instanceof Error) {
+			errorDetails = `Error: ${error.message}`
+			// Capture any additional API error properties
+			const anyError = error as unknown as Record<string, unknown>
+			if (anyError.status) {
+				errorDetails += `\n\nHTTP Status: ${anyError.status}`
+			}
+			if (anyError.code) {
+				errorDetails += `\nError Code: ${anyError.code}`
+			}
+			if (anyError.response) {
+				try {
+					errorDetails += `\n\nAPI Response:\n${JSON.stringify(anyError.response, null, 2)}`
+				} catch {
+					errorDetails += `\n\nAPI Response: [Unable to serialize]`
+				}
+			}
+			if (anyError.body) {
+				try {
+					errorDetails += `\n\nResponse Body:\n${JSON.stringify(anyError.body, null, 2)}`
+				} catch {
+					errorDetails += `\n\nResponse Body: [Unable to serialize]`
+				}
+			}
+		} else {
+			errorDetails = String(error)
+		}
+
+		return {
+			...response,
+			cost,
+			error: t("common:errors.condense_api_failed", { message: errorMessage }),
+			errorDetails,
 		}
 	}
 
@@ -280,122 +392,148 @@ export async function summarizeConversation(
 		return { ...response, cost, error }
 	}
 
-	// Build the summary message content
-	// If there are tool_use blocks to preserve (for tool_result pairing), append them to the summary
-	let summaryContent: string | Anthropic.Messages.ContentBlockParam[]
-	if (toolUseBlocksToPreserve.length > 0) {
-		// Create content array with text block followed by tool_use blocks
-		// Use TextBlockParam which doesn't require citations field
-		const textBlock: Anthropic.Messages.TextBlockParam = { type: "text", text: summary }
-		summaryContent = [textBlock, ...toolUseBlocksToPreserve]
-	} else {
-		summaryContent = summary
+	// Extract command blocks from the first message (original task)
+	// These represent active workflows that must persist across condensings
+	const firstMessage = messages[0]
+	const commandBlocks = firstMessage ? extractCommandBlocks(firstMessage) : ""
+
+	// Build the summary content as separate text blocks
+	const summaryContent: Anthropic.Messages.ContentBlockParam[] = [
+		{ type: "text", text: `## Conversation Summary\n${summary}` },
+	]
+
+	// Add command blocks (active workflows) in their own system-reminder block if present
+	if (commandBlocks) {
+		summaryContent.push({
+			type: "text",
+			text: `<system-reminder>
+## Active Workflows
+The following directives must be maintained across all future condensings:
+${commandBlocks}
+</system-reminder>`,
+		})
+	}
+
+	// Generate and add folded file context (smart code folding) if file paths are provided
+	// Each file gets its own <system-reminder> block as a separate content block
+	if (filesReadByRoo && filesReadByRoo.length > 0 && cwd) {
+		try {
+			const foldedResult = await generateFoldedFileContext(filesReadByRoo, {
+				cwd,
+				rooIgnoreController,
+			})
+			if (foldedResult.sections.length > 0) {
+				for (const section of foldedResult.sections) {
+					if (section.trim()) {
+						summaryContent.push({
+							type: "text",
+							text: section,
+						})
+					}
+				}
+			}
+		} catch (error) {
+			console.error("[summarizeConversation] Failed to generate folded file context:", error)
+			// Continue without folded context - non-critical failure
+		}
+	}
+
+	// Add environment details as a separate text block if provided AND this is an automatic trigger.
+	// For manual condensing, fresh environment details will be injected on the next turn.
+	// For automatic condensing, the API request is already in progress so we need them in the summary.
+	if (isAutomaticTrigger && environmentDetails?.trim()) {
+		summaryContent.push({
+			type: "text",
+			text: environmentDetails,
+		})
 	}
 
 	// Generate a unique condenseId for this summary
 	const condenseId = crypto.randomUUID()
 
-	// Use first kept message's timestamp minus 1 to ensure unique timestamp for summary.
-	// Fallback to Date.now() if keepMessages is empty (shouldn't happen due to earlier checks).
-	const firstKeptTs = keepMessages[0]?.ts ?? Date.now()
+	// Use the last message's timestamp + 1 to ensure unique timestamp for summary.
+	// The summary goes at the end of all messages.
+	const lastMsgTs = messages[messages.length - 1]?.ts ?? Date.now()
 
 	const summaryMessage: ApiMessage = {
-		role: "assistant",
+		role: "user", // Fresh start model: summary is a user message
 		content: summaryContent,
-		ts: firstKeptTs - 1, // Unique timestamp before first kept message to avoid collision
+		ts: lastMsgTs + 1, // Unique timestamp after last message
 		isSummary: true,
 		condenseId, // Unique ID for this summary, used to track which messages it replaces
 	}
 
 	// NON-DESTRUCTIVE CONDENSE:
-	// Instead of deleting middle messages, tag them with condenseParent so they can be
-	// restored if the user rewinds to a point before the summary.
+	// Tag ALL existing messages with condenseParent so they are filtered out when
+	// the effective history is computed. The summary message is the only message
+	// that will be visible to the API after condensing (fresh start model).
 	//
 	// Storage structure after condense:
-	// [firstMessage, msg2(parent=X), ..., msg8(parent=X), summary(id=X), msg9, msg10, msg11]
+	// [msg1(parent=X), msg2(parent=X), ..., msgN(parent=X), summary(id=X)]
 	//
 	// Effective for API (filtered by getEffectiveApiHistory):
-	// [firstMessage, summary, msg9, msg10, msg11]
+	// [summary]  ← Fresh start!
 
-	// Tag middle messages with condenseParent (skip first message, skip last N messages)
-	const newMessages = messages.map((msg, index) => {
-		// First message stays as-is
-		if (index === 0) {
-			return msg
-		}
-		// Messages in the "keep" range stay as-is
-		if (index >= keepStartIndex) {
-			return msg
-		}
-		// Middle messages get tagged with condenseParent (unless they already have one from a previous condense)
-		// If they already have a condenseParent, we leave it - nested condense is handled by filtering
+	// Tag ALL messages with condenseParent
+	const newMessages = messages.map((msg) => {
+		// If message already has a condenseParent, we leave it - nested condense is handled by filtering
 		if (!msg.condenseParent) {
 			return { ...msg, condenseParent: condenseId }
 		}
 		return msg
 	})
 
-	// Insert the summary message right before the keep messages
-	newMessages.splice(keepStartIndex, 0, summaryMessage)
+	// Append the summary message at the end
+	newMessages.push(summaryMessage)
 
 	// Count the tokens in the context for the next API request
-	// We only estimate the tokens in summaryMesage if outputTokens is 0, otherwise we use outputTokens
+	// After condense, the context will contain: system prompt + summary + tool definitions
 	const systemPromptMessage: ApiMessage = { role: "user", content: systemPrompt }
 
-	const contextMessages = outputTokens
-		? [systemPromptMessage, ...keepMessages]
-		: [systemPromptMessage, summaryMessage, ...keepMessages]
-
-	const contextBlocks = contextMessages.flatMap((message) =>
+	// Count actual summaryMessage content directly instead of using outputTokens as a proxy
+	// This ensures we account for wrapper text (## Conversation Summary, <system-reminder>, <environment_details>)
+	const contextBlocks = [systemPromptMessage, summaryMessage].flatMap((message) =>
 		typeof message.content === "string" ? [{ text: message.content, type: "text" as const }] : message.content,
 	)
 
-	const newContextTokens = outputTokens + (await apiHandler.countTokens(contextBlocks))
-	if (newContextTokens >= prevContextTokens) {
-		const error = t("common:errors.condense_context_grew")
-		return { ...response, cost, error }
+	const messageTokens = await apiHandler.countTokens(contextBlocks)
+
+	// Count tool definition tokens if tools are provided
+	let toolTokens = 0
+	if (metadata?.tools && metadata.tools.length > 0) {
+		const toolsText = JSON.stringify(metadata.tools)
+		toolTokens = await apiHandler.countTokens([{ text: toolsText, type: "text" }])
 	}
+
+	const newContextTokens = messageTokens + toolTokens
 	return { messages: newMessages, summary, cost, newContextTokens, condenseId }
 }
 
-/* Returns the list of all messages since the last summary message, including the summary. Returns all messages if there is no summary. */
+/**
+ * Returns the list of all messages since the last summary message, including the summary.
+ * Returns all messages if there is no summary.
+ *
+ * Note: Summary messages are always created with role: "user" (fresh-start model),
+ * so the first message since the last summary is guaranteed to be a user message.
+ */
 export function getMessagesSinceLastSummary(messages: ApiMessage[]): ApiMessage[] {
-	let lastSummaryIndexReverse = [...messages].reverse().findIndex((message) => message.isSummary)
+	const lastSummaryIndexReverse = [...messages].reverse().findIndex((message) => message.isSummary)
 
 	if (lastSummaryIndexReverse === -1) {
 		return messages
 	}
 
 	const lastSummaryIndex = messages.length - lastSummaryIndexReverse - 1
-	const messagesSinceSummary = messages.slice(lastSummaryIndex)
-
-	// Bedrock requires the first message to be a user message.
-	// We preserve the original first message to maintain context.
-	// See https://github.com/RooCodeInc/Roo-Code/issues/4147
-	if (messagesSinceSummary.length > 0 && messagesSinceSummary[0].role !== "user") {
-		// Get the original first message (should always be a user message with the task)
-		const originalFirstMessage = messages[0]
-		if (originalFirstMessage && originalFirstMessage.role === "user") {
-			// Use the original first message unchanged to maintain full context
-			return [originalFirstMessage, ...messagesSinceSummary]
-		} else {
-			// Fallback to generic message if no original first message exists (shouldn't happen)
-			const userMessage: ApiMessage = {
-				role: "user",
-				content: "Please continue from the following summary:",
-				ts: messages[0]?.ts ? messages[0].ts - 1 : Date.now(),
-			}
-			return [userMessage, ...messagesSinceSummary]
-		}
-	}
-
-	return messagesSinceSummary
+	return messages.slice(lastSummaryIndex)
 }
 
 /**
  * Filters the API conversation history to get the "effective" messages to send to the API.
- * Messages with a condenseParent that points to an existing summary are filtered out,
- * as they have been replaced by that summary.
+ *
+ * Fresh Start Model:
+ * - When a summary exists, return only messages from the summary onwards (fresh start)
+ * - Messages with a condenseParent pointing to an existing summary are filtered out
+ *
  * Messages with a truncationParent that points to an existing truncation marker are also filtered out,
  * as they have been hidden by sliding window truncation.
  *
@@ -406,6 +544,71 @@ export function getMessagesSinceLastSummary(messages: ApiMessage[]): ApiMessage[
  * @returns The filtered history that should be sent to the API
  */
 export function getEffectiveApiHistory(messages: ApiMessage[]): ApiMessage[] {
+	// Find the most recent summary message
+	const lastSummary = findLast(messages, (msg) => msg.isSummary === true)
+
+	if (lastSummary) {
+		// Fresh start model: return only messages from the summary onwards
+		const summaryIndex = messages.indexOf(lastSummary)
+		let messagesFromSummary = messages.slice(summaryIndex)
+
+		// Collect all tool_use IDs from assistant messages in the result
+		// This is needed to filter out orphan tool_result blocks that reference
+		// tool_use IDs from messages that were condensed away
+		const toolUseIds = new Set<string>()
+		for (const msg of messagesFromSummary) {
+			if (msg.role === "assistant" && Array.isArray(msg.content)) {
+				for (const block of msg.content) {
+					if (block.type === "tool_use" && (block as Anthropic.Messages.ToolUseBlockParam).id) {
+						toolUseIds.add((block as Anthropic.Messages.ToolUseBlockParam).id)
+					}
+				}
+			}
+		}
+
+		// Filter out orphan tool_result blocks from user messages
+		messagesFromSummary = messagesFromSummary
+			.map((msg) => {
+				if (msg.role === "user" && Array.isArray(msg.content)) {
+					const filteredContent = msg.content.filter((block) => {
+						if (block.type === "tool_result") {
+							return toolUseIds.has((block as Anthropic.Messages.ToolResultBlockParam).tool_use_id)
+						}
+						return true
+					})
+					// If all content was filtered out, mark for removal
+					if (filteredContent.length === 0) {
+						return null
+					}
+					// If some content was filtered, return updated message
+					if (filteredContent.length !== msg.content.length) {
+						return { ...msg, content: filteredContent }
+					}
+				}
+				return msg
+			})
+			.filter((msg): msg is ApiMessage => msg !== null)
+
+		// Still need to filter out any truncated messages within this range
+		const existingTruncationIds = new Set<string>()
+		for (const msg of messagesFromSummary) {
+			if (msg.isTruncationMarker && msg.truncationId) {
+				existingTruncationIds.add(msg.truncationId)
+			}
+		}
+
+		return messagesFromSummary.filter((msg) => {
+			// Filter out truncated messages if their truncation marker exists
+			if (msg.truncationParent && existingTruncationIds.has(msg.truncationParent)) {
+				return false
+			}
+			return true
+		})
+	}
+
+	// No summary - filter based on condenseParent and truncationParent as before
+	// This handles the case of orphaned condenseParent tags (summary was deleted via rewind)
+
 	// Collect all condenseIds of summaries that exist in the current history
 	const existingSummaryIds = new Set<string>()
 	// Collect all truncationIds of truncation markers that exist in the current history
@@ -422,7 +625,7 @@ export function getEffectiveApiHistory(messages: ApiMessage[]): ApiMessage[] {
 
 	// Filter out messages whose condenseParent points to an existing summary
 	// or whose truncationParent points to an existing truncation marker.
-	// Messages with orphaned parents (summary/marker was deleted) are included
+	// Messages with orphaned parents (summary/marker was deleted) are included.
 	return messages.filter((msg) => {
 		// Filter out condensed messages if their summary exists
 		if (msg.condenseParent && existingSummaryIds.has(msg.condenseParent)) {

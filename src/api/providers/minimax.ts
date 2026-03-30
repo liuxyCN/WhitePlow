@@ -9,6 +9,7 @@ import type { ApiHandlerOptions } from "../../shared/api"
 
 import { ApiStream } from "../transform/stream"
 import { getModelParams } from "../transform/model-params"
+import { mergeEnvironmentDetailsForMiniMax } from "../transform/minimax-format"
 
 import { BaseProvider } from "./base-provider"
 import type { SingleCompletionHandler, ApiHandlerCreateMessageMetadata } from "../index"
@@ -87,30 +88,29 @@ export class MiniMaxHandler extends BaseProvider implements SingleCompletionHand
 		// MiniMax M2 models support prompt caching
 		const supportsPromptCache = info.supportsPromptCache ?? false
 
+		// Merge environment_details from messages that follow tool_result blocks
+		// into the tool_result content. This preserves reasoning continuity for
+		// thinking models by preventing user messages from interrupting the
+		// reasoning context after tool use (similar to r1-format's mergeToolResultText).
+		const processedMessages = mergeEnvironmentDetailsForMiniMax(messages)
+
+		// Build the system blocks array
+		const systemBlocks: Anthropic.Messages.TextBlockParam[] = [
+			supportsPromptCache
+				? { text: systemPrompt, type: "text", cache_control: cacheControl }
+				: { text: systemPrompt, type: "text" },
+		]
+
 		// Prepare request parameters
 		const requestParams: Anthropic.Messages.MessageCreateParams = {
 			model: modelId,
 			max_tokens: maxTokens ?? 16_384,
 			temperature: temperature ?? 1.0,
-			system: supportsPromptCache
-				? [{ text: systemPrompt, type: "text", cache_control: cacheControl }]
-				: [{ text: systemPrompt, type: "text" }],
-			messages: supportsPromptCache ? this.addCacheControl(messages, cacheControl) : messages,
+			system: systemBlocks,
+			messages: supportsPromptCache ? this.addCacheControl(processedMessages, cacheControl) : processedMessages,
 			stream: true,
-		}
-
-		// Add tool support if provided - convert OpenAI format to Anthropic format
-		// Only include native tools when toolProtocol is not 'xml'
-		if (metadata?.tools && metadata.tools.length > 0 && metadata?.toolProtocol !== "xml") {
-			requestParams.tools = convertOpenAIToolsToAnthropic(metadata.tools)
-
-			// Only add tool_choice if tools are present
-			if (metadata?.tool_choice) {
-				const convertedChoice = convertOpenAIToolChoice(metadata.tool_choice)
-				if (convertedChoice) {
-					requestParams.tool_choice = convertedChoice
-				}
-			}
+			tools: convertOpenAIToolsToAnthropic(metadata?.tools ?? []),
+			tool_choice: convertOpenAIToolChoice(metadata?.tool_choice),
 		}
 
 		stream = await this.client.messages.create(requestParams)

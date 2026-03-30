@@ -91,7 +91,6 @@ describe("searchReplaceTool", () => {
 	let mockAskApproval: ReturnType<typeof vi.fn>
 	let mockHandleError: ReturnType<typeof vi.fn>
 	let mockPushToolResult: ReturnType<typeof vi.fn>
-	let mockRemoveClosingTag: ReturnType<typeof vi.fn>
 	let toolResult: ToolResponse | undefined
 
 	beforeEach(() => {
@@ -151,7 +150,6 @@ describe("searchReplaceTool", () => {
 
 		mockAskApproval = vi.fn().mockResolvedValue(true)
 		mockHandleError = vi.fn().mockResolvedValue(undefined)
-		mockRemoveClosingTag = vi.fn((tag, content) => content)
 
 		toolResult = undefined
 	})
@@ -177,6 +175,15 @@ describe("searchReplaceTool", () => {
 		mockedFsReadFile.mockResolvedValue(fileContent)
 		mockCline.rooIgnoreController.validateAccess.mockReturnValue(accessAllowed)
 
+		const nativeArgs: Record<string, unknown> = {
+			file_path: testFilePath,
+			old_string: testOldString,
+			new_string: testNewString,
+		}
+		for (const [key, value] of Object.entries(params)) {
+			nativeArgs[key] = value
+		}
+
 		const toolUse: ToolUse = {
 			type: "tool_use",
 			name: "search_replace",
@@ -186,6 +193,7 @@ describe("searchReplaceTool", () => {
 				new_string: testNewString,
 				...params,
 			},
+			nativeArgs: nativeArgs as any,
 			partial: isPartial,
 		}
 
@@ -197,8 +205,6 @@ describe("searchReplaceTool", () => {
 			askApproval: mockAskApproval,
 			handleError: mockHandleError,
 			pushToolResult: mockPushToolResult,
-			removeClosingTag: mockRemoveClosingTag,
-			toolProtocol: "native",
 		})
 
 		return toolResult
@@ -321,7 +327,10 @@ describe("searchReplaceTool", () => {
 	})
 
 	describe("partial block handling", () => {
-		it("handles partial block without errors", async () => {
+		it("handles partial block without errors after path stabilizes", async () => {
+			// Path stabilization requires two consecutive calls with the same path
+			// First call sets lastSeenPartialPath, second call sees it has stabilized
+			await executeSearchReplaceTool({}, { isPartial: true })
 			await executeSearchReplaceTool({}, { isPartial: true })
 
 			expect(mockCline.ask).toHaveBeenCalled()
@@ -341,6 +350,11 @@ describe("searchReplaceTool", () => {
 					old_string: testOldString,
 					new_string: testNewString,
 				},
+				nativeArgs: {
+					file_path: testFilePath,
+					old_string: testOldString,
+					new_string: testNewString,
+				},
 				partial: false,
 			}
 
@@ -353,8 +367,6 @@ describe("searchReplaceTool", () => {
 				askApproval: mockAskApproval,
 				handleError: mockHandleError,
 				pushToolResult: localPushToolResult,
-				removeClosingTag: mockRemoveClosingTag,
-				toolProtocol: "native",
 			})
 
 			expect(capturedResult).toContain("Error:")
@@ -377,6 +389,50 @@ describe("searchReplaceTool", () => {
 			await executeSearchReplaceTool()
 
 			expect(mockCline.fileContextTracker.trackFileContext).toHaveBeenCalledWith(testFilePath, "roo_edited")
+		})
+	})
+
+	describe("CRLF normalization", () => {
+		it("normalizes CRLF to LF when reading file", async () => {
+			const contentWithCRLF = "Line 1\r\nLine 2\r\nLine 3"
+
+			await executeSearchReplaceTool(
+				{ old_string: "Line 2", new_string: "Modified Line 2" },
+				{ fileContent: contentWithCRLF },
+			)
+
+			expect(mockCline.consecutiveMistakeCount).toBe(0)
+			expect(mockAskApproval).toHaveBeenCalled()
+		})
+
+		it("normalizes CRLF in old_string to match LF-normalized file content", async () => {
+			// File has CRLF line endings
+			const contentWithCRLF = "Line 1\r\nLine 2\r\nLine 3"
+			// Search string also has CRLF (simulating what the model might send)
+			const searchWithCRLF = "Line 1\r\nLine 2"
+
+			await executeSearchReplaceTool(
+				{ old_string: searchWithCRLF, new_string: "Modified Lines" },
+				{ fileContent: contentWithCRLF },
+			)
+
+			expect(mockCline.consecutiveMistakeCount).toBe(0)
+			expect(mockAskApproval).toHaveBeenCalled()
+		})
+
+		it("matches LF old_string against CRLF file content after normalization", async () => {
+			// File has CRLF line endings
+			const contentWithCRLF = "Line 1\r\nLine 2\r\nLine 3"
+			// Search string has LF (typical model output)
+			const searchWithLF = "Line 1\nLine 2"
+
+			await executeSearchReplaceTool(
+				{ old_string: searchWithLF, new_string: "Modified Lines" },
+				{ fileContent: contentWithCRLF },
+			)
+
+			expect(mockCline.consecutiveMistakeCount).toBe(0)
+			expect(mockAskApproval).toHaveBeenCalled()
 		})
 	})
 })

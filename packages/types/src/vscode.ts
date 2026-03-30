@@ -39,11 +39,6 @@ export const commandIds = [
 
 	"openInNewTab",
 
-	"showHumanRelayDialog",
-	"registerHumanRelayCallback",
-	"unregisterHumanRelayCallback",
-	"handleHumanRelayResponse",
-
 	"newTask",
 
 	"setCustomStoragePath",

@@ -1,5 +1,15 @@
 // npx vitest api/providers/__tests__/xai.spec.ts
 
+// Mock TelemetryService - must come before other imports
+const mockCaptureException = vitest.hoisted(() => vitest.fn())
+vitest.mock("@roo-code/telemetry", () => ({
+	TelemetryService: {
+		instance: {
+			captureException: mockCaptureException,
+		},
+	},
+}))
+
 const mockCreate = vitest.fn()
 
 vitest.mock("openai", () => {
@@ -25,6 +35,7 @@ describe("XAIHandler", () => {
 		// Reset all mocks
 		vi.clearAllMocks()
 		mockCreate.mockClear()
+		mockCaptureException.mockClear()
 
 		// Create handler with mock
 		handler = new XAIHandler({})
@@ -299,7 +310,7 @@ describe("XAIHandler", () => {
 			},
 		]
 
-		it("should include tools in request when model supports native tools and tools are provided", async () => {
+		it("should include tools in request when model supports native tools and tools are provided (native is default)", async () => {
 			const handlerWithTools = new XAIHandler({ apiModelId: "grok-3" })
 
 			mockCreate.mockImplementationOnce(() => {
@@ -315,7 +326,6 @@ describe("XAIHandler", () => {
 			const messageGenerator = handlerWithTools.createMessage("test prompt", [], {
 				taskId: "test-task-id",
 				tools: testTools,
-				toolProtocol: "native",
 			})
 			await messageGenerator.next()
 
@@ -329,7 +339,7 @@ describe("XAIHandler", () => {
 							}),
 						}),
 					]),
-					parallel_tool_calls: false,
+					parallel_tool_calls: true,
 				}),
 			)
 		})
@@ -350,7 +360,6 @@ describe("XAIHandler", () => {
 			const messageGenerator = handlerWithTools.createMessage("test prompt", [], {
 				taskId: "test-task-id",
 				tools: testTools,
-				toolProtocol: "native",
 				tool_choice: "auto",
 			})
 			await messageGenerator.next()
@@ -362,7 +371,7 @@ describe("XAIHandler", () => {
 			)
 		})
 
-		it("should not include tools when toolProtocol is xml", async () => {
+		it("should always include tools and tool_choice (tools are guaranteed to be present after ALWAYS_AVAILABLE_TOOLS)", async () => {
 			const handlerWithTools = new XAIHandler({ apiModelId: "grok-3" })
 
 			mockCreate.mockImplementationOnce(() => {
@@ -377,14 +386,14 @@ describe("XAIHandler", () => {
 
 			const messageGenerator = handlerWithTools.createMessage("test prompt", [], {
 				taskId: "test-task-id",
-				tools: testTools,
-				toolProtocol: "xml",
 			})
 			await messageGenerator.next()
 
+			// Tools are now always present (minimum 6 from ALWAYS_AVAILABLE_TOOLS)
 			const callArgs = mockCreate.mock.calls[mockCreate.mock.calls.length - 1][0]
-			expect(callArgs).not.toHaveProperty("tools")
-			expect(callArgs).not.toHaveProperty("tool_choice")
+			expect(callArgs).toHaveProperty("tools")
+			expect(callArgs).toHaveProperty("tool_choice")
+			expect(callArgs).toHaveProperty("parallel_tool_calls", true)
 		})
 
 		it("should yield tool_call_partial chunks during streaming", async () => {
@@ -443,7 +452,6 @@ describe("XAIHandler", () => {
 			const stream = handlerWithTools.createMessage("test prompt", [], {
 				taskId: "test-task-id",
 				tools: testTools,
-				toolProtocol: "native",
 			})
 
 			const chunks = []
@@ -484,7 +492,6 @@ describe("XAIHandler", () => {
 			const messageGenerator = handlerWithTools.createMessage("test prompt", [], {
 				taskId: "test-task-id",
 				tools: testTools,
-				toolProtocol: "native",
 				parallelToolCalls: true,
 			})
 			await messageGenerator.next()
@@ -551,7 +558,6 @@ describe("XAIHandler", () => {
 			const stream = handlerWithTools.createMessage("test prompt", [], {
 				taskId: "test-task-id",
 				tools: testTools,
-				toolProtocol: "native",
 			})
 
 			const chunks = []

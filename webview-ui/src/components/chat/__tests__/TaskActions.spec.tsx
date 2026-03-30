@@ -3,6 +3,7 @@ import type { HistoryItem } from "@roo-code/types"
 import { render, screen, fireEvent } from "@/utils/test-utils"
 import { vscode } from "@/utils/vscode"
 import { useExtensionState } from "@/context/ExtensionStateContext"
+import { useCopyToClipboard } from "@/utils/clipboard"
 
 import { TaskActions } from "../TaskActions"
 
@@ -24,8 +25,14 @@ vi.mock("@/context/ExtensionStateContext", () => ({
 	useExtensionState: vi.fn(),
 }))
 
+// Mock the useCopyToClipboard hook
+vi.mock("@/utils/clipboard", () => ({
+	useCopyToClipboard: vi.fn(),
+}))
+
 const mockPostMessage = vi.mocked(vscode.postMessage)
 const mockUseExtensionState = vi.mocked(useExtensionState)
+const mockUseCopyToClipboard = vi.mocked(useCopyToClipboard)
 
 // Mock react-i18next
 vi.mock("react-i18next", () => ({
@@ -81,11 +88,16 @@ describe("TaskActions", () => {
 		vi.clearAllMocks()
 		mockUseExtensionState.mockReturnValue({
 			sharingEnabled: true,
+			publicSharingEnabled: true,
 			cloudIsAuthenticated: true,
 			cloudUserInfo: {
 				organizationName: "Test Organization",
 			},
 		} as any)
+		mockUseCopyToClipboard.mockReturnValue({
+			copyWithFeedback: vi.fn(),
+			showCopyFeedback: false,
+		})
 	})
 
 	describe("Share Button Visibility", () => {
@@ -166,6 +178,7 @@ describe("TaskActions", () => {
 		it("does not show organization option when user is not in an organization", () => {
 			mockUseExtensionState.mockReturnValue({
 				sharingEnabled: true,
+				publicSharingEnabled: true,
 				cloudIsAuthenticated: true,
 				cloudUserInfo: {
 					// No organizationName property
@@ -264,6 +277,7 @@ describe("TaskActions", () => {
 			// Simulate user becoming authenticated (e.g., from CloudView)
 			mockUseExtensionState.mockReturnValue({
 				sharingEnabled: true,
+				publicSharingEnabled: true,
 				cloudIsAuthenticated: true,
 				cloudUserInfo: {
 					organizationName: "Test Organization",
@@ -302,6 +316,7 @@ describe("TaskActions", () => {
 			// Simulate user becoming authenticated after clicking connect from share button
 			mockUseExtensionState.mockReturnValue({
 				sharingEnabled: true,
+				publicSharingEnabled: true,
 				cloudIsAuthenticated: true,
 				cloudUserInfo: {
 					organizationName: "Test Organization",
@@ -348,6 +363,29 @@ describe("TaskActions", () => {
 
 			const deleteButton = screen.queryByLabelText("Delete Task (Shift + Click to skip confirmation)")
 			expect(deleteButton).not.toBeInTheDocument()
+		})
+
+		it("shows check icon when showCopyFeedback is true", () => {
+			// First render with showCopyFeedback: false (default)
+			const { rerender } = render(<TaskActions item={mockItem} buttonsDisabled={false} />)
+
+			// Verify copy icon is shown initially
+			const copyButton = screen.getByLabelText("Copy")
+			expect(copyButton).toBeInTheDocument()
+			expect(copyButton.querySelector("svg.lucide-copy")).toBeInTheDocument()
+			expect(copyButton.querySelector("svg.lucide-check")).not.toBeInTheDocument()
+
+			// Mock showCopyFeedback: true to simulate successful copy
+			mockUseCopyToClipboard.mockReturnValue({
+				copyWithFeedback: vi.fn(),
+				showCopyFeedback: true,
+			})
+
+			rerender(<TaskActions item={mockItem} buttonsDisabled={false} />)
+
+			// Verify check icon is shown after successful copy
+			expect(copyButton.querySelector("svg.lucide-check")).toBeInTheDocument()
+			expect(copyButton.querySelector("svg.lucide-copy")).not.toBeInTheDocument()
 		})
 	})
 

@@ -1,6 +1,9 @@
+import * as os from "os"
+import { v7 as uuidv7 } from "uuid"
 import { Anthropic } from "@anthropic-ai/sdk"
 import OpenAI from "openai"
 
+import { Package } from "../../shared/package"
 import {
 	type ModelInfo,
 	openAiNativeDefaultModelId,
@@ -11,7 +14,9 @@ import {
 	type VerbosityLevel,
 	type ReasoningEffortExtended,
 	type ServiceTier,
+	ApiProviderError,
 } from "@roo-code/types"
+import { TelemetryService } from "@roo-code/telemetry"
 
 import type { ApiHandlerOptions } from "../../shared/api"
 
@@ -22,12 +27,30 @@ import { getModelParams } from "../transform/model-params"
 
 import { BaseProvider } from "./base-provider"
 import type { SingleCompletionHandler, ApiHandlerCreateMessageMetadata } from "../index"
+import { isMcpTool } from "../../utils/mcp-name"
+import { sanitizeOpenAiCallId } from "../../utils/tool-id"
 
 export type OpenAiNativeModel = ReturnType<OpenAiNativeHandler["getModel"]>
 
 export class OpenAiNativeHandler extends BaseProvider implements SingleCompletionHandler {
 	protected options: ApiHandlerOptions
 	private client: OpenAI
+	private readonly providerName = "OpenAI Native"
+	// Session ID for request tracking (persists for the lifetime of the handler)
+	private readonly sessionId: string
+	/**
+	 * Some Responses streams emit tool-call argument deltas without stable call id/name.
+	 * Track the last observed tool identity from output_item events so we can still
+	 * emit `tool_call_partial` chunks (tool-call-only streams).
+	 */
+	private pendingToolCallId: string | undefined
+	private pendingToolCallName: string | undefined
+	// Tracks whether this response already emitted text to avoid duplicate done-event rendering.
+	private sawTextOutputInCurrentResponse = false
+	// Tracks whether text arrived through delta events so content_part events can be treated as fallback-only.
+	private sawTextDeltaInCurrentResponse = false
+	// Tracks tool call IDs emitted via streaming partial events to prevent done-event duplicates.
+	private streamedToolCallIds = new Set<string>()
 	// Resolved service tier from Responses API (actual tier used by OpenAI)
 	private lastServiceTier: ServiceTier | undefined
 	// Complete response output array (includes reasoning items with encrypted_content)
@@ -41,12 +64,17 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 	private readonly coreHandledEventTypes = new Set<string>([
 		"response.text.delta",
 		"response.output_text.delta",
+		"response.text.done",
+		"response.output_text.done",
+		"response.content_part.added",
+		"response.content_part.done",
 		"response.reasoning.delta",
 		"response.reasoning_text.delta",
 		"response.reasoning_summary.delta",
 		"response.reasoning_summary_text.delta",
 		"response.refusal.delta",
 		"response.output_item.added",
+		"response.output_item.done",
 		"response.done",
 		"response.completed",
 		"response.tool_call_arguments.delta",
@@ -58,13 +86,25 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 	constructor(options: ApiHandlerOptions) {
 		super()
 		this.options = options
+		// Generate a session ID for request tracking
+		this.sessionId = uuidv7()
 		// Default to including reasoning.summary: "auto" for models that support Responses API
 		// reasoning summaries unless explicitly disabled.
 		if (this.options.enableResponsesReasoningSummary === undefined) {
 			this.options.enableResponsesReasoningSummary = true
 		}
 		const apiKey = this.options.openAiNativeApiKey ?? "not-provided"
-		this.client = new OpenAI({ baseURL: this.options.openAiNativeBaseUrl, apiKey })
+		// Include originator, session_id, and User-Agent headers for API tracking and debugging
+		const userAgent = `roo-code/${Package.version} (${os.platform()} ${os.release()}; ${os.arch()}) node/${process.version.slice(1)}`
+		this.client = new OpenAI({
+			baseURL: this.options.openAiNativeBaseUrl || undefined,
+			apiKey,
+			defaultHeaders: {
+				originator: "roo-code",
+				session_id: this.sessionId,
+				"User-Agent": userAgent,
+			},
+		})
 	}
 
 	private normalizeUsage(usage: any, model: OpenAiNativeModel): ApiStreamUsageChunk | undefined {
@@ -108,6 +148,7 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 			totalOutputTokens,
 			cacheWriteTokens,
 			cacheReadTokens,
+			effectiveTier,
 		)
 
 		const reasoningTokens =
@@ -151,6 +192,12 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 		this.lastResponseOutput = undefined
 		// Reset last response id for this request
 		this.lastResponseId = undefined
+		// Reset pending tool identity for this request
+		this.pendingToolCallId = undefined
+		this.pendingToolCallName = undefined
+		this.sawTextOutputInCurrentResponse = false
+		this.sawTextDeltaInCurrentResponse = false
+		this.streamedToolCallIds.clear()
 
 		// Use Responses API for ALL models
 		const { verbosity, reasoning } = this.getModel()
@@ -192,6 +239,12 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 
 			const result = { ...schema }
 
+			// OpenAI Responses API requires additionalProperties: false on all object schemas
+			// Only add if not already set to false (to avoid unnecessary mutations)
+			if (result.additionalProperties !== false) {
+				result.additionalProperties = false
+			}
+
 			if (result.properties) {
 				const allKeys = Object.keys(result.properties)
 				result.required = allKeys
@@ -206,6 +259,42 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 						newProps[key] = {
 							...prop,
 							items: ensureAllRequired(prop.items),
+						}
+					}
+				}
+				result.properties = newProps
+			}
+
+			return result
+		}
+
+		// Adds additionalProperties: false to all object schemas recursively
+		// without modifying required array. Used for MCP tools with strict: false
+		// to comply with OpenAI Responses API requirements.
+		const ensureAdditionalPropertiesFalse = (schema: any): any => {
+			if (!schema || typeof schema !== "object" || schema.type !== "object") {
+				return schema
+			}
+
+			const result = { ...schema }
+
+			// OpenAI Responses API requires additionalProperties: false on all object schemas
+			// Only add if not already set to false (to avoid unnecessary mutations)
+			if (result.additionalProperties !== false) {
+				result.additionalProperties = false
+			}
+
+			if (result.properties) {
+				// Recursively process nested objects
+				const newProps = { ...result.properties }
+				for (const key of Object.keys(result.properties)) {
+					const prop = newProps[key]
+					if (prop && prop.type === "object") {
+						newProps[key] = ensureAdditionalPropertiesFalse(prop)
+					} else if (prop && prop.type === "array" && prop.items?.type === "object") {
+						newProps[key] = {
+							...prop,
+							items: ensureAdditionalPropertiesFalse(prop.items),
 						}
 					}
 				}
@@ -285,26 +374,25 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 			// Enable extended prompt cache retention for models that support it.
 			// This uses the OpenAI Responses API `prompt_cache_retention` parameter.
 			...(promptCacheRetention ? { prompt_cache_retention: promptCacheRetention } : {}),
-			...(metadata?.tools && {
-				tools: metadata.tools
-					.filter((tool) => tool.type === "function")
-					.map((tool) => ({
+			tools: (metadata?.tools ?? [])
+				.filter((tool) => tool.type === "function")
+				.map((tool) => {
+					// MCP tools use the 'mcp--' prefix - disable strict mode for them
+					// to preserve optional parameters from the MCP server schema
+					// But we still need to add additionalProperties: false for OpenAI Responses API
+					const isMcp = isMcpTool(tool.function.name)
+					return {
 						type: "function",
 						name: tool.function.name,
 						description: tool.function.description,
-						parameters: ensureAllRequired(tool.function.parameters),
-						strict: true,
-					})),
-			}),
-			...(metadata?.tool_choice && { tool_choice: metadata.tool_choice }),
-		}
-
-		// For native tool protocol, control parallel tool calls based on the metadata flag.
-		// When parallelToolCalls is true, allow parallel tool calls (OpenAI's parallel_tool_calls=true).
-		// When false (default), explicitly disable parallel tool calls (false).
-		// For XML or when protocol is unset, omit the field entirely so the API default applies.
-		if (metadata?.toolProtocol === "native") {
-			body.parallel_tool_calls = metadata.parallelToolCalls ?? false
+						parameters: isMcp
+							? ensureAdditionalPropertiesFalse(tool.function.parameters)
+							: ensureAllRequired(tool.function.parameters),
+						strict: !isMcp,
+					}
+				}),
+			tool_choice: metadata?.tool_choice,
+			parallel_tool_calls: metadata?.parallelToolCalls ?? true,
 		}
 
 		// Include text.verbosity only when the model explicitly supports it
@@ -325,10 +413,20 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 		// Create AbortController for cancellation
 		this.abortController = new AbortController()
 
+		// Build per-request headers using taskId when available, falling back to sessionId
+		const taskId = metadata?.taskId
+		const userAgent = `roo-code/${Package.version} (${os.platform()} ${os.release()}; ${os.arch()}) node/${process.version.slice(1)}`
+		const requestHeaders: Record<string, string> = {
+			originator: "roo-code",
+			session_id: taskId || this.sessionId,
+			"User-Agent": userAgent,
+		}
+
 		try {
-			// Use the official SDK
+			// Use the official SDK with per-request headers
 			const stream = (await (this.client as any).responses.create(requestBody, {
 				signal: this.abortController.signal,
+				headers: requestHeaders,
 			})) as AsyncIterable<any>
 
 			if (typeof (stream as any)[Symbol.asyncIterator] !== "function") {
@@ -394,7 +492,8 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 									: block.content?.map((c) => (c.type === "text" ? c.text : "")).join("") || ""
 							toolResults.push({
 								type: "function_call_output",
-								call_id: block.tool_use_id,
+								// Sanitize and truncate call_id to fit OpenAI's 64-char limit
+								call_id: sanitizeOpenAiCallId(block.tool_use_id),
 								output: result,
 							})
 						}
@@ -424,7 +523,8 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 							// Map Anthropic tool_use to Responses API function_call item
 							toolCalls.push({
 								type: "function_call",
-								call_id: block.id,
+								// Sanitize and truncate call_id to fit OpenAI's 64-char limit
+								call_id: sanitizeOpenAiCallId(block.id),
 								name: block.name,
 								arguments: JSON.stringify(block.input),
 							})
@@ -461,13 +561,19 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 		// Create AbortController for cancellation
 		this.abortController = new AbortController()
 
+		// Build per-request headers using taskId when available, falling back to sessionId
+		const taskId = metadata?.taskId
+		const userAgent = `roo-code/${Package.version} (${os.platform()} ${os.release()}; ${os.arch()}) node/${process.version.slice(1)}`
+
 		try {
 			const response = await fetch(url, {
 				method: "POST",
 				headers: {
 					"Content-Type": "application/json",
 					Authorization: `Bearer ${apiKey}`,
-					Accept: "text/event-stream",
+					originator: "roo-code",
+					session_id: taskId || this.sessionId,
+					"User-Agent": userAgent,
 				},
 				body: JSON.stringify(requestBody),
 				signal: this.abortController.signal,
@@ -536,6 +642,11 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 			// Handle streaming response
 			yield* this.handleStreamResponse(response.body, model)
 		} catch (error) {
+			const model = this.getModel()
+			const errorMessage = error instanceof Error ? error.message : String(error)
+			const apiError = new ApiProviderError(errorMessage, this.providerName, model.id, "createMessage")
+			TelemetryService.instance.captureException(apiError)
+
 			if (error instanceof Error) {
 				// Re-throw with the original error message if it's already formatted
 				if (error.message.includes("Responses API")) {
@@ -603,11 +714,18 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 								this.lastResponseId = parsed.response.id as string
 							}
 
-							// Delegate standard event types to the shared processor to avoid duplication
+							// Delegate standard event types to the shared processor to avoid duplication.
+							// This applies to both SDK and raw SSE fallback paths.
 							if (parsed?.type && this.coreHandledEventTypes.has(parsed.type)) {
 								for await (const outChunk of this.processEvent(parsed, model)) {
 									// Track whether we've emitted any content so fallback handling can decide appropriately
-									if (outChunk.type === "text" || outChunk.type === "reasoning") {
+									// Include tool calls so tool-call-only responses aren't treated as empty
+									if (
+										outChunk.type === "text" ||
+										outChunk.type === "reasoning" ||
+										outChunk.type === "tool_call" ||
+										outChunk.type === "tool_call_partial"
+									) {
 										hasContent = true
 									}
 									yield outChunk
@@ -948,13 +1066,7 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 								// For SSE path, usage often arrives separately; avoid double-emitting here.
 							}
 							// These are structural or status events, we can just log them at a lower level or ignore.
-							else if (
-								parsed.type === "response.created" ||
-								parsed.type === "response.in_progress" ||
-								parsed.type === "response.output_item.done" ||
-								parsed.type === "response.content_part.added" ||
-								parsed.type === "response.content_part.done"
-							) {
+							else if (parsed.type === "response.created" || parsed.type === "response.in_progress") {
 								// Status events - no action needed
 							}
 							// Fallback for older formats or unexpected responses
@@ -1013,6 +1125,10 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 			// If we didn't get any content, don't throw - the API might have returned an empty response
 			// This can happen in certain edge cases and shouldn't break the flow
 		} catch (error) {
+			const errorMessage = error instanceof Error ? error.message : String(error)
+			const apiError = new ApiProviderError(errorMessage, this.providerName, model.id, "createMessage")
+			TelemetryService.instance.captureException(apiError)
+
 			if (error instanceof Error) {
 				throw new Error(`Error processing response stream: ${error.message}`)
 			}
@@ -1039,10 +1155,46 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 			this.lastResponseId = event.response.id as string
 		}
 
-		// Handle known streaming text deltas
+		// Handle text deltas
 		if (event?.type === "response.text.delta" || event?.type === "response.output_text.delta") {
 			if (event?.delta) {
+				this.sawTextDeltaInCurrentResponse = true
+				this.sawTextOutputInCurrentResponse = true
 				yield { type: "text", text: event.delta }
+			}
+			return
+		}
+
+		// Handle done-only text for variants that skip delta events.
+		if (event?.type === "response.text.done" || event?.type === "response.output_text.done") {
+			const doneText =
+				typeof event?.text === "string"
+					? event.text
+					: typeof event?.output_text === "string"
+						? event.output_text
+						: typeof event?.delta === "string"
+							? event.delta
+							: undefined
+			if (!this.sawTextOutputInCurrentResponse && doneText) {
+				this.sawTextOutputInCurrentResponse = true
+				yield { type: "text", text: doneText }
+			}
+			return
+		}
+
+		// Handle content-part text for structured streaming payloads.
+		if (event?.type === "response.content_part.added" || event?.type === "response.content_part.done") {
+			const part = event?.part
+			if (
+				!this.sawTextDeltaInCurrentResponse &&
+				(part?.type === "text" || part?.type === "output_text") &&
+				(typeof part?.text === "string" || typeof part?.text?.value === "string")
+			) {
+				const partText = typeof part.text === "string" ? part.text : part.text.value
+				if (partText) {
+					this.sawTextOutputInCurrentResponse = true
+					yield { type: "text", text: partText }
+				}
 			}
 			return
 		}
@@ -1063,6 +1215,7 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 		// Handle refusal deltas
 		if (event?.type === "response.refusal.delta") {
 			if (event?.delta) {
+				this.sawTextOutputInCurrentResponse = true
 				yield { type: "text", text: `[Refusal] ${event.delta}` }
 			}
 			return
@@ -1073,17 +1226,23 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 			event?.type === "response.tool_call_arguments.delta" ||
 			event?.type === "response.function_call_arguments.delta"
 		) {
-			// Emit partial chunks directly - NativeToolCallParser handles state management
-			const callId = event.call_id || event.tool_call_id || event.id
-			const name = event.name || event.function_name
+			// Some streams omit stable identity on delta events; fall back to the
+			// most recently observed tool identity from output_item events.
+			const callId = event.call_id || event.tool_call_id || event.id || this.pendingToolCallId || undefined
+			const name = event.name || event.function_name || this.pendingToolCallName || undefined
 			const args = event.delta || event.arguments
 
-			yield {
-				type: "tool_call_partial",
-				index: event.index ?? 0,
-				id: callId,
-				name,
-				arguments: args,
+			// Avoid emitting incomplete tool_call_partial chunks; the downstream
+			// NativeToolCallParser needs a name to start a call.
+			if (typeof name === "string" && name.length > 0 && typeof callId === "string" && callId.length > 0) {
+				this.streamedToolCallIds.add(callId)
+				yield {
+					type: "tool_call_partial",
+					index: event.index ?? 0,
+					id: callId,
+					name,
+					arguments: args,
+				}
 			}
 			return
 		}
@@ -1101,40 +1260,109 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 		if (event?.type === "response.output_item.added" || event?.type === "response.output_item.done") {
 			const item = event?.item
 			if (item) {
-				if (item.type === "text" && item.text) {
-					yield { type: "text", text: item.text }
-				} else if (item.type === "reasoning" && item.text) {
-					yield { type: "reasoning", text: item.text }
-				} else if (item.type === "message" && Array.isArray(item.content)) {
-					for (const content of item.content) {
-						// Some implementations send 'text'; others send 'output_text'
-						if ((content?.type === "text" || content?.type === "output_text") && content?.text) {
-							yield { type: "text", text: content.text }
+				// Capture tool identity so subsequent argument deltas can be attributed.
+				if (item.type === "function_call" || item.type === "tool_call") {
+					const callId = item.call_id || item.tool_call_id || item.id
+					const name = item.name || item.function?.name || item.function_name
+					if (typeof callId === "string" && callId.length > 0) {
+						this.pendingToolCallId = callId
+						this.pendingToolCallName = typeof name === "string" ? name : undefined
+					}
+				}
+
+				// For "added" events, yield text/reasoning content (streaming path).
+				// For "done" events, normally text was already streamed via deltas, but some models
+				// only provide assistant text on done events. Emit fallback text only if none was emitted yet.
+				if (event.type === "response.output_item.added") {
+					if (item.type === "text" && item.text) {
+						this.sawTextOutputInCurrentResponse = true
+						yield { type: "text", text: item.text }
+					} else if (item.type === "output_text" && item.text) {
+						this.sawTextOutputInCurrentResponse = true
+						yield { type: "text", text: item.text }
+					} else if (item.type === "reasoning" && item.text) {
+						yield { type: "reasoning", text: item.text }
+					} else if (item.type === "message" && Array.isArray(item.content)) {
+						for (const content of item.content) {
+							// Some implementations send 'text'; others send 'output_text'
+							if ((content?.type === "text" || content?.type === "output_text") && content?.text) {
+								this.sawTextOutputInCurrentResponse = true
+								yield { type: "text", text: content.text }
+							}
 						}
 					}
 				} else if (
-					(item.type === "function_call" || item.type === "tool_call") &&
-					event.type === "response.output_item.done" // Only handle done events for tool calls to ensure arguments are complete
+					event.type === "response.output_item.done" &&
+					(item.type === "function_call" || item.type === "tool_call")
 				) {
-					// Handle complete tool/function call item
-					// Emit as tool_call for backward compatibility with non-streaming tool handling
 					const callId = item.call_id || item.tool_call_id || item.id
-					if (callId) {
-						const args = item.arguments || item.function?.arguments || item.function_arguments
+					const name = item.name || item.function?.name || item.function_name
+					const argsRaw = item.arguments || item.function?.arguments || item.input
+					const args =
+						typeof argsRaw === "string"
+							? argsRaw
+							: argsRaw && typeof argsRaw === "object"
+								? JSON.stringify(argsRaw)
+								: ""
+
+					// Fallback for models that only emit a complete function_call in output_item.done.
+					// If we already streamed partials for this ID, skip to avoid duplicate tool execution.
+					if (
+						typeof callId === "string" &&
+						callId.length > 0 &&
+						typeof name === "string" &&
+						name.length > 0 &&
+						!this.streamedToolCallIds.has(callId)
+					) {
 						yield {
 							type: "tool_call",
 							id: callId,
-							name: item.name || item.function?.name || item.function_name || "",
-							arguments: typeof args === "string" ? args : "{}",
+							name,
+							arguments: args,
+						}
+					}
+				} else if (!this.sawTextOutputInCurrentResponse) {
+					if ((item.type === "text" || item.type === "output_text") && item.text) {
+						this.sawTextOutputInCurrentResponse = true
+						yield { type: "text", text: item.text }
+					} else if (item.type === "message" && Array.isArray(item.content)) {
+						for (const content of item.content) {
+							if ((content?.type === "text" || content?.type === "output_text") && content?.text) {
+								this.sawTextOutputInCurrentResponse = true
+								yield { type: "text", text: content.text }
+							}
 						}
 					}
 				}
+
+				// Note: We intentionally do NOT emit tool_call from response.output_item.done
+				// for function_call/tool_call items if we already saw streaming partials.
 			}
 			return
 		}
 
 		// Completion events that may carry usage
 		if (event?.type === "response.done" || event?.type === "response.completed") {
+			// Some OpenAI variants only provide assistant text in the final completed payload.
+			if (!this.sawTextOutputInCurrentResponse && Array.isArray(event?.response?.output)) {
+				for (const outputItem of event.response.output) {
+					if ((outputItem?.type === "text" || outputItem?.type === "output_text") && outputItem?.text) {
+						this.sawTextOutputInCurrentResponse = true
+						yield { type: "text", text: outputItem.text }
+						continue
+					}
+
+					if (outputItem?.type === "message" && Array.isArray(outputItem.content)) {
+						for (const content of outputItem.content) {
+							if ((content?.type === "text" || content?.type === "output_text") && content?.text) {
+								this.sawTextOutputInCurrentResponse = true
+								yield { type: "text", text: content.text }
+							}
+						}
+					}
+				}
+			}
+
 			const usage = event?.response?.usage || event?.usage || undefined
 			const usageData = this.normalizeUsage(usage, model)
 			if (usageData) {
@@ -1145,6 +1373,8 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 
 		// Fallbacks for older formats or unexpected objects
 		if (event?.choices?.[0]?.delta?.content) {
+			this.sawTextDeltaInCurrentResponse = true
+			this.sawTextOutputInCurrentResponse = true
 			yield { type: "text", text: event.choices[0].delta.content }
 			return
 		}
@@ -1339,6 +1569,11 @@ export class OpenAiNativeHandler extends BaseProvider implements SingleCompletio
 
 			return ""
 		} catch (error) {
+			const errorModel = this.getModel()
+			const errorMessage = error instanceof Error ? error.message : String(error)
+			const apiError = new ApiProviderError(errorMessage, this.providerName, errorModel.id, "completePrompt")
+			TelemetryService.instance.captureException(apiError)
+
 			if (error instanceof Error) {
 				throw new Error(`OpenAI Native completion error: ${error.message}`)
 			}

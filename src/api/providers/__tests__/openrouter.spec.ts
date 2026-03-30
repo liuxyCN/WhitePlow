@@ -42,7 +42,6 @@ vitest.mock("../fetchers/modelCache", () => ({
 				contextWindow: 200000,
 				supportsImages: true,
 				supportsPromptCache: true,
-				supportsNativeTools: true,
 				inputPrice: 3,
 				outputPrice: 15,
 				cacheWritesPrice: 3.75,
@@ -66,7 +65,6 @@ vitest.mock("../fetchers/modelCache", () => ({
 				contextWindow: 128000,
 				supportsImages: true,
 				supportsPromptCache: false,
-				supportsNativeTools: true,
 				inputPrice: 2.5,
 				outputPrice: 10,
 				description: "GPT-4o",
@@ -76,7 +74,6 @@ vitest.mock("../fetchers/modelCache", () => ({
 				contextWindow: 200000,
 				supportsImages: true,
 				supportsPromptCache: false,
-				supportsNativeTools: true,
 				inputPrice: 15,
 				outputPrice: 60,
 				description: "OpenAI o1",
@@ -129,7 +126,6 @@ describe("OpenRouterHandler", () => {
 			const result = await handler.fetchModel()
 			expect(result.id).toBe("anthropic/claude-sonnet-4.5")
 			expect(result.info.supportsPromptCache).toBe(true)
-			expect(result.info.supportsNativeTools).toBe(true)
 		})
 
 		it("honors custom maxTokens for thinking models", async () => {
@@ -268,36 +264,9 @@ describe("OpenRouterHandler", () => {
 					stream_options: { include_usage: true },
 					temperature: 0,
 					top_p: undefined,
-					transforms: ["middle-out"],
 				}),
 				{ headers: { "x-anthropic-beta": "fine-grained-tool-streaming-2025-05-14" } },
 			)
-		})
-
-		it("supports the middle-out transform", async () => {
-			const handler = new OpenRouterHandler({
-				...mockOptions,
-				openRouterUseMiddleOutTransform: true,
-			})
-			const mockStream = {
-				async *[Symbol.asyncIterator]() {
-					yield {
-						id: "test-id",
-						choices: [{ delta: { content: "test response" } }],
-					}
-				},
-			}
-
-			const mockCreate = vitest.fn().mockResolvedValue(mockStream)
-			;(OpenAI as any).prototype.chat = {
-				completions: { create: mockCreate },
-			} as any
-
-			await handler.createMessage("test", []).next()
-
-			expect(mockCreate).toHaveBeenCalledWith(expect.objectContaining({ transforms: ["middle-out"] }), {
-				headers: { "x-anthropic-beta": "fine-grained-tool-streaming-2025-05-14" },
-			})
 		})
 
 		it("adds cache control for supported models", async () => {

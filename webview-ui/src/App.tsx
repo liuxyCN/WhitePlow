@@ -2,14 +2,14 @@ import React, { useCallback, useEffect, useRef, useState, useMemo } from "react"
 import { useEvent } from "react-use"
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query"
 
-import { ExtensionMessage } from "@roo/ExtensionMessage"
+import { type ExtensionMessage, TelemetryEventName } from "@roo-code/types"
+
 import TranslationProvider from "./i18n/TranslationContext"
 // Hidden: MCP Marketplace feature
 // import { MarketplaceViewStateManager } from "./components/marketplace/MarketplaceViewStateManager"
 
 import { vscode } from "./utils/vscode"
 import { telemetryClient } from "./utils/TelemetryClient"
-import { TelemetryEventName } from "@roo-code/types"
 import { initializeSourceMaps, exposeSourceMapsForDebugging } from "./utils/sourceMapInitializer"
 import { ExtensionStateContextProvider, useExtensionState } from "./context/ExtensionStateContext"
 import ChatView, { ChatViewRef } from "./components/chat/ChatView"
@@ -20,7 +20,6 @@ import McpView from "./components/mcp/McpView"
 // Hidden: MCP Marketplace feature
 // import { MarketplaceView } from "./components/marketplace/MarketplaceView"
 import ModesView from "./components/modes/ModesView"
-import { HumanRelayDialog } from "./components/human-relay/HumanRelayDialog"
 import { CheckpointRestoreDialog } from "./components/chat/CheckpointRestoreDialog"
 import { DeleteMessageDialog, EditMessageDialog } from "./components/chat/MessageModificationConfirmationDialog"
 import ErrorBoundary from "./components/ErrorBoundary"
@@ -30,12 +29,6 @@ import { TooltipProvider } from "./components/ui/tooltip"
 import { STANDARD_TOOLTIP_DELAY } from "./components/ui/standard-tooltip"
 
 type Tab = "settings" | "history" | "mcp" | "modes" | "chat" /* | "marketplace" |  "cloud" */
-
-interface HumanRelayDialogState {
-	isOpen: boolean
-	requestId: string
-	promptText: string
-}
 
 interface DeleteMessageDialogState {
 	isOpen: boolean
@@ -55,8 +48,6 @@ interface EditMessageDialogState {
 const MemoizedDeleteMessageDialog = React.memo(DeleteMessageDialog)
 const MemoizedEditMessageDialog = React.memo(EditMessageDialog)
 const MemoizedCheckpointRestoreDialog = React.memo(CheckpointRestoreDialog)
-const MemoizedHumanRelayDialog = React.memo(HumanRelayDialog)
-
 const tabsByMessageAction: Partial<Record<NonNullable<ExtensionMessage["action"]>, Tab>> = {
 	chatButtonClicked: "chat",
 	settingsButtonClicked: "settings",
@@ -89,12 +80,6 @@ const App = () => {
 
 	const [showAnnouncement, setShowAnnouncement] = useState(false)
 	const [tab, setTab] = useState<Tab>("chat")
-
-	const [humanRelayDialogState, setHumanRelayDialogState] = useState<HumanRelayDialogState>({
-		isOpen: false,
-		requestId: "",
-		promptText: "",
-	})
 
 	const [deleteMessageDialogState, setDeleteMessageDialogState] = useState<DeleteMessageDialogState>({
 		isOpen: false,
@@ -164,11 +149,6 @@ const App = () => {
 						setCurrentMarketplaceTab(marketplaceTab)
 					}
 				}
-			}
-
-			if (message.type === "showHumanRelayDialog" && message.requestId && message.promptText) {
-				const { requestId, promptText } = message
-				setHumanRelayDialogState({ isOpen: true, requestId, promptText })
 			}
 
 			if (message.type === "showDeleteMessageDialog" && message.messageTs) {
@@ -256,18 +236,18 @@ const App = () => {
 	) : (
 		<>
 			{tab === "history" && <HistoryView onDone={() => switchTab("chat")} />}
-		{tab === "settings" && (
-			<SettingsView ref={settingsRef} onDone={() => setTab("chat")} targetSection={currentSection} />
-		)}
-		{/* Hidden: MCP Marketplace feature */}
-		{/* {tab === "marketplace" && (
+			{tab === "settings" && (
+				<SettingsView ref={settingsRef} onDone={() => setTab("chat")} targetSection={currentSection} />
+			)}
+			{/* Hidden: MCP Marketplace feature */}
+			{/* {tab === "marketplace" && (
 			<MarketplaceView
 				stateManager={marketplaceStateManager}
 				onDone={() => switchTab("chat")}
 				targetTab={currentMarketplaceTab as "mcp" | "mode" | undefined}
 			/>
 		)} */}
-		{/* Hidden: Roo Code Cloud feature */}
+			{/* Hidden: Roo Code Cloud feature */}
 			{/* {tab === "cloud" && (
 				<CloudView
 					userInfo={cloudUserInfo}
@@ -281,14 +261,6 @@ const App = () => {
 				isHidden={tab !== "chat"}
 				showAnnouncement={showAnnouncement}
 				hideAnnouncement={() => setShowAnnouncement(false)}
-			/>
-			<MemoizedHumanRelayDialog
-				isOpen={humanRelayDialogState.isOpen}
-				requestId={humanRelayDialogState.requestId}
-				promptText={humanRelayDialogState.promptText}
-				onClose={() => setHumanRelayDialogState((prev) => ({ ...prev, isOpen: false }))}
-				onSubmit={(requestId, text) => vscode.postMessage({ type: "humanRelayResponse", requestId, text })}
-				onCancel={(requestId) => vscode.postMessage({ type: "humanRelayCancel", requestId })}
 			/>
 			{deleteMessageDialogState.hasCheckpoint ? (
 				<MemoizedCheckpointRestoreDialog

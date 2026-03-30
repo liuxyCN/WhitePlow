@@ -1,18 +1,22 @@
-import React, { useState, useCallback, memo } from "react"
+import React, { useState, useCallback, memo, useMemo } from "react"
 import { useTranslation } from "react-i18next"
 import { VSCodeButton } from "@vscode/webview-ui-toolkit/react"
-import { BookOpenText, MessageCircleWarning, Info, Copy, Check } from "lucide-react"
+import { BookOpenText, MessageCircleWarning, Copy, Check, Microscope, Info } from "lucide-react"
+
 import { useCopyToClipboard } from "@src/utils/clipboard"
 import { vscode } from "@src/utils/vscode"
 import CodeBlock from "../common/CodeBlock"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@src/components/ui/dialog"
-import { Button, Tooltip, TooltipContent, TooltipTrigger } from "../ui"
+import { Button } from "../ui"
+import { useExtensionState } from "@src/context/ExtensionStateContext"
+import { useSelectedModel } from "@src/components/ui/hooks/useSelectedModel"
+import { PROVIDERS } from "../settings/constants"
 
 /**
  * Unified error display component for all error types in the chat.
  * Provides consistent styling, icons, and optional documentation links across all errors.
  *
- * @param type - Error type determines icon and default title
+ * @param type - Error type determines default title
  * @param title - Optional custom title (overrides default for error type)
  * @param message - Error message text (required)
  * @param docsURL - Optional documentation link URL (shown as "Learn more" with book icon)
@@ -91,6 +95,43 @@ export const ErrorRow = memo(
 		const [isDetailsDialogOpen, setIsDetailsDialogOpen] = useState(false)
 		const [showDetailsCopySuccess, setShowDetailsCopySuccess] = useState(false)
 		const { copyWithFeedback } = useCopyToClipboard()
+		const { version, apiConfiguration } = useExtensionState()
+		const { provider, id: modelId } = useSelectedModel(apiConfiguration)
+
+		const usesProxy = PROVIDERS.find((p) => p.value === provider)?.proxy ?? false
+
+		// Format error details with metadata prepended
+		const formattedErrorDetails = useMemo(() => {
+			if (!errorDetails) return undefined
+
+			const metadata = [
+				`Date/time: ${new Date().toISOString()}`,
+				`Extension version: ${version}`,
+				`Provider: ${provider}${usesProxy ? " (proxy)" : ""}`,
+				`Model: ${modelId}`,
+				"",
+				"",
+			].join("\n")
+
+			return metadata + errorDetails
+		}, [errorDetails, version, provider, modelId, usesProxy])
+
+		const handleDownloadDiagnostics = useCallback(
+			(e: React.MouseEvent) => {
+				e.stopPropagation()
+				vscode.postMessage({
+					type: "downloadErrorDiagnostics",
+					values: {
+						timestamp: new Date().toISOString(),
+						version,
+						provider,
+						model: modelId,
+						details: errorDetails || "",
+					},
+				})
+			},
+			[version, provider, modelId, errorDetails],
+		)
 
 		// Default titles for different error types
 		const getDefaultTitle = () => {
@@ -139,8 +180,8 @@ export const ErrorRow = memo(
 		const handleCopyDetails = useCallback(
 			async (e: React.MouseEvent) => {
 				e.stopPropagation()
-				if (errorDetails) {
-					const success = await copyWithFeedback(errorDetails)
+				if (formattedErrorDetails) {
+					const success = await copyWithFeedback(formattedErrorDetails)
 					if (success) {
 						setShowDetailsCopySuccess(true)
 						setTimeout(() => {
@@ -149,7 +190,7 @@ export const ErrorRow = memo(
 					}
 				}
 			},
-			[errorDetails, copyWithFeedback],
+			[formattedErrorDetails, copyWithFeedback],
 		)
 
 		const errorTitle = getDefaultTitle()
@@ -181,7 +222,7 @@ export const ErrorRow = memo(
 					</div>
 					{isExpanded && (
 						<div className="px-2 py-1 mt-2 bg-vscode-editor-background ml-6 rounded-lg">
-							<CodeBlock source={message} language="xml" />
+							<CodeBlock source={message} language="text" />
 						</div>
 					)}
 				</div>
@@ -203,54 +244,70 @@ export const ErrorRow = memo(
 										className="text-sm flex items-center gap-1 transition-opacity opacity-0 group-hover:opacity-100"
 										onClick={(e) => {
 											e.preventDefault()
-											vscode.postMessage({ type: "openExternal", url: docsURL })
+											// Handle internal navigation to settings
+											if (docsURL.startsWith("roocode://settings")) {
+												vscode.postMessage({
+													type: "switchTab",
+													tab: "settings",
+													values: { section: "providers" },
+												})
+											} else {
+												vscode.postMessage({ type: "openExternal", url: docsURL })
+											}
 										}}>
 										<BookOpenText className="size-3 mt-[3px]" />
-										{t("chat:apiRequest.errorMessage.docs")}
+										{docsURL.startsWith("roocode://settings")
+											? t("chat:apiRequest.errorMessage.goToSettings", {
+													defaultValue: "Settings",
+												})
+											: t("chat:apiRequest.errorMessage.docs")}
 									</a>
-								)}
-								{errorDetails && (
-									<Tooltip>
-										<TooltipTrigger asChild>
-											<button
-												onClick={() => setIsDetailsDialogOpen(true)}
-												className="transition-opacity opacity-0 group-hover:opacity-100 cursor-pointer"
-												aria-label={t("chat:errorDetails.title")}>
-												<Info className="size-4" />
-											</button>
-										</TooltipTrigger>
-										<TooltipContent>{t("chat:errorDetails.title")}</TooltipContent>
-									</Tooltip>
 								)}
 							</div>
 						</div>
 					)}
-					<div className="ml-2 pl-4 mt-1 pt-1 border-l border-vscode-errorForeground/50">
+					<div className="ml-2 pl-4 mt-1 pt-0.5 border-l border-vscode-errorForeground/50">
 						<p
 							className={
 								messageClassName ||
-								"my-0 font-light whitespace-pre-wrap break-words text-vscode-descriptionForeground"
+								"cursor-default my-0 font-light whitespace-pre-wrap break-words text-vscode-descriptionForeground"
 							}>
 							{message}
+							{formattedErrorDetails && (
+								<button
+									onClick={() => setIsDetailsDialogOpen(true)}
+									className="cursor-pointer ml-1 text-vscode-descriptionForeground/50 hover:text-vscode-descriptionForeground hover:underline font-normal"
+									aria-label={t("chat:errorDetails.title")}>
+									{t("chat:errorDetails.link")}
+								</button>
+							)}
 						</p>
 						{additionalContent}
 					</div>
 				</div>
 
 				{/* Error Details Dialog */}
-				{errorDetails && (
+				{formattedErrorDetails && (
 					<Dialog open={isDetailsDialogOpen} onOpenChange={setIsDetailsDialogOpen}>
 						<DialogContent className="max-w-2xl">
 							<DialogHeader>
 								<DialogTitle>{t("chat:errorDetails.title")}</DialogTitle>
 							</DialogHeader>
-							<div className="max-h-96 overflow-auto px-3 bg-vscode-editor-background rounded-xl border border-vscode-editorGroup-border">
-								<pre className="font-mono text-sm whitespace-pre-wrap break-words bg-transparent">
-									{errorDetails}
+							<div className="max-h-96 overflow-auto bg-vscode-editor-background rounded-xl border border-vscode-editorGroup-border">
+								<pre className="font-mono text-sm whitespace-pre-wrap break-words bg-transparent px-3">
+									{formattedErrorDetails}
 								</pre>
+								{usesProxy && (
+									<div className="cursor-default flex gap-2 border-t-1 px-3 py-2 border-vscode-editorGroup-border bg-foreground/5 text-vscode-button-secondaryForeground">
+										<Info className="size-3 shrink-0 mt-1 text-vscode-descriptionForeground" />
+										<span className="text-vscode-descriptionForeground text-sm">
+											{t("chat:errorDetails.proxyProvider")}
+										</span>
+									</div>
+								)}
 							</div>
 							<DialogFooter>
-								<Button variant="secondary" onClick={handleCopyDetails}>
+								<Button variant="secondary" className="w-full" onClick={handleCopyDetails}>
 									{showDetailsCopySuccess ? (
 										<>
 											<Check className="size-3" />
@@ -262,6 +319,10 @@ export const ErrorRow = memo(
 											{t("chat:errorDetails.copyToClipboard")}
 										</>
 									)}
+								</Button>
+								<Button variant="secondary" className="w-full" onClick={handleDownloadDiagnostics}>
+									<Microscope className="size-3" />
+									{t("chat:errorDetails.diagnostics")}
 								</Button>
 							</DialogFooter>
 						</DialogContent>

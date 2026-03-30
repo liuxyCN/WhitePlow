@@ -34,7 +34,6 @@
 		"getPublicKeyFailed": "获取 publicKey 失败",
 		"loginRequestFailed": "登录请求失败: {{status}}",
 		"loginFailed": "登录失败",
-		"invalidInviteCode": "邀请码无效",
 		"getApiKeyFailed": "获取 apikey 失败: {{status}}",
 		"getApiKeyFailedGeneric": "获取 apikey 失败",
 		"usernamePasswordRequired": "用户名和密码不能为空",

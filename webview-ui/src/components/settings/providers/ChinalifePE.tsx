@@ -41,20 +41,14 @@ export const ChinalifePE = ({
 	const { t } = useAppTranslation()
 
 	const [chinalifePEModels, setChinalifePEModels] = useState<Record<string, ModelInfo> | null>(null)
-	const [openAiLegacyFormatSelected, setOpenAiLegacyFormatSelected] = useState(
-		!!apiConfiguration?.openAiLegacyFormat,
-	)
+	const [openAiLegacyFormatSelected, setOpenAiLegacyFormatSelected] = useState(!!apiConfiguration?.openAiLegacyFormat)
 	const [username, setUsername] = useState("")
 	const [password, setPassword] = useState("")
 	const [isLoggingIn, setIsLoggingIn] = useState(false)
-	const [showInviteCodeDialog, setShowInviteCodeDialog] = useState(false)
-	const [inviteCode, setInviteCode] = useState("")
-	const [isSubmittingInviteCode, setIsSubmittingInviteCode] = useState(false)
 	const [showCaptchaDialog, setShowCaptchaDialog] = useState(false)
 	const [captchaCode, setCaptchaCode] = useState("")
 	const [isSubmittingCaptcha, setIsSubmittingCaptcha] = useState(false)
 	const [cookies, setCookies] = useState("")
-	const [ticket, setTicket] = useState("")
 	const [loginErrorMessage, setLoginErrorMessage] = useState<string | undefined>(undefined)
 
 	const [customHeaders, setCustomHeaders] = useState<[string, string][]>(() => {
@@ -139,41 +133,6 @@ export const ChinalifePE = ({
 		})
 	}, [username, password, apiConfiguration])
 
-	const handleSubmitInviteCode = useCallback(() => {
-		if (!inviteCode.trim() || !username.trim() || !password.trim()) {
-			setLoginErrorMessage(t("settings:providers.chinalifePELogin.inviteCodeRequired"))
-			return
-		}
-
-		setIsSubmittingInviteCode(true)
-		setLoginErrorMessage(undefined)
-
-		const apiUrl = apiConfiguration?.openAiBaseUrl || "https://ai.chinalifepe.com"
-
-		// 如果有 ticket（从验证码验证后获得），直接使用 ticket 和邀请码获取 apikey
-		// 否则重新登录获取新 ticket
-		if (ticket) {
-			vscode.postMessage({
-				type: "chinalifePEGetApiKeyWithInviteCode",
-				values: {
-					ticket: ticket,
-					inviteCode: inviteCode.trim(),
-					apiUrl: apiUrl,
-				},
-			})
-		} else {
-			vscode.postMessage({
-				type: "chinalifePELogin",
-				values: {
-					username: username.trim(),
-					password: password.trim(),
-					inviteCode: inviteCode.trim(),
-					apiUrl: apiUrl,
-				},
-			})
-		}
-	}, [inviteCode, username, password, ticket, apiConfiguration])
-
 	const handleSubmitCaptcha = useCallback(() => {
 		if (!captchaCode.trim() || !cookies) {
 			setLoginErrorMessage(t("settings:providers.chinalifePELogin.captchaRequired"))
@@ -195,64 +154,54 @@ export const ChinalifePE = ({
 		})
 	}, [captchaCode, cookies, apiConfiguration])
 
-	const onMessage = useCallback((event: MessageEvent) => {
-		const message: ExtensionMessage = event.data
+	const onMessage = useCallback(
+		(event: MessageEvent) => {
+			const message: ExtensionMessage = event.data
 
-		switch (message.type) {
-			case "chinalifePEModels": {
-				const updatedModels = message.chinalifePEModels ?? []
-				setChinalifePEModels(Object.fromEntries(updatedModels.map((item) => [item, openAiModelInfoSaneDefaults])))
-				break
-			}
-			case "chinalifePELoginResponse": {
-				if (message.chinalifePELoginResponse?.success) {
-					setIsLoggingIn(false)
-					setIsSubmittingInviteCode(false)
-					setIsSubmittingCaptcha(false)
-					console.log("登录成功，apiKey:", message.chinalifePELoginResponse.apiKey)
-					setShowInviteCodeDialog(false)
-					setShowCaptchaDialog(false)
-					setInviteCode("")
-					setCaptchaCode("")
-					setTicket("")
-					// 如果登录成功，设置 API Key
-					if (message.chinalifePELoginResponse.apiKey) {
-						setApiConfigurationField("openAiApiKey", message.chinalifePELoginResponse.apiKey)
-					}
-				} else if (message.chinalifePELoginResponse?.requiresCaptcha) {
-					setIsLoggingIn(false)
-					setIsSubmittingCaptcha(false)
-					// 需要验证码，显示验证码输入框
-					if (message.chinalifePELoginResponse.cookies) {
-						setCookies(message.chinalifePELoginResponse.cookies)
-					}
-					setShowCaptchaDialog(true)
-					setShowInviteCodeDialog(false)
-				} else if (message.chinalifePELoginResponse?.requiresInviteCode) {
-					setIsLoggingIn(false)
-					setIsSubmittingCaptcha(false)
-					// 需要邀请码，显示邀请码输入框
-					// 保存 ticket（如果有的话）
-					if (message.chinalifePELoginResponse.ticket) {
-						setTicket(message.chinalifePELoginResponse.ticket)
-					}
-					setShowInviteCodeDialog(true)
-					setShowCaptchaDialog(false)
-				} else {
-					setIsLoggingIn(false)
-					setIsSubmittingInviteCode(false)
-					setIsSubmittingCaptcha(false)
-					const errorMsg = message.chinalifePELoginResponse?.error || t("settings:providers.chinalifePELogin.loginFailed")
-					setLoginErrorMessage(errorMsg)
-					if (!message.chinalifePELoginResponse?.requiresInviteCode && !message.chinalifePELoginResponse?.requiresCaptcha) {
-						setShowInviteCodeDialog(false)
-						setShowCaptchaDialog(false)
-					}
+			switch (message.type) {
+				case "chinalifePEModels": {
+					const updatedModels = message.chinalifePEModels ?? []
+					setChinalifePEModels(
+						Object.fromEntries(updatedModels.map((item) => [item, openAiModelInfoSaneDefaults])),
+					)
+					break
 				}
-				break
+				case "chinalifePELoginResponse": {
+					if (message.chinalifePELoginResponse?.success) {
+						setIsLoggingIn(false)
+						setIsSubmittingCaptcha(false)
+						console.log("登录成功，apiKey:", message.chinalifePELoginResponse.apiKey)
+						setShowCaptchaDialog(false)
+						setCaptchaCode("")
+						// 如果登录成功，设置 API Key
+						if (message.chinalifePELoginResponse.apiKey) {
+							setApiConfigurationField("openAiApiKey", message.chinalifePELoginResponse.apiKey)
+						}
+					} else if (message.chinalifePELoginResponse?.requiresCaptcha) {
+						setIsLoggingIn(false)
+						setIsSubmittingCaptcha(false)
+						// 需要验证码，显示验证码输入框
+						if (message.chinalifePELoginResponse.cookies) {
+							setCookies(message.chinalifePELoginResponse.cookies)
+						}
+						setShowCaptchaDialog(true)
+					} else {
+						setIsLoggingIn(false)
+						setIsSubmittingCaptcha(false)
+						const errorMsg =
+							message.chinalifePELoginResponse?.error ||
+							t("settings:providers.chinalifePELogin.loginFailed")
+						setLoginErrorMessage(errorMsg)
+						if (!message.chinalifePELoginResponse?.requiresCaptcha) {
+							setShowCaptchaDialog(false)
+						}
+					}
+					break
+				}
 			}
-		}
-	}, [setApiConfigurationField])
+		},
+		[setApiConfigurationField],
+	)
 
 	useEvent("message", onMessage)
 
@@ -318,7 +267,9 @@ export const ChinalifePE = ({
 								onInput={(e: any) => setUsername(e.target.value)}
 								placeholder={t("settings:providers.chinalifePELogin.username")}
 								className="w-full">
-								<label className="block font-medium mb-1">{t("settings:providers.chinalifePELogin.username")}</label>
+								<label className="block font-medium mb-1">
+									{t("settings:providers.chinalifePELogin.username")}
+								</label>
 							</VSCodeTextField>
 							<VSCodeTextField
 								value={password}
@@ -326,13 +277,14 @@ export const ChinalifePE = ({
 								onInput={(e: any) => setPassword(e.target.value)}
 								placeholder={t("settings:providers.chinalifePELogin.password")}
 								className="w-full">
-								<label className="block font-medium mb-1">{t("settings:providers.chinalifePELogin.password")}</label>
+								<label className="block font-medium mb-1">
+									{t("settings:providers.chinalifePELogin.password")}
+								</label>
 							</VSCodeTextField>
-							<VSCodeButton 
-								onClick={handleLogin} 
-								appearance="primary"
-								disabled={isLoggingIn}>
-								{isLoggingIn ? t("settings:providers.chinalifePELogin.loggingIn") : t("settings:providers.chinalifePELogin.login")}
+							<VSCodeButton onClick={handleLogin} appearance="primary" disabled={isLoggingIn}>
+								{isLoggingIn
+									? t("settings:providers.chinalifePELogin.loggingIn")
+									: t("settings:providers.chinalifePELogin.login")}
 							</VSCodeButton>
 							{loginErrorMessage && (
 								<div className="text-vscode-errorForeground text-sm">{loginErrorMessage}</div>
@@ -342,8 +294,12 @@ export const ChinalifePE = ({
 					{/* 验证码输入对话框 */}
 					<Modal isOpen={showCaptchaDialog} onClose={() => {}} className="max-w-md h-auto">
 						<div className="p-6 flex flex-col gap-4">
-							<h3 className="text-lg font-semibold">{t("settings:providers.chinalifePELogin.captchaDialogTitle")}</h3>
-							<p className="text-sm text-vscode-descriptionForeground">{t("settings:providers.chinalifePELogin.captchaDialogDescription")}</p>
+							<h3 className="text-lg font-semibold">
+								{t("settings:providers.chinalifePELogin.captchaDialogTitle")}
+							</h3>
+							<p className="text-sm text-vscode-descriptionForeground">
+								{t("settings:providers.chinalifePELogin.captchaDialogDescription")}
+							</p>
 							<VSCodeTextField
 								value={captchaCode}
 								type="text"
@@ -354,9 +310,10 @@ export const ChinalifePE = ({
 									if (e.key === "Enter" && captchaCode.trim() && cookies) {
 										handleSubmitCaptcha()
 									}
-								}}>
-							</VSCodeTextField>
-							{loginErrorMessage && <div className="text-vscode-errorForeground text-sm">{loginErrorMessage}</div>}
+								}}></VSCodeTextField>
+							{loginErrorMessage && (
+								<div className="text-vscode-errorForeground text-sm">{loginErrorMessage}</div>
+							)}
 							<div className="flex gap-2 justify-end">
 								<VSCodeButton
 									onClick={() => {
@@ -371,50 +328,16 @@ export const ChinalifePE = ({
 									onClick={handleSubmitCaptcha}
 									appearance="primary"
 									disabled={!captchaCode.trim() || !cookies || isSubmittingCaptcha}>
-									{isSubmittingCaptcha ? t("settings:providers.chinalifePELogin.submitting") : t("settings:providers.chinalifePELogin.submit")}
-								</VSCodeButton>
-							</div>
-						</div>
-					</Modal>
-					{/* 邀请码输入对话框 */}
-					<Modal isOpen={showInviteCodeDialog} onClose={() => {}} className="max-w-md h-auto">
-						<div className="p-6 flex flex-col gap-4">
-							<h3 className="text-lg font-semibold">{t("settings:providers.chinalifePELogin.inviteCodeDialogTitle")}</h3>
-							<VSCodeTextField
-								value={inviteCode}
-								type="text"
-								onInput={(e: any) => setInviteCode(e.target.value)}
-								placeholder={t("settings:providers.chinalifePELogin.inviteCode")}
-								className="w-full"
-								onKeyDown={(e: any) => {
-									if (e.key === "Enter" && inviteCode.trim() && username.trim() && password.trim()) {
-										handleSubmitInviteCode()
-									}
-								}}>
-							</VSCodeTextField>
-							{loginErrorMessage && <div className="text-vscode-errorForeground text-sm">{loginErrorMessage}</div>}
-							<div className="flex gap-2 justify-end">
-								<VSCodeButton
-									onClick={() => {
-										setShowInviteCodeDialog(false)
-										setInviteCode("")
-										setLoginErrorMessage(undefined)
-									}}
-									appearance="secondary">
-									{t("settings:providers.chinalifePELogin.cancel")}
-								</VSCodeButton>
-								<VSCodeButton
-									onClick={handleSubmitInviteCode}
-									appearance="primary"
-									disabled={!inviteCode.trim() || !username.trim() || !password.trim() || isSubmittingInviteCode}>
-									{isSubmittingInviteCode ? t("settings:providers.chinalifePELogin.submitting") : t("settings:providers.chinalifePELogin.submit")}
+									{isSubmittingCaptcha
+										? t("settings:providers.chinalifePELogin.submitting")
+										: t("settings:providers.chinalifePELogin.submit")}
 								</VSCodeButton>
 							</div>
 						</div>
 					</Modal>
 				</>
 			)}
-			{((!fromWelcomeView) || (fromWelcomeView && apiConfiguration?.openAiApiKey)) && (
+			{(!fromWelcomeView || (fromWelcomeView && apiConfiguration?.openAiApiKey)) && (
 				<VSCodeTextField
 					value={apiConfiguration?.openAiApiKey || ""}
 					type="password"
@@ -570,7 +493,9 @@ export const ChinalifePE = ({
 											return "var(--vscode-input-border)"
 										}
 
-										return value > 0 ? "var(--vscode-charts-green)" : "var(--vscode-errorForeground)"
+										return value > 0
+											? "var(--vscode-charts-green)"
+											: "var(--vscode-errorForeground)"
 									})(),
 								}}
 								onInput={handleInputChange("openAiCustomModelInfo", (e) => {
@@ -608,7 +533,9 @@ export const ChinalifePE = ({
 											return "var(--vscode-input-border)"
 										}
 
-										return value > 0 ? "var(--vscode-charts-green)" : "var(--vscode-errorForeground)"
+										return value > 0
+											? "var(--vscode-charts-green)"
+											: "var(--vscode-errorForeground)"
 									})(),
 								}}
 								onInput={handleInputChange("openAiCustomModelInfo", (e) => {
@@ -617,7 +544,9 @@ export const ChinalifePE = ({
 
 									return {
 										...(apiConfiguration?.openAiCustomModelInfo || openAiModelInfoSaneDefaults),
-										contextWindow: isNaN(parsed) ? openAiModelInfoSaneDefaults.contextWindow : parsed,
+										contextWindow: isNaN(parsed)
+											? openAiModelInfoSaneDefaults.contextWindow
+											: parsed,
 									}
 								})}
 								placeholder={t("settings:placeholders.numbers.contextWindow")}
@@ -667,7 +596,9 @@ export const ChinalifePE = ({
 											supportsPromptCache: checked,
 										}
 									})}>
-									<span className="font-medium">{t("settings:providers.customModel.promptCache.label")}</span>
+									<span className="font-medium">
+										{t("settings:providers.customModel.promptCache.label")}
+									</span>
 								</Checkbox>
 								<StandardTooltip content={t("settings:providers.customModel.promptCache.description")}>
 									<i
@@ -697,7 +628,9 @@ export const ChinalifePE = ({
 											return "var(--vscode-input-border)"
 										}
 
-										return value >= 0 ? "var(--vscode-charts-green)" : "var(--vscode-errorForeground)"
+										return value >= 0
+											? "var(--vscode-charts-green)"
+											: "var(--vscode-errorForeground)"
 									})(),
 								}}
 								onChange={handleInputChange("openAiCustomModelInfo", (e) => {
@@ -715,7 +648,8 @@ export const ChinalifePE = ({
 									<label className="block font-medium mb-1">
 										{t("settings:providers.customModel.pricing.input.label")}
 									</label>
-									<StandardTooltip content={t("settings:providers.customModel.pricing.input.description")}>
+									<StandardTooltip
+										content={t("settings:providers.customModel.pricing.input.description")}>
 										<i
 											className="codicon codicon-info text-vscode-descriptionForeground"
 											style={{ fontSize: "12px" }}
@@ -741,7 +675,9 @@ export const ChinalifePE = ({
 											return "var(--vscode-input-border)"
 										}
 
-										return value >= 0 ? "var(--vscode-charts-green)" : "var(--vscode-errorForeground)"
+										return value >= 0
+											? "var(--vscode-charts-green)"
+											: "var(--vscode-errorForeground)"
 									})(),
 								}}
 								onChange={handleInputChange("openAiCustomModelInfo", (e) => {
@@ -759,7 +695,8 @@ export const ChinalifePE = ({
 									<label className="block font-medium mb-1">
 										{t("settings:providers.customModel.pricing.output.label")}
 									</label>
-									<StandardTooltip content={t("settings:providers.customModel.pricing.output.description")}>
+									<StandardTooltip
+										content={t("settings:providers.customModel.pricing.output.description")}>
 										<i
 											className="codicon codicon-info text-vscode-descriptionForeground"
 											style={{ fontSize: "12px" }}
@@ -773,7 +710,9 @@ export const ChinalifePE = ({
 							<>
 								<div>
 									<VSCodeTextField
-										value={apiConfiguration?.openAiCustomModelInfo?.cacheReadsPrice?.toString() ?? "0"}
+										value={
+											apiConfiguration?.openAiCustomModelInfo?.cacheReadsPrice?.toString() ?? "0"
+										}
 										type="text"
 										style={{
 											borderColor: (() => {
@@ -793,7 +732,8 @@ export const ChinalifePE = ({
 											const parsed = parseFloat(value)
 
 											return {
-												...(apiConfiguration?.openAiCustomModelInfo ?? openAiModelInfoSaneDefaults),
+												...(apiConfiguration?.openAiCustomModelInfo ??
+													openAiModelInfoSaneDefaults),
 												cacheReadsPrice: isNaN(parsed) ? 0 : parsed,
 											}
 										})}
@@ -804,7 +744,9 @@ export const ChinalifePE = ({
 												{t("settings:providers.customModel.pricing.cacheReads.label")}
 											</span>
 											<StandardTooltip
-												content={t("settings:providers.customModel.pricing.cacheReads.description")}>
+												content={t(
+													"settings:providers.customModel.pricing.cacheReads.description",
+												)}>
 												<i
 													className="codicon codicon-info text-vscode-descriptionForeground"
 													style={{ fontSize: "12px" }}
@@ -815,7 +757,9 @@ export const ChinalifePE = ({
 								</div>
 								<div>
 									<VSCodeTextField
-										value={apiConfiguration?.openAiCustomModelInfo?.cacheWritesPrice?.toString() ?? "0"}
+										value={
+											apiConfiguration?.openAiCustomModelInfo?.cacheWritesPrice?.toString() ?? "0"
+										}
 										type="text"
 										style={{
 											borderColor: (() => {
@@ -835,7 +779,8 @@ export const ChinalifePE = ({
 											const parsed = parseFloat(value)
 
 											return {
-												...(apiConfiguration?.openAiCustomModelInfo ?? openAiModelInfoSaneDefaults),
+												...(apiConfiguration?.openAiCustomModelInfo ??
+													openAiModelInfoSaneDefaults),
 												cacheWritesPrice: isNaN(parsed) ? 0 : parsed,
 											}
 										})}
@@ -846,7 +791,9 @@ export const ChinalifePE = ({
 												{t("settings:providers.customModel.pricing.cacheWrites.label")}
 											</label>
 											<StandardTooltip
-												content={t("settings:providers.customModel.pricing.cacheWrites.description")}>
+												content={t(
+													"settings:providers.customModel.pricing.cacheWrites.description",
+												)}>
 												<i
 													className="codicon codicon-info text-vscode-descriptionForeground"
 													style={{ fontSize: "12px" }}
@@ -860,7 +807,9 @@ export const ChinalifePE = ({
 
 						<Button
 							variant="secondary"
-							onClick={() => setApiConfigurationField("openAiCustomModelInfo", openAiModelInfoSaneDefaults)}>
+							onClick={() =>
+								setApiConfigurationField("openAiCustomModelInfo", openAiModelInfoSaneDefaults)
+							}>
 							{t("settings:providers.customModel.resetDefaults")}
 						</Button>
 					</div>
@@ -869,4 +818,3 @@ export const ChinalifePE = ({
 		</div>
 	)
 }
-

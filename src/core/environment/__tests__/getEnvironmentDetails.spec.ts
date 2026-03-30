@@ -5,8 +5,8 @@ import delay from "delay"
 import type { Mock } from "vitest"
 
 import { getEnvironmentDetails } from "../getEnvironmentDetails"
-import { EXPERIMENT_IDS, experiments } from "../../../shared/experiments"
-import { defaultModeSlug, getFullModeDetails, getModeBySlug, isToolAllowedForMode } from "../../../shared/modes"
+import { getFullModeDetails } from "../../../shared/modes"
+import { isToolAllowedForMode } from "../../tools/validateToolUse"
 import { getApiMetrics } from "../../../shared/getApiMetrics"
 import { listFiles } from "../../../services/glob/list-files"
 import { TerminalRegistry } from "../../../integrations/terminal/TerminalRegistry"
@@ -42,7 +42,6 @@ vi.mock("execa", () => ({
 	execa: vi.fn(),
 }))
 
-vi.mock("../../../shared/experiments")
 vi.mock("../../../shared/modes")
 vi.mock("../../../shared/getApiMetrics")
 vi.mock("../../../services/glob/list-files")
@@ -51,6 +50,7 @@ vi.mock("../../../integrations/terminal/Terminal")
 vi.mock("../../../utils/path")
 vi.mock("../../../utils/git")
 vi.mock("../../prompts/responses")
+vi.mock("../../tools/validateToolUse")
 
 describe("getEnvironmentDetails", () => {
 	const mockCwd = "/test/path"
@@ -113,15 +113,10 @@ describe("getEnvironmentDetails", () => {
 				createMessage: vi.fn(),
 				countTokens: vi.fn(),
 			} as unknown as ApiHandler,
-			diffEnabled: true,
 			providerRef: {
 				deref: vi.fn().mockReturnValue(mockProvider),
 				[Symbol.toStringTag]: "WeakRef",
 			} as unknown as WeakRef<ClineProvider>,
-			browserSession: {
-				isSessionActive: vi.fn().mockReturnValue(false),
-				getViewportSize: vi.fn().mockReturnValue({ width: 900, height: 600 }),
-			} as any,
 		}
 
 		// Mock other dependencies.
@@ -320,16 +315,6 @@ describe("getEnvironmentDetails", () => {
 		expect(mockInactiveTerminal.getCurrentWorkingDirectory).toHaveBeenCalled()
 	})
 
-	it("should include experiment-specific details when Power Steering is enabled", async () => {
-		mockState.experiments = { [EXPERIMENT_IDS.POWER_STEERING]: true }
-		;(experiments.isEnabled as Mock).mockReturnValue(true)
-
-		const result = await getEnvironmentDetails(mockCline as Task)
-
-		expect(result).toContain("<role>You are a code assistant</role>")
-		expect(result).toContain("<custom_instructions>Custom instructions</custom_instructions>")
-	})
-
 	it("should handle missing provider or state", async () => {
 		// Mock provider to return null.
 		mockCline.providerRef!.deref = vi.fn().mockReturnValue(null)
@@ -458,19 +443,5 @@ describe("getEnvironmentDetails", () => {
 		await getEnvironmentDetails(mockCline as Task)
 
 		expect(getGitStatus).toHaveBeenCalledWith(mockCwd, 5)
-	})
-
-	it("should NOT include Browser Session Status when inactive", async () => {
-		const result = await getEnvironmentDetails(mockCline as Task)
-		expect(result).not.toContain("# Browser Session Status")
-	})
-
-	it("should include Browser Session Status with current viewport when active", async () => {
-		;(mockCline.browserSession as any).isSessionActive = vi.fn().mockReturnValue(true)
-		;(mockCline.browserSession as any).getViewportSize = vi.fn().mockReturnValue({ width: 1280, height: 720 })
-
-		const result = await getEnvironmentDetails(mockCline as Task)
-		expect(result).toContain("Active - A browser session is currently open and ready for browser_action commands")
-		expect(result).toContain("Current viewport size: 1280x720 pixels.")
 	})
 })

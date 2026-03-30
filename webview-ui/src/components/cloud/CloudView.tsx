@@ -9,7 +9,7 @@ import { vscode } from "@src/utils/vscode"
 import { telemetryClient } from "@src/utils/TelemetryClient"
 import { ToggleSwitch } from "@/components/ui/toggle-switch"
 import { renderCloudBenefitsContent } from "./CloudUpsellDialog"
-import { ArrowRight, CircleAlert, Info, Lock, TriangleAlert } from "lucide-react"
+import { ArrowRight, Info, Lock, TriangleAlert } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { Tab, TabContent } from "../common/Tab"
 import { Button } from "@/components/ui/button"
@@ -29,15 +29,9 @@ type CloudViewProps = {
 export const CloudView = ({ userInfo, isAuthenticated, cloudApiUrl, organizations = [] }: CloudViewProps) => {
 	// Hidden: Roo Code Cloud feature
 	return null
-	
+
 	const { t } = useAppTranslation()
-	const {
-		remoteControlEnabled,
-		setRemoteControlEnabled,
-		taskSyncEnabled,
-		setTaskSyncEnabled,
-		featureRoomoteControlEnabled,
-	} = useExtensionState()
+	const { taskSyncEnabled, setTaskSyncEnabled } = useExtensionState()
 	const wasAuthenticatedRef = useRef(false)
 	const timeoutRef = useRef<NodeJS.Timeout | null>(null)
 	const manualUrlInputRef = useRef<HTMLInputElement | null>(null)
@@ -147,12 +141,6 @@ export const CloudView = ({ userInfo, isAuthenticated, cloudApiUrl, organization
 		}
 	}
 
-	const handleRemoteControlToggle = () => {
-		const newValue = !remoteControlEnabled
-		setRemoteControlEnabled(newValue)
-		vscode.postMessage({ type: "remoteControlEnabled", bool: newValue })
-	}
-
 	const handleTaskSyncToggle = () => {
 		const newValue = !taskSyncEnabled
 		setTaskSyncEnabled(newValue)
@@ -180,7 +168,9 @@ export const CloudView = ({ userInfo, isAuthenticated, cloudApiUrl, organization
 									)}
 								</div>
 								{userInfo?.name && (
-									<h2 className="text-lg font-medium text-vscode-foreground my-0">{userInfo?.name}</h2>
+									<h2 className="text-lg font-medium text-vscode-foreground my-0">
+										{userInfo?.name}
+									</h2>
 								)}
 								{userInfo?.email && (
 									<p className="text-sm text-vscode-descriptionForeground my-0">{userInfo?.email}</p>
@@ -222,34 +212,6 @@ export const CloudView = ({ userInfo, isAuthenticated, cloudApiUrl, organization
 							<div className="text-vscode-descriptionForeground text-sm mt-1 ml-8">
 								{t("cloud:taskSyncDescription")}
 							</div>
-
-							{/* Remote Control Toggle - Only shown when both extensionBridgeEnabled and featureRoomoteControlEnabled are true */}
-							{userInfo?.extensionBridgeEnabled && featureRoomoteControlEnabled && (
-								<>
-									<div className="flex items-center gap-3 mt-4 mb-2">
-										<ToggleSwitch
-											checked={remoteControlEnabled}
-											onChange={handleRemoteControlToggle}
-											size="medium"
-											aria-label={t("cloud:remoteControl")}
-											data-testid="remote-control-toggle"
-											disabled={!taskSyncEnabled}
-										/>
-										<span className="font-medium text-vscode-foreground">
-											{t("cloud:remoteControl")}
-										</span>
-									</div>
-									<div className="text-vscode-descriptionForeground text-sm mt-1 mb-2 ml-8">
-										{t("cloud:remoteControlDescription")}
-										{!taskSyncEnabled && (
-											<div className="text-vscode-editorWarning-foreground mt-2">
-												<CircleAlert className="inline size-3 mr-1 mb-0.5 text-vscode-editorWarning-foreground" />
-												{t("cloud:remoteControlRequiresTaskSync")}
-											</div>
-										)}
-									</div>
-								</>
-							)}
 						</div>
 
 						<div className="text-vscode-descriptionForeground text-sm mt-4 mb-8 pl-4">

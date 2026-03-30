@@ -35,7 +35,6 @@
 		"getPublicKeyFailed": "Failed to get publicKey",
 		"loginRequestFailed": "Login request failed: {{status}}",
 		"loginFailed": "Login failed",
-		"invalidInviteCode": "Invalid invite code",
 		"getApiKeyFailed": "Failed to get apikey: {{status}}",
 		"getApiKeyFailedGeneric": "Failed to get apikey",
 		"usernamePasswordRequired": "Username and password cannot be empty",

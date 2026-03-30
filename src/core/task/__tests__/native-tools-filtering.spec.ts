@@ -1,29 +1,27 @@
-import { describe, it, expect, beforeEach, vi } from "vitest"
 import type { ModeConfig } from "@roo-code/types"
 
 describe("Native Tools Filtering by Mode", () => {
 	describe("attemptApiRequest native tool filtering", () => {
 		it("should filter native tools based on mode restrictions", async () => {
-			// This test verifies that when using native protocol, tools are filtered
-			// by mode restrictions before being sent to the API, similar to how
-			// XML tools are filtered in the system prompt.
+			// This test verifies that native tools are filtered by mode restrictions
+			// before being sent to the API.
 
 			const architectMode: ModeConfig = {
 				slug: "architect",
 				name: "Architect",
 				roleDefinition: "Test architect",
-				groups: ["read", "browser", "mcp"] as const,
+				groups: ["read", "mcp"] as const,
 			}
 
 			const codeMode: ModeConfig = {
 				slug: "code",
 				name: "Code",
 				roleDefinition: "Test code",
-				groups: ["read", "edit", "browser", "command", "mcp"] as const,
+				groups: ["read", "edit", "command", "mcp"] as const,
 			}
 
 			// Import the functions we need to test
-			const { isToolAllowedForMode } = await import("../../../shared/modes")
+			const { isToolAllowedForMode } = await import("../../tools/validateToolUse")
 			const { TOOL_GROUPS, ALWAYS_AVAILABLE_TOOLS } = await import("../../../shared/tools")
 
 			// Test architect mode - should NOT have edit tools
@@ -95,7 +93,7 @@ describe("Native Tools Filtering by Mode", () => {
 				groups: ["read"] as const,
 			}
 
-			const { isToolAllowedForMode } = await import("../../../shared/modes")
+			const { isToolAllowedForMode } = await import("../../tools/validateToolUse")
 
 			// Mode with MCP group should allow use_mcp_tool
 			expect(isToolAllowedForMode("use_mcp_tool", "test-mode-with-mcp", [modeWithMcp])).toBe(true)
@@ -112,7 +110,7 @@ describe("Native Tools Filtering by Mode", () => {
 				groups: [] as const, // No groups at all
 			}
 
-			const { isToolAllowedForMode } = await import("../../../shared/modes")
+			const { isToolAllowedForMode } = await import("../../tools/validateToolUse")
 			const { ALWAYS_AVAILABLE_TOOLS } = await import("../../../shared/tools")
 
 			// Always-available tools should work even with no groups

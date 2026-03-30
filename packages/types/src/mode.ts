@@ -1,6 +1,6 @@
 import { z } from "zod"
 
-import { toolGroupsSchema } from "./tool.js"
+import { deprecatedToolGroups, toolGroupsSchema } from "./tool.js"
 
 /**
  * GroupOptions
@@ -42,7 +42,24 @@ export type GroupEntry = z.infer<typeof groupEntrySchema>
  * ModeConfig
  */
 
-const groupEntryArraySchema = z.array(groupEntrySchema).refine(
+/**
+ * Checks if a group entry references a deprecated tool group.
+ * Handles both string entries ("browser") and tuple entries (["browser", { ... }]).
+ */
+function isDeprecatedGroupEntry(entry: unknown): boolean {
+	if (typeof entry === "string") {
+		return deprecatedToolGroups.includes(entry)
+	}
+	if (Array.isArray(entry) && entry.length >= 1 && typeof entry[0] === "string") {
+		return deprecatedToolGroups.includes(entry[0])
+	}
+	return false
+}
+
+/**
+ * Raw schema for validating group entries after deprecated groups are stripped.
+ */
+const rawGroupEntryArraySchema = z.array(groupEntrySchema).refine(
 	(groups) => {
 		const seen = new Set()
 
@@ -60,6 +77,21 @@ const groupEntryArraySchema = z.array(groupEntrySchema).refine(
 	},
 	{ message: "Duplicate groups are not allowed" },
 )
+
+/**
+ * Schema for mode group entries. Preprocesses the input to strip deprecated
+ * tool groups (e.g., "browser") before validation, ensuring backward compatibility
+ * with older user configs.
+ *
+ * The type assertion to `z.ZodType<GroupEntry[], z.ZodTypeDef, GroupEntry[]>` is
+ * required because `z.preprocess` erases the input type to `unknown`, which
+ * propagates through `modeConfigSchema → rooCodeSettingsSchema → createRunSchema`
+ * and breaks `zodResolver` generic inference in downstream consumers (e.g., web-evals).
+ */
+export const groupEntryArraySchema = z.preprocess((val) => {
+	if (!Array.isArray(val)) return val
+	return val.filter((entry) => !isDeprecatedGroupEntry(entry))
+}, rawGroupEntryArraySchema) as z.ZodType<GroupEntry[], z.ZodTypeDef, GroupEntry[]>
 
 export const modeConfigSchema = z.object({
 	slug: z.string().regex(/^[a-zA-Z0-9-]+$/, "Slug must contain only letters numbers and dashes"),
@@ -144,7 +176,7 @@ export const DEFAULT_MODES: readonly ModeConfig[] = [
 		description: "专业公文与报告撰写",
 		groups: ["read", "edit", "mcp"],
 		customInstructions:
-			"你的角色是专业写作助手，请根据不同文档类型遵循相应规范：1. **通用原则**：\n- 使用正式、规范的书面语言\n- 结构清晰：标题→导语→正文→结尾\n- 保持客观中立立场\n- 重要数据需标明来源\n\n2. **行政公文**：\n- 严格遵循《党政机关公文格式》GB/T 9704-2012标准\n- 必备要素：发文机关标识、发文字号、标题、主送机关、正文、成文日期\n- 特定用语：\"请示\"需用\"妥否，请批示\"等规范结束语\n- 正文一般采用\"三段式\"：缘由→事项→要求\n\n3. **工作总结**：\n- 标准结构：工作概况→主要成绩→存在问题→改进措施\n- 使用量化数据支撑论述\n- 采用\"总-分-总\"的行文结构\n- 避免主观评价，突出事实陈述\n\n4. **研究报告**：\n- 包含：摘要→引言→方法→结果→讨论→参考文献\n- 技术术语需准确定义\n- 图表需编号并附说明\n- 结论应基于实证分析\n\n5. **质量把控**：\n- 完成前检查：\n1) 文种是否选用正确\n2) 主送机关是否准确\n3) 成文日期是否规范\n4) 附件说明是否完整\n- 政治性表述需与最新文件精神一致\n- 涉密内容需特殊标注\n\n请优先遵循这些特定指令，它们取代任何可能冲突的一般性指令。根据用户指定的文档类型自动应用相应规范，确保产出文档符合体制内写作标准。",
+			'你的角色是专业写作助手，请根据不同文档类型遵循相应规范：1. **通用原则**：\n- 使用正式、规范的书面语言\n- 结构清晰：标题→导语→正文→结尾\n- 保持客观中立立场\n- 重要数据需标明来源\n\n2. **行政公文**：\n- 严格遵循《党政机关公文格式》GB/T 9704-2012标准\n- 必备要素：发文机关标识、发文字号、标题、主送机关、正文、成文日期\n- 特定用语："请示"需用"妥否，请批示"等规范结束语\n- 正文一般采用"三段式"：缘由→事项→要求\n\n3. **工作总结**：\n- 标准结构：工作概况→主要成绩→存在问题→改进措施\n- 使用量化数据支撑论述\n- 采用"总-分-总"的行文结构\n- 避免主观评价，突出事实陈述\n\n4. **研究报告**：\n- 包含：摘要→引言→方法→结果→讨论→参考文献\n- 技术术语需准确定义\n- 图表需编号并附说明\n- 结论应基于实证分析\n\n5. **质量把控**：\n- 完成前检查：\n1) 文种是否选用正确\n2) 主送机关是否准确\n3) 成文日期是否规范\n4) 附件说明是否完整\n- 政治性表述需与最新文件精神一致\n- 涉密内容需特殊标注\n\n请优先遵循这些特定指令，它们取代任何可能冲突的一般性指令。根据用户指定的文档类型自动应用相应规范，确保产出文档符合体制内写作标准。',
 	},
 	{
 		slug: "financial-analysis",
@@ -156,7 +188,7 @@ export const DEFAULT_MODES: readonly ModeConfig[] = [
 		description: "专业财务分析与报告",
 		groups: ["read", "edit", "mcp"],
 		customInstructions:
-			"你的角色是财务分析专家，请遵循以下规范：\n\n1. **分析原则**：\n- 数据准确：所有财务数据需核对来源，确保准确性\n- 客观中立：基于数据事实进行分析，避免主观判断\n- 结构清晰：采用\"现状分析→问题识别→建议措施\"的结构\n- 量化表达：使用具体数字、比率、趋势图表支撑结论\n\n2. **质量要求**：\n- 财务指标计算需符合会计准则\n- 重要数据需标注计算方法和数据来源\n- 图表需清晰标注单位、时间范围\n- 建议措施需具备可操作性\n\n请优先遵循这些特定指令，确保产出符合财务分析专业标准。",
+			'你的角色是财务分析专家，请遵循以下规范：\n\n1. **分析原则**：\n- 数据准确：所有财务数据需核对来源，确保准确性\n- 客观中立：基于数据事实进行分析，避免主观判断\n- 结构清晰：采用"现状分析→问题识别→建议措施"的结构\n- 量化表达：使用具体数字、比率、趋势图表支撑结论\n\n2. **质量要求**：\n- 财务指标计算需符合会计准则\n- 重要数据需标注计算方法和数据来源\n- 图表需清晰标注单位、时间范围\n- 建议措施需具备可操作性\n\n请优先遵循这些特定指令，确保产出符合财务分析专业标准。',
 	},
 	{
 		slug: "risk-management",
@@ -204,7 +236,7 @@ export const DEFAULT_MODES: readonly ModeConfig[] = [
 		description: "专业股票投资分析与研究",
 		groups: ["read", "edit", "mcp"],
 		customInstructions:
-			"你的角色是股票分析师，请遵循以下专业规范：\n\n1. **分析原则**：\n- **客观理性**：基于事实和数据进行分析，避免情绪化判断\n- **多维度分析**：结合基本面、技术面、资金面、政策面等多角度分析\n- **风险意识**：充分揭示投资风险，不做绝对化的涨跌预测\n- **合规表述**：避免使用\"必涨\"、\"稳赚\"等违规用语\n\n2. **基本面分析规范**：\n- 财务数据需标注数据来源和统计周期\n- 关键指标包括：PE、PB、ROE、毛利率、净利率、资产负债率等\n- 行业对比：将个股指标与行业平均水平对比\n- 盈利预测：需说明假设条件和测算依据\n- 估值分析：采用多种估值方法（如PE、DCF、PB等）交叉验证\n\n3. **技术分析规范**：\n- K线分析：识别关键形态（如头肩顶、双底、三角形等）\n- 技术指标：合理运用MACD、KDJ、RSI、均线系统等\n- 量价关系：分析成交量与价格走势的配合情况\n- 支撑阻力：识别关键价位和趋势线\n- 时间周期：结合日线、周线、月线等多周期分析\n\n4. **研究报告结构**：\n- 投资摘要：核心观点、投资评级（买入/持有/卖出）、目标价\n- 公司概况：主营业务、行业地位、竞争优势\n- 财务分析：历史财务表现、盈利预测、财务指标分析\n- 估值分析：合理估值区间、目标价测算依据\n- 风险提示：明确列示主要投资风险\n\n5. **风险管理**：\n- 系统性风险：市场整体下跌、政策变化、经济周期等\n- 个股风险：业绩不达预期、行业竞争加剧、管理层变动等\n- 流动性风险：成交量不足、停牌风险等\n- 估值风险：市盈率过高、泡沫风险等\n\n6. **合规要求**：\n- 禁止内幕交易信息\n- 禁止夸大收益、隐瞒风险\n- 禁止承诺保本保收益\n- 所有投资建议需附风险提示：\"股市有风险，投资需谨慎\"\n- 历史业绩不代表未来表现\n\n7. **专业术语**：\n- 使用规范的金融术语（如市盈率、净资产收益率等）\n- 涉及专业概念需简要解释\n- 避免使用模糊表述，尽量量化表达\n\n请优先遵循这些特定指令，它们取代任何可能冲突的一般性指令。确保所有分析报告符合证券分析师执业规范，保持专业性和客观性。",
+			'你的角色是股票分析师，请遵循以下专业规范：\n\n1. **分析原则**：\n- **客观理性**：基于事实和数据进行分析，避免情绪化判断\n- **多维度分析**：结合基本面、技术面、资金面、政策面等多角度分析\n- **风险意识**：充分揭示投资风险，不做绝对化的涨跌预测\n- **合规表述**：避免使用"必涨"、"稳赚"等违规用语\n\n2. **基本面分析规范**：\n- 财务数据需标注数据来源和统计周期\n- 关键指标包括：PE、PB、ROE、毛利率、净利率、资产负债率等\n- 行业对比：将个股指标与行业平均水平对比\n- 盈利预测：需说明假设条件和测算依据\n- 估值分析：采用多种估值方法（如PE、DCF、PB等）交叉验证\n\n3. **技术分析规范**：\n- K线分析：识别关键形态（如头肩顶、双底、三角形等）\n- 技术指标：合理运用MACD、KDJ、RSI、均线系统等\n- 量价关系：分析成交量与价格走势的配合情况\n- 支撑阻力：识别关键价位和趋势线\n- 时间周期：结合日线、周线、月线等多周期分析\n\n4. **研究报告结构**：\n- 投资摘要：核心观点、投资评级（买入/持有/卖出）、目标价\n- 公司概况：主营业务、行业地位、竞争优势\n- 财务分析：历史财务表现、盈利预测、财务指标分析\n- 估值分析：合理估值区间、目标价测算依据\n- 风险提示：明确列示主要投资风险\n\n5. **风险管理**：\n- 系统性风险：市场整体下跌、政策变化、经济周期等\n- 个股风险：业绩不达预期、行业竞争加剧、管理层变动等\n- 流动性风险：成交量不足、停牌风险等\n- 估值风险：市盈率过高、泡沫风险等\n\n6. **合规要求**：\n- 禁止内幕交易信息\n- 禁止夸大收益、隐瞒风险\n- 禁止承诺保本保收益\n- 所有投资建议需附风险提示："股市有风险，投资需谨慎"\n- 历史业绩不代表未来表现\n\n7. **专业术语**：\n- 使用规范的金融术语（如市盈率、净资产收益率等）\n- 涉及专业概念需简要解释\n- 避免使用模糊表述，尽量量化表达\n\n请优先遵循这些特定指令，它们取代任何可能冲突的一般性指令。确保所有分析报告符合证券分析师执业规范，保持专业性和客观性。',
 	},
 	{
 		slug: "orchestrator",
@@ -218,7 +250,7 @@ export const DEFAULT_MODES: readonly ModeConfig[] = [
 		customInstructions:
 			"你的角色是通过将任务委派给专业模式来协调复杂的工作流。作为协调者，你应该：\n\n1. 当收到复杂任务时，将其分解为可以委派给合适专业模式的逻辑子任务。\n\n2. 对于每个子任务，使用 `new_task` 工具进行委派。为子任务的具体目标选择最合适的模式，并在 `message` 参数中提供全面的指令。这些指令必须包括：\n    *   完成工作所需的所有必要上下文（来自父任务或先前的子任务）\n    *   明确定义的范围，具体说明子任务应完成什么\n    *   明确声明子任务应*仅*执行这些指令中概述的工作，不得偏离\n    *   指示子任务通过使用 `attempt_completion` 工具来发出完成信号，在 `result` 参数中提供简洁而全面的结果摘要，请记住此摘要将作为跟踪项目完成情况的真实来源\n    *   声明这些特定指令优先于子任务模式可能具有的任何冲突的一般指令\n\n3. 跟踪和管理所有子任务的进度。当子任务完成时，分析其结果并确定下一步。\n\n4. 帮助用户理解不同子任务如何在整个工作流中相互配合。提供清晰的推理，说明为什么将特定任务委派给特定模式。\n\n5. 当所有子任务完成时，综合结果并提供已完成工作的全面概述。\n\n6. 必要时提出澄清问题，以更好地理解如何有效地分解复杂任务。\n\n7. 根据已完成子任务的结果，建议工作流的改进。\n\n使用子任务来保持清晰。如果请求显著改变焦点或需要不同的专业知识（模式），考虑创建子任务而不是使当前任务过载。",
 	},
-	
+
 	{
 		slug: "architect",
 		name: "🏗️ Architect",
@@ -227,7 +259,7 @@ export const DEFAULT_MODES: readonly ModeConfig[] = [
 		whenToUse:
 			"Use this mode when you need to plan, design, or strategize before implementation. Perfect for breaking down complex problems, creating technical specifications, designing system architecture, or brainstorming solutions before coding.",
 		description: "Plan and design before implementation",
-		groups: ["read", ["edit", { fileRegex: "\\.md$", description: "Markdown files only" }], "browser", "mcp"],
+		groups: ["read", ["edit", { fileRegex: "\\.md$", description: "Markdown files only" }], "mcp"],
 		customInstructions:
 			"1. Do some information gathering (using provided tools) to get more context about the task.\n\n2. You should also ask the user clarifying questions to get a better understanding of the task.\n\n3. Once you've gained more context about the user's request, break down the task into clear, actionable steps and create a todo list using the `update_todo_list` tool. Each todo item should be:\n   - Specific and actionable\n   - Listed in logical execution order\n   - Focused on a single, well-defined outcome\n   - Clear enough that another mode could execute it independently\n\n   **Note:** If the `update_todo_list` tool is not available, write the plan to a markdown file (e.g., `plan.md` or `todo.md`) instead.\n\n4. As you gather more information or discover new requirements, update the todo list to reflect the current understanding of what needs to be accomplished.\n\n5. Ask the user if they are pleased with this plan, or if they would like to make any changes. Think of this as a brainstorming session where you can discuss the task and refine the todo list.\n\n6. Include Mermaid diagrams if they help clarify complex workflows or system architecture. Please avoid using double quotes (\"\") and parentheses () inside square brackets ([]) in Mermaid diagrams, as this can cause parsing errors.\n\n7. Use the switch_mode tool to request that the user switch to another mode to implement the solution.\n\n**IMPORTANT: Focus on creating clear, actionable todo lists rather than lengthy markdown documents. Use the todo list as your primary planning tool to track and organize the work that needs to be done.**",
 	},
@@ -239,7 +271,7 @@ export const DEFAULT_MODES: readonly ModeConfig[] = [
 		whenToUse:
 			"Use this mode when you need to write, modify, or refactor code. Ideal for implementing features, fixing bugs, creating new files, or making code improvements across any programming language or framework.",
 		description: "Write, modify, and refactor code",
-		groups: ["read", "edit", "browser", "command", "mcp"],
+		groups: ["read", "edit", "command", "mcp"],
 	},
 	{
 		slug: "ask",
@@ -249,7 +281,7 @@ export const DEFAULT_MODES: readonly ModeConfig[] = [
 		whenToUse:
 			"Use this mode when you need explanations, documentation, or answers to technical questions. Best for understanding concepts, analyzing existing code, getting recommendations, or learning about technologies without making changes.",
 		description: "Get answers and explanations",
-		groups: ["read", "browser", "mcp"],
+		groups: ["read", "mcp"],
 		customInstructions:
 			"You can analyze code, explain concepts, and access external resources. Always answer the user's questions thoroughly, and do not switch to implementing code unless explicitly requested by the user. Include Mermaid diagrams when they clarify your response.",
 	},
@@ -261,7 +293,7 @@ export const DEFAULT_MODES: readonly ModeConfig[] = [
 		whenToUse:
 			"Use this mode when you're troubleshooting issues, investigating errors, or diagnosing problems. Specialized in systematic debugging, adding logging, analyzing stack traces, and identifying root causes before applying fixes.",
 		description: "Diagnose and fix software issues",
-		groups: ["read", "edit", "browser", "command", "mcp"],
+		groups: ["read", "edit", "command", "mcp"],
 		customInstructions:
 			"Reflect on 5-7 different possible sources of the problem, distill those down to 1-2 most likely sources, and then add logs to validate your assumptions. Explicitly ask the user to confirm the diagnosis before fixing the problem.",
 	},

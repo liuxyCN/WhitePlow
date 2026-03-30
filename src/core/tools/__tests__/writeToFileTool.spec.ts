@@ -106,11 +106,11 @@ describe("writeToFileTool", () => {
 	let mockAskApproval: ReturnType<typeof vi.fn>
 	let mockHandleError: ReturnType<typeof vi.fn>
 	let mockPushToolResult: ReturnType<typeof vi.fn>
-	let mockRemoveClosingTag: ReturnType<typeof vi.fn>
 	let toolResult: ToolResponse | undefined
 
 	beforeEach(() => {
 		vi.clearAllMocks()
+		writeToFileTool.resetPartialState()
 
 		mockedPathResolve.mockReturnValue(absoluteFilePath)
 		mockedFileExistsAtPath.mockResolvedValue(false)
@@ -183,7 +183,6 @@ describe("writeToFileTool", () => {
 
 		mockAskApproval = vi.fn().mockResolvedValue(true)
 		mockHandleError = vi.fn().mockResolvedValue(undefined)
-		mockRemoveClosingTag = vi.fn((tag, content) => content)
 
 		toolResult = undefined
 	})
@@ -216,6 +215,10 @@ describe("writeToFileTool", () => {
 				content: testContent,
 				...params,
 			},
+			nativeArgs: {
+				path: (params.path ?? testFilePath) as any,
+				content: (params.content ?? testContent) as any,
+			},
 			partial: isPartial,
 		}
 
@@ -227,8 +230,6 @@ describe("writeToFileTool", () => {
 			askApproval: mockAskApproval,
 			handleError: mockHandleError,
 			pushToolResult: mockPushToolResult,
-			removeClosingTag: mockRemoveClosingTag,
-			toolProtocol: "xml",
 		})
 
 		return toolResult
@@ -278,10 +279,14 @@ describe("writeToFileTool", () => {
 		)
 
 		it.skipIf(process.platform === "win32")(
-			"creates parent directories early when file does not exist (partial)",
+			"creates parent directories when path has stabilized (partial)",
 			async () => {
+				// First call - path not yet stabilized
 				await executeWriteFileTool({}, { fileExists: false, isPartial: true })
+				expect(mockedCreateDirectoriesForFile).not.toHaveBeenCalled()
 
+				// Second call with same path - path is now stabilized
+				await executeWriteFileTool({}, { fileExists: false, isPartial: true })
 				expect(mockedCreateDirectoriesForFile).toHaveBeenCalledWith(absoluteFilePath)
 			},
 		)
@@ -394,9 +399,14 @@ describe("writeToFileTool", () => {
 			expect(mockCline.diffViewProvider.open).not.toHaveBeenCalled()
 		})
 
-		it("streams content updates during partial execution", async () => {
+		it("streams content updates during partial execution after path stabilizes", async () => {
+			// First call - path not yet stabilized, early return (no file operations)
 			await executeWriteFileTool({}, { isPartial: true })
+			expect(mockCline.ask).not.toHaveBeenCalled()
+			expect(mockCline.diffViewProvider.open).not.toHaveBeenCalled()
 
+			// Second call with same path - path is now stabilized, file operations proceed
+			await executeWriteFileTool({}, { isPartial: true })
 			expect(mockCline.ask).toHaveBeenCalled()
 			expect(mockCline.diffViewProvider.open).toHaveBeenCalledWith(testFilePath)
 			expect(mockCline.diffViewProvider.update).toHaveBeenCalledWith(testContent, false)
@@ -442,11 +452,15 @@ describe("writeToFileTool", () => {
 			expect(mockCline.diffViewProvider.reset).toHaveBeenCalled()
 		})
 
-		it("handles partial streaming errors", async () => {
+		it("handles partial streaming errors after path stabilizes", async () => {
 			mockCline.diffViewProvider.open.mockRejectedValue(new Error("Open failed"))
 
+			// First call - path not yet stabilized, no error yet
 			await executeWriteFileTool({}, { isPartial: true })
+			expect(mockHandleError).not.toHaveBeenCalled()
 
+			// Second call with same path - path is now stabilized, error occurs
+			await executeWriteFileTool({}, { isPartial: true })
 			expect(mockHandleError).toHaveBeenCalledWith("handling partial write_to_file", expect.any(Error))
 		})
 	})

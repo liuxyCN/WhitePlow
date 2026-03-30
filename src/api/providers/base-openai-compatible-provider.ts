@@ -4,7 +4,7 @@ import OpenAI from "openai"
 import type { ModelInfo } from "@roo-code/types"
 
 import { type ApiHandlerOptions, getModelMaxOutputTokens } from "../../shared/api"
-import { XmlMatcher } from "../../utils/xml-matcher"
+import { TagMatcher } from "../../utils/tag-matcher"
 import { ApiStream, ApiStreamUsageChunk } from "../transform/stream"
 import { convertToOpenAiMessages } from "../transform/openai-format"
 
@@ -84,7 +84,7 @@ export abstract class BaseOpenAiCompatibleProvider<ModelName extends string>
 				format: "openai",
 			}) ?? undefined
 
-		const temperature = this.options.modelTemperature ?? this.defaultTemperature
+		const temperature = this.options.modelTemperature ?? info.defaultTemperature ?? this.defaultTemperature
 
 		const params: OpenAI.Chat.Completions.ChatCompletionCreateParamsStreaming = {
 			model,
@@ -93,11 +93,9 @@ export abstract class BaseOpenAiCompatibleProvider<ModelName extends string>
 			messages: [{ role: "system", content: systemPrompt }, ...convertToOpenAiMessages(messages)],
 			stream: true,
 			stream_options: { include_usage: true },
-			...(metadata?.tools && { tools: this.convertToolsForOpenAI(metadata.tools) }),
-			...(metadata?.tool_choice && { tool_choice: metadata.tool_choice }),
-			...(metadata?.toolProtocol === "native" && {
-				parallel_tool_calls: metadata.parallelToolCalls ?? false,
-			}),
+			tools: this.convertToolsForOpenAI(metadata?.tools),
+			tool_choice: metadata?.tool_choice,
+			parallel_tool_calls: metadata?.parallelToolCalls ?? true,
 		}
 
 		// Add thinking parameter if reasoning is enabled and model supports it
@@ -119,7 +117,7 @@ export abstract class BaseOpenAiCompatibleProvider<ModelName extends string>
 	): ApiStream {
 		const stream = await this.createStream(systemPrompt, messages, metadata)
 
-		const matcher = new XmlMatcher(
+		const matcher = new TagMatcher(
 			"think",
 			(chunk) =>
 				({
@@ -129,7 +127,10 @@ export abstract class BaseOpenAiCompatibleProvider<ModelName extends string>
 		)
 
 		let lastUsage: OpenAI.CompletionUsage | undefined
-		let reasoningBuffer = "" // Buffer for accumulating reasoning content
+		const activeToolCallIds = new Set<string>()
+		// Kimi and some OpenAI-compatible APIs send tool id only on the first tool_calls delta;
+		// continuation chunks use id: null with the same index. Resolve id for downstream parsing.
+		const toolCallIdByIndex = new Map<number, string>()
 
 		for await (const chunk of stream) {
 			// Check for provider-specific error responses (e.g., MiniMax base_resp)
@@ -141,6 +142,7 @@ export abstract class BaseOpenAiCompatibleProvider<ModelName extends string>
 			}
 
 			const delta = chunk.choices?.[0]?.delta
+			const finishReason = chunk.choices?.[0]?.finish_reason
 
 			if (delta?.content) {
 				for (const processedChunk of matcher.update(delta.content)) {
@@ -152,13 +154,8 @@ export abstract class BaseOpenAiCompatibleProvider<ModelName extends string>
 				for (const key of ["reasoning_content", "reasoning"] as const) {
 					if (key in delta) {
 						const reasoning_content = ((delta as any)[key] as string | undefined) || ""
-						if (reasoning_content) {
-							// Accumulate for later tool extraction
-							reasoningBuffer += reasoning_content
-							// Also yield immediately for real-time display
-							if (reasoning_content.trim()) {
-								yield { type: "reasoning", text: reasoning_content }
-							}
+						if (reasoning_content?.trim()) {
+							yield { type: "reasoning", text: reasoning_content }
 						}
 						break
 					}
@@ -168,32 +165,38 @@ export abstract class BaseOpenAiCompatibleProvider<ModelName extends string>
 			// Emit raw tool call chunks - NativeToolCallParser handles state management
 			if (delta?.tool_calls) {
 				for (const toolCall of delta.tool_calls) {
+					const idx = toolCall.index ?? 0
+					if (toolCall.id) {
+						toolCallIdByIndex.set(idx, toolCall.id)
+						activeToolCallIds.add(toolCall.id)
+					}
+					const resolvedId = toolCall.id ?? toolCallIdByIndex.get(idx)
 					yield {
 						type: "tool_call_partial",
-						index: toolCall.index,
-						id: toolCall.id,
+						index: idx,
+						id: resolvedId,
 						name: toolCall.function?.name,
 						arguments: toolCall.function?.arguments,
 					}
 				}
 			}
 
+			// Emit tool_call_end events when finish_reason is "tool_calls"
+			// This ensures tool calls are finalized even if the stream doesn't properly close
+			if (finishReason === "tool_calls") {
+				const idsToFinish =
+					activeToolCallIds.size > 0 ? [...activeToolCallIds] : [...new Set(toolCallIdByIndex.values())]
+				if (idsToFinish.length > 0) {
+					for (const id of idsToFinish) {
+						yield { type: "tool_call_end", id }
+					}
+					activeToolCallIds.clear()
+					toolCallIdByIndex.clear()
+				}
+			}
+
 			if (chunk.usage) {
 				lastUsage = chunk.usage
-			}
-		}
-
-		// Process accumulated reasoning content after stream completes
-		// Extract and yield only tool calls (text chunks) for execution
-		// Reasoning was already displayed during streaming
-		if (reasoningBuffer.trim()) {
-			const chunks = this.separateToolCallsFromReasoning(reasoningBuffer)
-			// Only yield text chunks (tool calls) for execution
-			// Reasoning was already streamed in real-time above
-			for (const processedChunk of chunks) {
-				if (processedChunk.type === "text") {
-					yield processedChunk
-				}
 			}
 		}
 
@@ -205,73 +208,6 @@ export abstract class BaseOpenAiCompatibleProvider<ModelName extends string>
 		for (const processedChunk of matcher.final()) {
 			yield processedChunk
 		}
-	}
-
-	/**
-	 * Separates tool call XML tags from reasoning content.
-	 * Tool calls should be returned as text, while other content remains as reasoning.
-	 * 
-	 * Uses a generic approach to match XML-style tool calls while excluding known reasoning tags.
-	 */
-	private separateToolCallsFromReasoning(
-		content: string,
-	): Array<{ type: "reasoning" | "text"; text: string }> {
-		// Tags that should remain as reasoning content (not treated as tool calls)
-		const reasoningTags = ["think", "thinking", "thoughts", "analysis"]
-		const reasoningPattern = reasoningTags.join("|")
-
-		// Generic pattern to match XML-style tags (any tag that looks like a tool call)
-		// Matches: <tag_name>...</tag_name> or <tag_name attr="value">...</tag_name>
-		// Excludes: known reasoning tags
-		const regex = new RegExp(
-			`<([a-z_][a-z0-9_]*)(?:\\s[^>]*)?>([\\s\\S]*?)<\\/\\1>`,
-			"gi",
-		)
-
-		const result: Array<{ type: "reasoning" | "text"; text: string }> = []
-		let lastIndex = 0
-
-		// Find all potential tool call matches
-		let match: RegExpExecArray | null
-		while ((match = regex.exec(content)) !== null) {
-			const tagName = match[1].toLowerCase()
-			const matchStart = match.index
-			const matchEnd = regex.lastIndex
-
-			// Skip if this is a known reasoning tag
-			if (reasoningTags.includes(tagName)) {
-				continue
-			}
-
-			// Add any reasoning content before this tool call
-			if (matchStart > lastIndex) {
-				const reasoningText = content.slice(lastIndex, matchStart)
-				if (reasoningText.trim()) {
-					result.push({ type: "reasoning", text: reasoningText })
-				}
-			}
-
-			// Add the tool call as text
-			const toolCallText = match[0]
-			result.push({ type: "text", text: toolCallText })
-
-			lastIndex = matchEnd
-		}
-
-		// Add any remaining reasoning content after the last tool call
-		if (lastIndex < content.length) {
-			const remainingText = content.slice(lastIndex)
-			if (remainingText.trim()) {
-				result.push({ type: "reasoning", text: remainingText })
-			}
-		}
-
-		// If no tool calls were found, return the entire content as reasoning
-		if (result.length === 0 && content.trim()) {
-			result.push({ type: "reasoning", text: content })
-		}
-
-		return result
 	}
 
 	protected processUsageMetrics(usage: any, modelInfo?: any): ApiStreamUsageChunk {

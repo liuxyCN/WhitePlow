@@ -3,7 +3,7 @@ import { VSCodeLink } from "@vscode/webview-ui-toolkit/react"
 import { Trans } from "react-i18next"
 import { ChevronsUpDown, Check, X, Info } from "lucide-react"
 
-import type { ProviderSettings, ModelInfo, OrganizationAllowList } from "@roo-code/types"
+import { type ProviderSettings, type ModelInfo, type OrganizationAllowList, isRetiredProvider } from "@roo-code/types"
 
 import { useAppTranslation } from "@src/i18n/TranslationContext"
 import { useSelectedModel } from "@/components/ui/hooks/useSelectedModel"
@@ -29,14 +29,16 @@ import { ApiErrorMessage } from "./ApiErrorMessage"
 type ModelIdKey = keyof Pick<
 	ProviderSettings,
 	| "openRouterModelId"
-	| "unboundModelId"
 	| "requestyModelId"
+	| "unboundModelId"
 	| "openAiModelId"
 	| "litellmModelId"
-	| "deepInfraModelId"
-	| "ioIntelligenceModelId"
 	| "vercelAiGatewayModelId"
 	| "apiModelId"
+	| "ollamaModelId"
+	| "lmStudioModelId"
+	| "lmStudioDraftModelId"
+	| "vsCodeLmModelSelector"
 >
 
 interface ModelPickerProps {
@@ -51,9 +53,18 @@ interface ModelPickerProps {
 		value: ProviderSettings[K],
 		isUserAction?: boolean,
 	) => void
-	organizationAllowList: OrganizationAllowList
+	organizationAllowList?: OrganizationAllowList
 	errorMessage?: string
 	simplifySettings?: boolean
+	hidePricing?: boolean
+	/** Label for the model picker field - defaults to "Model" */
+	label?: string
+	/** Transform model ID string to the value stored in configuration (for compound types like VSCodeLM selector) */
+	valueTransform?: (modelId: string) => unknown
+	/** Transform stored configuration value back to display string */
+	displayTransform?: (value: unknown) => string
+	/** Callback when model changes - useful for side effects like clearing related fields */
+	onModelChange?: (modelId: string) => void
 }
 
 export const ModelPicker = ({
@@ -67,6 +78,11 @@ export const ModelPicker = ({
 	organizationAllowList,
 	errorMessage,
 	simplifySettings,
+	hidePricing,
+	label,
+	valueTransform,
+	displayTransform,
+	onModelChange,
 }: ModelPickerProps) => {
 	const { t } = useAppTranslation()
 
@@ -79,8 +95,23 @@ export const ModelPicker = ({
 
 	const { id: selectedModelId, info: selectedModelInfo } = useSelectedModel(apiConfiguration)
 
+	// Get the display value for the current selection
+	// If displayTransform is provided, use it to convert the stored value to a display string
+	const displayValue = useMemo(() => {
+		if (displayTransform) {
+			const storedValue = apiConfiguration[modelIdKey]
+			return storedValue ? displayTransform(storedValue) : undefined
+		}
+		return selectedModelId
+	}, [displayTransform, apiConfiguration, modelIdKey, selectedModelId])
+
+	const activeProvider =
+		apiConfiguration.apiProvider && isRetiredProvider(apiConfiguration.apiProvider)
+			? undefined
+			: apiConfiguration.apiProvider
+
 	const modelIds = useMemo(() => {
-		const filteredModels = filterModels(models, apiConfiguration.apiProvider, organizationAllowList)
+		const filteredModels = filterModels(models, activeProvider, organizationAllowList)
 
 		// Include the currently selected model even if deprecated (so users can see what they have selected)
 		// But filter out other deprecated models from being newly selectable
@@ -100,7 +131,7 @@ export const ModelPicker = ({
 			)
 
 		return Object.keys(availableModels).sort((a, b) => a.localeCompare(b))
-	}, [models, apiConfiguration.apiProvider, organizationAllowList, selectedModelId])
+	}, [models, activeProvider, organizationAllowList, selectedModelId])
 
 	const [searchValue, setSearchValue] = useState("")
 
@@ -111,7 +142,13 @@ export const ModelPicker = ({
 			}
 
 			setOpen(false)
-			setApiConfigurationField(modelIdKey, modelId)
+
+			// Apply value transform if provided (e.g., for VSCodeLM selector)
+			const valueToStore = valueTransform ? valueTransform(modelId) : modelId
+			setApiConfigurationField(modelIdKey, valueToStore as ProviderSettings[ModelIdKey])
+
+			// Call the optional change callback
+			onModelChange?.(modelId)
 
 			// Clear any existing timeout
 			if (selectTimeoutRef.current) {
@@ -121,7 +158,7 @@ export const ModelPicker = ({
 			// Delay to ensure the popover is closed before setting the search value.
 			selectTimeoutRef.current = setTimeout(() => setSearchValue(""), 100)
 		},
-		[modelIdKey, setApiConfigurationField],
+		[modelIdKey, setApiConfigurationField, valueTransform, onModelChange],
 	)
 
 	const onOpenChange = useCallback((open: boolean) => {
@@ -171,7 +208,7 @@ export const ModelPicker = ({
 	return (
 		<>
 			<div>
-				<label className="block font-medium mb-1">{t("settings:modelPicker.label")}</label>
+				<label className="block font-medium mb-1">{label ?? t("settings:modelPicker.label")}</label>
 				<Popover open={open} onOpenChange={onOpenChange}>
 					<PopoverTrigger asChild>
 						<Button
@@ -180,7 +217,7 @@ export const ModelPicker = ({
 							aria-expanded={open}
 							className="w-full justify-between"
 							data-testid="model-picker-button">
-							<div className="truncate">{selectedModelId ?? t("settings:common.select")}</div>
+							<div className="truncate">{displayValue ?? t("settings:common.select")}</div>
 							<ChevronsUpDown className="opacity-50" />
 						</Button>
 					</PopoverTrigger>
@@ -225,7 +262,7 @@ export const ModelPicker = ({
 											<Check
 												className={cn(
 													"size-4 p-0.5 ml-auto",
-													model === selectedModelId ? "opacity-100" : "opacity-0",
+													model === displayValue ? "opacity-100" : "opacity-0",
 												)}
 											/>
 										</CommandItem>
@@ -262,20 +299,23 @@ export const ModelPicker = ({
 							modelInfo={selectedModelInfo}
 							isDescriptionExpanded={isDescriptionExpanded}
 							setIsDescriptionExpanded={setIsDescriptionExpanded}
+							hidePricing={hidePricing}
 						/>
 					)}
-					<div className="text-sm text-vscode-descriptionForeground">
-						<Trans
-							i18nKey="settings:modelPicker.automaticFetch"
-							components={{
-								serviceLink: <VSCodeLink href={serviceUrl} className="text-sm" />,
-								defaultModelLink: (
-									<VSCodeLink onClick={() => onSelect(defaultModelId)} className="text-sm" />
-								),
-							}}
-							values={{ serviceName, defaultModelId }}
-						/>
-					</div>
+					{!hidePricing && (
+						<div className="text-sm text-vscode-descriptionForeground">
+							<Trans
+								i18nKey="settings:modelPicker.automaticFetch"
+								components={{
+									serviceLink: <VSCodeLink href={serviceUrl} className="text-sm" />,
+									defaultModelLink: (
+										<VSCodeLink onClick={() => onSelect(defaultModelId)} className="text-sm" />
+									),
+								}}
+								values={{ serviceName, defaultModelId }}
+							/>
+						</div>
+					)}
 				</div>
 			)}
 		</>

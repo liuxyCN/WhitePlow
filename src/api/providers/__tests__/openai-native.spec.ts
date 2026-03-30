@@ -1,6 +1,19 @@
 // npx vitest run api/providers/__tests__/openai-native.spec.ts
 
+const mockCaptureException = vitest.fn()
+
+vitest.mock("@roo-code/telemetry", () => ({
+	TelemetryService: {
+		instance: {
+			captureException: (...args: unknown[]) => mockCaptureException(...args),
+		},
+	},
+}))
+
 import { Anthropic } from "@anthropic-ai/sdk"
+import OpenAI from "openai"
+
+import { ApiProviderError } from "@roo-code/types"
 
 import { OpenAiNativeHandler } from "../openai-native"
 import { ApiHandlerOptions } from "../../../shared/api"
@@ -37,6 +50,7 @@ describe("OpenAiNativeHandler", () => {
 		}
 		handler = new OpenAiNativeHandler(mockOptions)
 		mockResponsesCreate.mockClear()
+		mockCaptureException.mockClear()
 		// Clear fetch mock if it exists
 		if ((global as any).fetch) {
 			delete (global as any).fetch
@@ -62,6 +76,28 @@ describe("OpenAiNativeHandler", () => {
 				openAiNativeApiKey: "",
 			})
 			expect(handlerWithoutKey).toBeInstanceOf(OpenAiNativeHandler)
+		})
+
+		it("should pass undefined baseURL when openAiNativeBaseUrl is empty string", () => {
+			;(OpenAI as unknown as ReturnType<typeof vitest.fn>).mockClear()
+			new OpenAiNativeHandler({
+				apiModelId: "gpt-4.1",
+				openAiNativeApiKey: "test-key",
+				openAiNativeBaseUrl: "",
+			})
+			expect(OpenAI).toHaveBeenCalledWith(expect.objectContaining({ baseURL: undefined }))
+		})
+
+		it("should pass custom baseURL when openAiNativeBaseUrl is a valid URL", () => {
+			;(OpenAI as unknown as ReturnType<typeof vitest.fn>).mockClear()
+			new OpenAiNativeHandler({
+				apiModelId: "gpt-4.1",
+				openAiNativeApiKey: "test-key",
+				openAiNativeBaseUrl: "https://custom-openai.example.com/v1",
+			})
+			expect(OpenAI).toHaveBeenCalledWith(
+				expect.objectContaining({ baseURL: "https://custom-openai.example.com/v1" }),
+			)
 		})
 	})
 
@@ -200,6 +236,86 @@ describe("OpenAiNativeHandler", () => {
 			expect(modelInfo.info.contextWindow).toBe(1047576)
 		})
 
+		it("should return GPT-5.3 Codex model info when selected", () => {
+			const codexHandler = new OpenAiNativeHandler({
+				...mockOptions,
+				apiModelId: "gpt-5.3-codex",
+			})
+
+			const modelInfo = codexHandler.getModel()
+			expect(modelInfo.id).toBe("gpt-5.3-codex")
+			expect(modelInfo.info.maxTokens).toBe(128000)
+			expect(modelInfo.info.contextWindow).toBe(400000)
+			expect(modelInfo.info.supportsReasoningEffort).toEqual(["low", "medium", "high", "xhigh"])
+		})
+
+		it("should return GPT-5.4 model info when selected", () => {
+			const gpt54Handler = new OpenAiNativeHandler({
+				...mockOptions,
+				apiModelId: "gpt-5.4",
+			})
+
+			const modelInfo = gpt54Handler.getModel()
+			expect(modelInfo.id).toBe("gpt-5.4")
+			expect(modelInfo.info.maxTokens).toBe(128000)
+			expect(modelInfo.info.contextWindow).toBe(1_050_000)
+			expect(modelInfo.info.supportsVerbosity).toBe(true)
+			expect(modelInfo.info.supportsReasoningEffort).toEqual(["none", "low", "medium", "high", "xhigh"])
+			expect(modelInfo.info.reasoningEffort).toBe("none")
+		})
+
+		it("should return GPT-5.4 Mini model info when selected", () => {
+			const gpt54MiniHandler = new OpenAiNativeHandler({
+				...mockOptions,
+				apiModelId: "gpt-5.4-mini",
+			})
+
+			const modelInfo = gpt54MiniHandler.getModel()
+			expect(modelInfo.id).toBe("gpt-5.4-mini")
+			expect(modelInfo.info.maxTokens).toBe(128000)
+			expect(modelInfo.info.contextWindow).toBe(400000)
+			expect(modelInfo.info.supportsVerbosity).toBe(true)
+			expect(modelInfo.info.supportsReasoningEffort).toEqual(["none", "low", "medium", "high", "xhigh"])
+			expect(modelInfo.info.reasoningEffort).toBe("none")
+			expect(modelInfo.info.longContextPricing).toBeUndefined()
+		})
+
+		it("should return GPT-5.4 Nano model info when selected", () => {
+			const gpt54NanoHandler = new OpenAiNativeHandler({
+				...mockOptions,
+				apiModelId: "gpt-5.4-nano",
+			})
+
+			const modelInfo = gpt54NanoHandler.getModel()
+			expect(modelInfo.id).toBe("gpt-5.4-nano")
+			expect(modelInfo.info.maxTokens).toBe(128000)
+			expect(modelInfo.info.contextWindow).toBe(400000)
+			expect(modelInfo.info.supportsVerbosity).toBe(true)
+			expect(modelInfo.info.supportsReasoningEffort).toEqual(["none", "low", "medium", "high", "xhigh"])
+			expect(modelInfo.info.reasoningEffort).toBe("none")
+			expect(modelInfo.info.outputPrice).toBe(1.25)
+			expect(modelInfo.info.longContextPricing).toBeUndefined()
+			expect(modelInfo.info.tiers).toEqual([
+				expect.objectContaining({
+					name: "flex",
+					outputPrice: 0.625,
+				}),
+			])
+		})
+
+		it("should return GPT-5.3 Chat model info when selected", () => {
+			const chatHandler = new OpenAiNativeHandler({
+				...mockOptions,
+				apiModelId: "gpt-5.3-chat-latest",
+			})
+
+			const modelInfo = chatHandler.getModel()
+			expect(modelInfo.id).toBe("gpt-5.3-chat-latest")
+			expect(modelInfo.info.maxTokens).toBe(16_384)
+			expect(modelInfo.info.contextWindow).toBe(128000)
+			expect(modelInfo.info.supportsImages).toBe(true)
+		})
+
 		it("should handle undefined model ID", () => {
 			const handlerWithoutModel = new OpenAiNativeHandler({
 				openAiNativeApiKey: "test-api-key",
@@ -267,7 +383,6 @@ describe("OpenAiNativeHandler", () => {
 					headers: expect.objectContaining({
 						"Content-Type": "application/json",
 						Authorization: "Bearer test-api-key",
-						Accept: "text/event-stream",
 					}),
 					body: expect.any(String),
 				}),
@@ -295,6 +410,107 @@ describe("OpenAiNativeHandler", () => {
 			expect(textChunks).toHaveLength(2)
 			expect(textChunks[0].text).toBe("Hello")
 			expect(textChunks[1].text).toBe(" world")
+		})
+
+		it("should handle GPT-5.4 model with Responses API", async () => {
+			const mockFetch = vitest.fn().mockResolvedValue({
+				ok: true,
+				body: new ReadableStream({
+					start(controller) {
+						controller.enqueue(
+							new TextEncoder().encode(
+								'data: {"type":"response.output_item.added","item":{"type":"text","text":"GPT-5.4 reply"}}\n\n',
+							),
+						)
+						controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"))
+						controller.close()
+					},
+				}),
+			})
+			global.fetch = mockFetch as any
+
+			mockResponsesCreate.mockRejectedValue(new Error("SDK not available"))
+
+			handler = new OpenAiNativeHandler({
+				...mockOptions,
+				apiModelId: "gpt-5.4",
+			})
+
+			const stream = handler.createMessage(systemPrompt, messages)
+			const chunks: any[] = []
+			for await (const chunk of stream) {
+				chunks.push(chunk)
+			}
+
+			expect(mockFetch).toHaveBeenCalledWith(
+				"https://api.openai.com/v1/responses",
+				expect.objectContaining({
+					body: expect.any(String),
+				}),
+			)
+			const body = (mockFetch.mock.calls[0][1] as any).body as string
+			const parsedBody = JSON.parse(body)
+			expect(parsedBody.model).toBe("gpt-5.4")
+			expect(parsedBody.max_output_tokens).toBe(128000)
+			expect(parsedBody.temperature).toBeUndefined()
+			expect(parsedBody.include).toEqual(["reasoning.encrypted_content"])
+			expect(parsedBody.reasoning?.effort).toBe("none")
+			expect(parsedBody.text?.verbosity).toBe("medium")
+
+			const textChunks = chunks.filter((chunk) => chunk.type === "text")
+			expect(textChunks).toHaveLength(1)
+			expect(textChunks[0].text).toBe("GPT-5.4 reply")
+		})
+
+		it("should handle GPT-5.3 Chat model with Responses API", async () => {
+			// Mock fetch for Responses API
+			const mockFetch = vitest.fn().mockResolvedValue({
+				ok: true,
+				body: new ReadableStream({
+					start(controller) {
+						controller.enqueue(
+							new TextEncoder().encode(
+								'data: {"type":"response.output_item.added","item":{"type":"text","text":"Chat reply"}}\n\n',
+							),
+						)
+						controller.enqueue(new TextEncoder().encode("data: [DONE]\n\n"))
+						controller.close()
+					},
+				}),
+			})
+			global.fetch = mockFetch as any
+
+			// Mock SDK to fail so it uses fetch
+			mockResponsesCreate.mockRejectedValue(new Error("SDK not available"))
+
+			handler = new OpenAiNativeHandler({
+				...mockOptions,
+				apiModelId: "gpt-5.3-chat-latest",
+			})
+
+			const stream = handler.createMessage(systemPrompt, messages)
+			const chunks: any[] = []
+			for await (const chunk of stream) {
+				chunks.push(chunk)
+			}
+
+			expect(mockFetch).toHaveBeenCalledWith(
+				"https://api.openai.com/v1/responses",
+				expect.objectContaining({
+					body: expect.any(String),
+				}),
+			)
+			const body = (mockFetch.mock.calls[0][1] as any).body as string
+			const parsedBody = JSON.parse(body)
+			expect(parsedBody.model).toBe("gpt-5.3-chat-latest")
+			expect(parsedBody.max_output_tokens).toBe(16_384)
+			expect(parsedBody.temperature).toBe(0)
+			expect(parsedBody.reasoning?.effort).toBeUndefined()
+			expect(parsedBody.text?.verbosity).toBeUndefined()
+
+			const textChunks = chunks.filter((chunk) => chunk.type === "text")
+			expect(textChunks).toHaveLength(1)
+			expect(textChunks[0].text).toBe("Chat reply")
 		})
 
 		it("should handle GPT-5-mini model with Responses API", async () => {
@@ -897,6 +1113,150 @@ describe("OpenAiNativeHandler", () => {
 			}
 		})
 	})
+
+	describe("error telemetry", () => {
+		const errorMessages: Anthropic.Messages.MessageParam[] = [
+			{
+				role: "user",
+				content: "Hello",
+			},
+		]
+
+		const errorSystemPrompt = "You are a helpful assistant"
+
+		beforeEach(() => {
+			mockCaptureException.mockClear()
+		})
+
+		it("should capture telemetry on createMessage error", async () => {
+			// Mock fetch to return error
+			const mockFetch = vitest.fn().mockResolvedValue({
+				ok: false,
+				status: 500,
+				text: async () => "Internal Server Error",
+			})
+			global.fetch = mockFetch as any
+
+			// Mock SDK to fail so it falls back to fetch
+			mockResponsesCreate.mockRejectedValue(new Error("SDK not available"))
+
+			const stream = handler.createMessage(errorSystemPrompt, errorMessages)
+
+			await expect(async () => {
+				for await (const _chunk of stream) {
+					// Should throw before yielding any chunks
+				}
+			}).rejects.toThrow()
+
+			// Verify telemetry was captured
+			expect(mockCaptureException).toHaveBeenCalledTimes(1)
+			expect(mockCaptureException).toHaveBeenCalledWith(
+				expect.objectContaining({
+					message: expect.stringContaining("OpenAI service error"),
+					provider: "OpenAI Native",
+					modelId: "gpt-4.1",
+					operation: "createMessage",
+				}),
+			)
+
+			// Verify it's an ApiProviderError
+			const capturedError = mockCaptureException.mock.calls[0][0]
+			expect(capturedError).toBeInstanceOf(ApiProviderError)
+		})
+
+		it("should capture telemetry on stream processing error", async () => {
+			// Mock fetch to return a stream with an error event
+			const mockFetch = vitest.fn().mockResolvedValue({
+				ok: true,
+				body: new ReadableStream({
+					start(controller) {
+						controller.enqueue(
+							new TextEncoder().encode(
+								'data: {"type":"response.error","error":{"message":"Model overloaded"}}\n\n',
+							),
+						)
+						controller.close()
+					},
+				}),
+			})
+			global.fetch = mockFetch as any
+
+			// Mock SDK to fail so it falls back to fetch
+			mockResponsesCreate.mockRejectedValue(new Error("SDK not available"))
+
+			const stream = handler.createMessage(errorSystemPrompt, errorMessages)
+
+			await expect(async () => {
+				for await (const _chunk of stream) {
+					// Should throw when encountering error event
+				}
+			}).rejects.toThrow()
+
+			// Verify telemetry was captured (may be called multiple times due to error propagation)
+			expect(mockCaptureException).toHaveBeenCalled()
+
+			// Find the call with the stream error message
+			const streamErrorCall = mockCaptureException.mock.calls.find((call: any[]) =>
+				call[0]?.message?.includes("Model overloaded"),
+			)
+			expect(streamErrorCall).toBeDefined()
+			expect(streamErrorCall![0]).toMatchObject({
+				provider: "OpenAI Native",
+				modelId: "gpt-4.1",
+				operation: "createMessage",
+			})
+
+			// Verify it's an ApiProviderError
+			expect(streamErrorCall![0]).toBeInstanceOf(ApiProviderError)
+		})
+
+		it("should capture telemetry on completePrompt error", async () => {
+			// Mock SDK to throw an error
+			mockResponsesCreate.mockRejectedValue(new Error("API Error"))
+
+			await expect(handler.completePrompt("Test prompt")).rejects.toThrow()
+
+			// Verify telemetry was captured
+			expect(mockCaptureException).toHaveBeenCalledTimes(1)
+			expect(mockCaptureException).toHaveBeenCalledWith(
+				expect.objectContaining({
+					message: "API Error",
+					provider: "OpenAI Native",
+					modelId: "gpt-4.1",
+					operation: "completePrompt",
+				}),
+			)
+
+			// Verify it's an ApiProviderError
+			const capturedError = mockCaptureException.mock.calls[0][0]
+			expect(capturedError).toBeInstanceOf(ApiProviderError)
+		})
+
+		it("should still throw the error after capturing telemetry", async () => {
+			// Mock fetch to return error
+			const mockFetch = vitest.fn().mockResolvedValue({
+				ok: false,
+				status: 500,
+				text: async () => "Internal Server Error",
+			})
+			global.fetch = mockFetch as any
+
+			// Mock SDK to fail
+			mockResponsesCreate.mockRejectedValue(new Error("SDK not available"))
+
+			const stream = handler.createMessage(errorSystemPrompt, errorMessages)
+
+			// Verify the error is still thrown
+			await expect(async () => {
+				for await (const _chunk of stream) {
+					// Should throw
+				}
+			}).rejects.toThrow()
+
+			// Telemetry should have been captured before the error was thrown
+			expect(mockCaptureException).toHaveBeenCalled()
+		})
+	})
 })
 
 // Additional tests for GPT-5 streaming event coverage
@@ -1129,7 +1489,6 @@ describe("GPT-5 streaming event coverage (additional)", () => {
 					headers: expect.objectContaining({
 						"Content-Type": "application/json",
 						Authorization: "Bearer test-api-key",
-						Accept: "text/event-stream",
 					}),
 					body: expect.any(String),
 				}),
