@@ -14,6 +14,7 @@ interface FileCoolConfig {
 interface ToolInfo {
 	name: string;
 	description: string;
+	type?: string;
 	options?: Record<string, {
 		type: "boolean" | "string" | "number";
 		description: string;
@@ -79,10 +80,17 @@ export class InMemoryFileCoolServer {
 
 	// Create common input schema for all tools
 	private createInputSchema(tool: ToolInfo): ZodRawShape {
+		const inputDescription =
+			tool.type === "file"
+				? "File paths - 使用文件完整的绝对路径，字符串数组。/ Use the complete absolute path of the file, string array."
+				: tool.type === "url"
+					? "URLs - 使用URL地址，字符串数组。/ Use the URL address, string array."
+					: "File paths or URLs - 使用文件完整的绝对路径或URL地址，字符串数组。/ Use the complete absolute path or URL address of the file, string array."
+
 		const result = {
 			inputs: z
 				.array(z.string())
-				.describe("File paths or URLs - 使用文件完整的绝对路径或URL地址，字符串数组。/ Use the complete absolute path or URL address of the file, string array."),
+				.describe(inputDescription),
 		} as ZodRawShape
 
 		// 根据 tool.options 动态添加 options 字段
@@ -184,6 +192,7 @@ export class InMemoryFileCoolServer {
 			return response.data.map((tool: any) => ({
 				name: tool.name,
 				description: tool.description || `Execute ${tool.name} function`,
+				type: tool.type,
 				options: tool.options,
 			}))
 		} catch (error: any) {

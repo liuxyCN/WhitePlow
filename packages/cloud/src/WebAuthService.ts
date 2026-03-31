@@ -380,10 +380,10 @@ export class WebAuthService extends EventEmitter<AuthServiceEvents> implements A
 			const vscode = await importVscode()
 
 			if (vscode) {
-				vscode.window.showInformationMessage("Logged out from Roo Code Cloud")
+				vscode.window.showInformationMessage("Logged out")
 			}
 
-			this.log("[auth] Logged out from Roo Code Cloud")
+			this.log("[auth] Logged out")
 		} catch (error) {
 			this.log(`[auth] Error logging out from Roo Code Cloud: ${error}`)
 			throw new Error(`Failed to log out from Roo Code Cloud: ${error}`)

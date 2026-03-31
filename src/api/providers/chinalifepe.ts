@@ -14,55 +14,6 @@ import { BaseOpenAiCompatibleProvider } from "./base-openai-compatible-provider"
 import { DEFAULT_HEADERS } from "./constants"
 import { getApiRequestTimeout } from "./utils/timeout-config"
 
-/** VS Code / Chromium DevTools truncates long single console.log lines with "…"; stay under that. */
-const CHINALIFEPE_REQUEST_BODY_LOG_CHUNK = 4000
-
-function logChinalifePERawHttpRequestBody(raw: string): void {
-	const total = raw.length
-	const chunkSize = CHINALIFEPE_REQUEST_BODY_LOG_CHUNK
-	const parts = Math.ceil(total / chunkSize) || 1
-	console.log(
-		`[ChinalifePE] raw HTTP request body: ${total} chars, ${parts} log line(s) (concatenate payloads in order to reconstruct)`,
-	)
-	for (let i = 0; i < parts; i++) {
-		const slice = raw.slice(i * chunkSize, (i + 1) * chunkSize)
-		console.log(`[ChinalifePE] raw HTTP request body [${i + 1}/${parts}]\n${slice}`)
-	}
-}
-
-/** Logs the exact HTTP request body the OpenAI SDK sends (not Task's requestBodyForDebug). */
-function createChinalifePERequestBodyLoggingFetch(): typeof fetch {
-	return async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-		let nextInit = init
-		let raw: string | undefined
-
-		if (init?.body != null) {
-			const body = init.body
-			if (typeof body === "string") {
-				raw = body
-			} else if (body instanceof Uint8Array) {
-				raw = new TextDecoder().decode(body)
-			} else if (typeof Buffer !== "undefined" && Buffer.isBuffer(body)) {
-				raw = body.toString("utf8")
-			} else if (body instanceof ArrayBuffer) {
-				raw = new TextDecoder().decode(body)
-			} else if (typeof Blob !== "undefined" && body instanceof Blob) {
-				raw = await body.text()
-			} else if (body instanceof ReadableStream) {
-				const [forLog, forRequest] = body.tee()
-				raw = await new Response(forLog).text()
-				nextInit = { ...init, body: forRequest }
-			}
-		}
-
-		if (raw !== undefined) {
-			logChinalifePERawHttpRequestBody(raw)
-		}
-
-		return globalThis.fetch(input as RequestInfo, nextInit as RequestInit)
-	}
-}
-
 export class ChinalifePEHandler extends BaseOpenAiCompatibleProvider<ChinalifePEModelId> {
 	constructor(options: ApiHandlerOptions) {
 		const baseURL = options.openAiBaseUrl
@@ -90,7 +41,6 @@ export class ChinalifePEHandler extends BaseOpenAiCompatibleProvider<ChinalifePE
 			apiKey: this.options.apiKey,
 			defaultHeaders: DEFAULT_HEADERS,
 			timeout: getApiRequestTimeout(),
-			fetch: createChinalifePERequestBodyLoggingFetch(),
 		})
 	}
 

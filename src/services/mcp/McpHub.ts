@@ -1466,6 +1466,16 @@ export class McpHub {
 				}
 			})
 
+			// Keep memory server tool order predictable for UI by sorting alphabetically.
+			if (actualSource === "memory") {
+				return [...tools].sort((a, b) =>
+					a.name.localeCompare(b.name, undefined, {
+						sensitivity: "base",
+						numeric: true,
+					}),
+				)
+			}
+
 			return tools
 		} catch (error) {
 			console.error(`Failed to fetch tools for ${serverName}:`, error)
