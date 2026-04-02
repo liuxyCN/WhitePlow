@@ -430,8 +430,9 @@ const ServerRow = ({ server, alwaysAllowMcp }: { server: McpServer; alwaysAllowM
 		})
 	}
 
-	// Check if server needs configuration
-	const needsConfiguration = server.configStatus === "configured" || server.configStatus === "not_configured"
+	// 与网关一致：configured / not_configured 显示设置齿轮；none 或缺省不显示
+	const needsConfiguration =
+		server.configStatus === "configured" || server.configStatus === "not_configured"
 
 	return (
 		<div style={{ marginBottom: "10px" }}>
@@ -808,9 +809,13 @@ const ServerRow = ({ server, alwaysAllowMcp }: { server: McpServer; alwaysAllowM
 												[field.fieldName]: e.target.value,
 											})
 										}}
-										placeholder={t("mcp:configDialog.extraField.placeholder", {
-											fieldLabel: field.fieldLabel,
-										})}
+										placeholder={
+											field.value != null && String(field.value).trim() !== ""
+												? String(field.value)
+												: t("mcp:configDialog.extraField.placeholder", {
+														fieldLabel: field.fieldLabel,
+													})
+										}
 										style={{ width: "100%" }}></VSCodeTextField>
 									<Button
 										variant="primary"

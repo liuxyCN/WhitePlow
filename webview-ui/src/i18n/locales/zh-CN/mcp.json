@@ -88,7 +88,7 @@
 		"extraField": {
 			"placeholder": "{{fieldLabel}}"
 		},
-		"cancel": "取消",
+		"cancel": "关闭",
 		"save": "保存"
 	},
 	"refreshMCP": "刷新 MCP 服务器",

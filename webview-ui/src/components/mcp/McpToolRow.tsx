@@ -1,10 +1,16 @@
 import { VSCodeCheckbox } from "@vscode/webview-ui-toolkit/react"
+import ReactMarkdown from "react-markdown"
+import remarkBreaks from "remark-breaks"
+import remarkGfm from "remark-gfm"
 
 import type { McpTool } from "@roo-code/types"
 
 import { useAppTranslation } from "@src/i18n/TranslationContext"
 import { vscode } from "@src/utils/vscode"
 import { StandardTooltip, ToggleSwitch } from "@/components/ui"
+
+/** GFM + remark-breaks（源码中单次换行渲染为硬换行），段落内用 pre-wrap 做长行折行 */
+const mcpToolMarkdownPlugins = [remarkGfm, remarkBreaks]
 
 type McpToolRowProps = {
 	tool: McpTool
@@ -58,7 +64,11 @@ const McpToolRow = ({ tool, serverName, serverSource, alwaysAllowMcp, isInChatCo
 						content={
 							<div className="max-w-md">
 								<div className="font-medium mb-1">{tool.name}</div>
-								{tool.description && <div className="text-xs opacity-80 mb-2">{tool.description}</div>}
+								{tool.description && (
+									<div className={`opacity-80 mb-2`}>
+										<ReactMarkdown remarkPlugins={mcpToolMarkdownPlugins}>{tool.description}</ReactMarkdown>
+									</div>
+								)}
 								{isToolEnabled &&
 									tool.inputSchema &&
 									"properties" in tool.inputSchema &&
@@ -81,9 +91,11 @@ const McpToolRow = ({ tool, serverName, serverSource, alwaysAllowMcp, isInChatCo
 																{paramName}
 																{isRequired && <span className="text-red-400">*</span>}
 															</code>
-															<span className="opacity-80 break-words text-xs">
-																{schema.description || t("mcp:tool.noDescription")}
-															</span>
+															<div className={`opacity-80 flex-1 min-w-0`}>
+																<ReactMarkdown remarkPlugins={mcpToolMarkdownPlugins}>
+																	{schema.description || t("mcp:tool.noDescription")}
+																</ReactMarkdown>
+															</div>
 														</div>
 													)
 												},

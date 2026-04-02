@@ -89,7 +89,7 @@
 		"extraField": {
 			"placeholder": "{{fieldLabel}}"
 		},
-		"cancel": "Cancel",
+		"cancel": "Close",
 		"save": "Save"
 	},
 	"execution": {

@@ -65,7 +65,8 @@ export type McpServer = {
 	source?: "global" | "project" | "memory"
 	projectPath?: string
 	instructions?: string
-	configStatus?: "configured" | "unconfigured" | "partial" | "not_configured"
+	/** 网关服务端：configured | not_configured | none（none 表示无需配置入口） */
+	configStatus?: "configured" | "not_configured" | "none"
 	serverConfig?: {
 		authRequired?: boolean
 		moduleName?: string
@@ -85,6 +86,7 @@ export type McpServer = {
 			fieldLabel?: string
 			fieldType?: "text" | "password"
 			routePath?: string
+			value?: string
 		}>
 	}
 }

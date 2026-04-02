@@ -217,7 +217,11 @@ export class McpHub {
 				}
 			}
 
-			this.memoryServerToolStates.set(conn.server.name, { alwaysAllow, disabledTools })
+			// 禁用服务器时 tools 会被清空；若仍写入空列表会覆盖 globalState 里已保存的始终允许/禁用列表，
+			// 与 configStatus 不同，这里必须从「有工具列表的快照」才更新 Map。
+			if (conn.server.tools && conn.server.tools.length > 0) {
+				this.memoryServerToolStates.set(conn.server.name, { alwaysAllow, disabledTools })
+			}
 
 			// Also save the server's disabled state
 			this.memoryServerDisabledStates.set(conn.server.name, conn.server.disabled || false)
@@ -1709,6 +1713,31 @@ export class McpHub {
 		}
 	}
 
+	/**
+	 * 从 JSON config 重连已断开的网关 memory 服务器。configStatus / serverConfig 来自 server-list API，
+	 * 不在 config 串里，必须在 connectToServer 之后写回，否则设置齿轮等 UI 会丢。
+	 */
+	private async reconnectMemoryServerPreservingGatewayMetadata(
+		serverName: string,
+		connection: McpConnection,
+	): Promise<void> {
+		const prevConfigStatus = connection.server.configStatus
+		const prevServerConfig = connection.server.serverConfig
+		const config = JSON.parse(connection.server.config)
+		config.disabled = false
+		await this.deleteConnection(serverName, "memory")
+		await this.connectToServer(serverName, config, "memory")
+		const reconnected = this.findConnection(serverName, "memory")
+		if (reconnected?.type === "connected") {
+			if (prevConfigStatus !== undefined) {
+				reconnected.server.configStatus = prevConfigStatus
+			}
+			if (prevServerConfig !== undefined) {
+				reconnected.server.serverConfig = prevServerConfig
+			}
+		}
+	}
+
 	async restartConnection(serverName: string, source?: "global" | "project" | "memory"): Promise<void> {
 		// For memory servers, just refresh the tools and resources
 		if (source === "memory") {
@@ -1727,11 +1756,7 @@ export class McpHub {
 			// Handle both connected and disconnected states
 			if (connection.type === "disconnected") {
 				try {
-					// Re-read the config and reconnect
-					const config = JSON.parse(connection.server.config)
-					config.disabled = false
-					await this.deleteConnection(serverName, source)
-					await this.connectToServer(serverName, config, source)
+					await this.reconnectMemoryServerPreservingGatewayMetadata(serverName, connection)
 					await this.notifyWebviewOfServerChanges()
 					vscode.window.showInformationMessage(t("mcp:info.server_connected", { serverName }))
 				} catch (error) {
@@ -2149,11 +2174,7 @@ export class McpHub {
 			// When enabling, need to reconnect if currently disconnected
 			if (connection.type === "disconnected") {
 				try {
-					// Re-read the config and reconnect
-					const config = JSON.parse(connection.server.config)
-					config.disabled = false
-					await this.deleteConnection(serverName, serverSource)
-					await this.connectToServer(serverName, config, serverSource)
+					await this.reconnectMemoryServerPreservingGatewayMetadata(serverName, connection)
 				} catch (error) {
 					console.error(`Failed to reconnect ${serverName}:`, error)
 				}
@@ -2552,6 +2573,7 @@ export class McpHub {
 
 				// Persist the updated state
 				await this.persistMemoryServerToolStates()
+				await this.notifyWebviewOfServerChanges()
 			}
 			return
 		}
