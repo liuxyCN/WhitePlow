@@ -67,7 +67,9 @@ export class CodebaseSearchTool extends BaseTool<"codebase_search"> {
 				throw new Error("Code Indexing is disabled in the settings.")
 			}
 			if (!manager.isFeatureConfigured) {
-				throw new Error("Code Indexing is not configured (Missing OpenAI Key or Qdrant URL).")
+				throw new Error(
+					"Code Indexing is not configured (missing embedder credentials or vector database settings).",
+				)
 			}
 
 			const searchResults: VectorStoreSearchResult[] = await manager.searchIndex(query, directoryPrefix)

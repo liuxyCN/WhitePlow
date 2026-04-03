@@ -1,22 +1,22 @@
 import type OpenAI from "openai"
 
-const CODEBASE_SEARCH_DESCRIPTION = `Find files most relevant to the search query using semantic search. Searches based on meaning rather than exact text matches. By default searches entire workspace. Reuse the user's exact wording unless there's a clear reason not to - their phrasing often helps semantic search. Queries MUST be in English (translate if needed).
+const CODEBASE_SEARCH_DESCRIPTION = `Find files most relevant to the search query using semantic search. Searches based on meaning rather than exact text matches. Embeddings are optimized for Chinese; phrase queries in Chinese when the user or target content is Chinese—reuse the user's exact wording when helpful. Markdown documentation may live anywhere in the workspace (not a single docs root); search the whole workspace unless you have a reason to narrow.
 
-**CRITICAL: For ANY exploration of code you haven't examined yet in this conversation, you MUST use this tool FIRST before any other search or file exploration tools.** This applies throughout the entire conversation, not just at the beginning. This tool uses semantic search to find relevant code based on meaning rather than just keywords, making it far more effective than regex-based search_files for understanding implementations. Even if you've already explored some code, any new area of exploration requires codebase_search first.
+**CRITICAL: For ANY exploration of code or documentation you haven't examined yet in this conversation, you MUST use this tool FIRST before any other search or file exploration tools.** This applies throughout the entire conversation, not just at the beginning. Prefer this over regex-based search_files for understanding implementations and for finding where topics are explained in .md files.
 
 Parameters:
-- query: (required) The search query. Reuse the user's exact wording/question format unless there's a clear reason not to.
-- path: (optional) Limit search to specific subdirectory (relative to the current workspace directory). Leave empty for entire workspace.
+- query: (required) What to find (topic, feature, error fragment, section intent). Use Chinese for Chinese docs and code comments when appropriate.
+- path: (optional) Limit search to a subdirectory relative to the workspace root. Use null to search the entire workspace—do this when documentation location is unknown or scattered.
 
-Example: Searching for user authentication code
-{ "query": "User login and password hashing", "path": "src/auth" }
+Example: Chinese query, narrow to a package
+{ "query": "用户认证与密码哈希", "path": "packages/auth" }
 
-Example: Searching entire workspace
-{ "query": "database connection pooling", "path": null }`
+Example: Entire workspace (default when unsure where .md or code lives)
+{ "query": "数据库连接池配置说明", "path": null }`
 
-const QUERY_PARAMETER_DESCRIPTION = `Meaning-based search query describing the information you need`
+const QUERY_PARAMETER_DESCRIPTION = `Chinese-first semantic query describing what you need; match the language of the content you expect`
 
-const PATH_PARAMETER_DESCRIPTION = `Optional subdirectory (relative to the workspace) to limit the search scope`
+const PATH_PARAMETER_DESCRIPTION = `Optional subdirectory to limit scope; null searches entire workspace (use when docs may be in any folder)`
 
 export default {
 	type: "function",

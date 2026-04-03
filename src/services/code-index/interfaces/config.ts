@@ -17,6 +17,7 @@ export interface CodeIndexConfig {
 	vercelAiGatewayOptions?: { apiKey: string }
 	bedrockOptions?: { region: string; profile?: string }
 	openRouterOptions?: { apiKey: string; specificProvider?: string }
+	vectorStore?: "qdrant" | "embedded"
 	qdrantUrl?: string
 	qdrantApiKey?: string
 	searchMinScore?: number
@@ -43,6 +44,7 @@ export type PreviousConfigSnapshot = {
 	bedrockProfile?: string
 	openRouterApiKey?: string
 	openRouterSpecificProvider?: string
+	vectorStore?: "qdrant" | "embedded"
 	qdrantUrl?: string
 	qdrantApiKey?: string
 }

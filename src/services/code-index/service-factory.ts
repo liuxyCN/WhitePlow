@@ -21,6 +21,7 @@ import { VercelAiGatewayEmbedder } from "./embedders/vercel-ai-gateway"
 import { BedrockEmbedder } from "./embedders/bedrock"
 import { OpenRouterEmbedder } from "./embedders/openrouter"
 import { QdrantVectorStore } from "./vector-store/qdrant-client"
+import { EmbeddedVectorStore } from "./vector-store/embedded-vector-store"
 import { codeParser, DirectoryScanner, FileWatcher } from "./processors"
 import { ICodeParser, IEmbedder, IFileWatcher, IVectorStore } from "./interfaces"
 import { CodeIndexConfigManager } from "./config-manager"
@@ -165,11 +166,16 @@ export class CodeIndexServiceFactory {
 			}
 		}
 
+		const vectorStoreKind = CodeIndexConfigManager.normalizeVectorStore(config.vectorStore)
+
+		if (vectorStoreKind === "embedded") {
+			return new EmbeddedVectorStore(this.workspacePath, vectorSize)
+		}
+
 		if (!config.qdrantUrl) {
 			throw new Error(t("embeddings:serviceFactory.qdrantUrlMissing"))
 		}
 
-		// Assuming constructor is updated: new QdrantVectorStore(workspacePath, url, vectorSize, apiKey?)
 		return new QdrantVectorStore(this.workspacePath, config.qdrantUrl, vectorSize, config.qdrantApiKey)
 	}
 

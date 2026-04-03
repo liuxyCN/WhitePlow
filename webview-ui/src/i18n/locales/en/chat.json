@@ -271,8 +271,8 @@
 		"didSearchOutsideWorkspace": "NeonTractor searched this directory (outside workspace) for <code>{{regex}}</code>"
 	},
 	"codebaseSearch": {
-		"wantsToSearch": "NeonTractor wants to search the codebase for <code>{{query}}</code>",
-		"wantsToSearchWithPath": "NeonTractor wants to search the codebase for <code>{{query}}</code> in <code>{{path}}</code>",
+		"wantsToSearch": "NeonTractor wants to search the document database for <code>{{query}}</code>",
+		"wantsToSearchWithPath": "NeonTractor wants to search the document database for <code>{{query}}</code> in <code>{{path}}</code>",
 		"didSearch_one": "Found 1 result",
 		"didSearch_other": "Found {{count}} results",
 		"resultTooltip": "Similarity score: {{score}} (click to open file)"

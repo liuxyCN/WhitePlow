@@ -2991,6 +2991,7 @@ export const webviewMessageHandler = async (
 				const globalStateConfig = {
 					...currentConfig,
 					codebaseIndexEnabled: settings.codebaseIndexEnabled,
+					codebaseIndexVectorStore: settings.codebaseIndexVectorStore ?? "embedded",
 					codebaseIndexQdrantUrl: settings.codebaseIndexQdrantUrl,
 					codebaseIndexEmbedderProvider: settings.codebaseIndexEmbedderProvider,
 					codebaseIndexEmbedderBaseUrl: settings.codebaseIndexEmbedderBaseUrl,

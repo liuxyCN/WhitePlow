@@ -6,7 +6,14 @@ import { LanguageParser, loadRequiredLanguageParsers } from "../../tree-sitter/l
 import { parseMarkdown } from "../../tree-sitter/markdownParser"
 import { ICodeParser, CodeBlock } from "../interfaces"
 import { scannerExtensions, shouldUseFallbackChunking } from "../shared/supported-extensions"
-import { MAX_BLOCK_CHARS, MIN_BLOCK_CHARS, MIN_CHUNK_REMAINDER_CHARS, MAX_CHARS_TOLERANCE_FACTOR } from "../constants"
+import {
+	MAX_BLOCK_CHARS,
+	MAX_TABLE_BLOCK_CHARS,
+	MAX_FENCED_CODE_BLOCK_CHARS,
+	MIN_BLOCK_CHARS,
+	MIN_CHUNK_REMAINDER_CHARS,
+	MAX_CHARS_TOLERANCE_FACTOR,
+} from "../constants"
 import { TelemetryService } from "@roo-code/telemetry"
 import { TelemetryEventName } from "@roo-code/types"
 import { sanitizeErrorMessage } from "../shared/validation-helpers"
@@ -230,7 +237,31 @@ export class CodeParser implements ICodeParser {
 	}
 
 	/**
+	 * Prepends parent section heading to prose chunk `raw` when needed (continuation chunks).
+	 */
+	private _applySectionHeadingPrefixToChunkBody(
+		raw: string,
+		headingPrefix: string,
+		chunkStartLineIndexInSegment: number,
+		segmentLines: string[],
+	): string {
+		if (!headingPrefix) {
+			return raw
+		}
+		const prefixHeadingLine = headingPrefix.split("\n")[0]?.trimEnd() ?? ""
+		if (chunkStartLineIndexInSegment > 0) {
+			return headingPrefix + raw
+		}
+		const firstLineOfSegment = segmentLines[0]?.trimEnd() ?? ""
+		if (prefixHeadingLine && firstLineOfSegment === prefixHeadingLine) {
+			return raw
+		}
+		return headingPrefix + raw
+	}
+
+	/**
 	 * Common helper function to chunk text by lines, avoiding tiny remainders.
+	 * When `headingPrefix` is set (markdown section title), continuation chunks include it in `content`.
 	 */
 	private _chunkTextByLines(
 		lines: string[],
@@ -239,16 +270,44 @@ export class CodeParser implements ICodeParser {
 		chunkType: string,
 		seenSegmentHashes: Set<string>,
 		baseStartLine: number = 1, // 1-based start line of the *first* line in the `lines` array
+		headingPrefix: string = "",
+		/** When set (e.g. oversized fenced code), max raw chars per chunk instead of default ~1150 */
+		lineChunkBudget?: number,
 	): CodeBlock[] {
 		const chunks: CodeBlock[] = []
 		let currentChunkLines: string[] = []
 		let currentChunkLength = 0
 		let chunkStartLineIndex = 0 // 0-based index within the `lines` array
-		const effectiveMaxChars = MAX_BLOCK_CHARS * MAX_CHARS_TOLERANCE_FACTOR
+		const baseMaxChars =
+			lineChunkBudget !== undefined
+				? lineChunkBudget
+				: MAX_BLOCK_CHARS * MAX_CHARS_TOLERANCE_FACTOR
+		const prefixLen = headingPrefix.length
+
+		const maxCharsForCurrentChunk = (): number => {
+			if (!headingPrefix) {
+				return baseMaxChars
+			}
+			if (chunkStartLineIndex > 0) {
+				return Math.max(MIN_BLOCK_CHARS, baseMaxChars - prefixLen)
+			}
+			const headingLine = headingPrefix.split("\n")[0]?.trimEnd() ?? ""
+			const firstLineOfSegment = lines[0]?.trimEnd() ?? ""
+			if (headingLine && firstLineOfSegment === headingLine) {
+				return baseMaxChars
+			}
+			return Math.max(MIN_BLOCK_CHARS, baseMaxChars - prefixLen)
+		}
 
 		const finalizeChunk = (endLineIndex: number) => {
 			if (currentChunkLength >= MIN_BLOCK_CHARS && currentChunkLines.length > 0) {
-				const chunkContent = currentChunkLines.join("\n")
+				const raw = currentChunkLines.join("\n")
+				const chunkContent = this._applySectionHeadingPrefixToChunkBody(
+					raw,
+					headingPrefix,
+					chunkStartLineIndex,
+					lines,
+				)
 				const startLine = baseStartLine + chunkStartLineIndex
 				const endLine = baseStartLine + endLineIndex
 				const contentPreview = chunkContent.slice(0, 100)
@@ -276,10 +335,17 @@ export class CodeParser implements ICodeParser {
 		}
 
 		const createSegmentBlock = (segment: string, originalLineNumber: number, startCharIndex: number) => {
-			const segmentPreview = segment.slice(0, 100)
+			let content = segment
+			if (headingPrefix) {
+				const lineIdx = originalLineNumber - baseStartLine
+				if (lineIdx > 0) {
+					content = headingPrefix + segment
+				}
+			}
+			const segmentPreview = content.slice(0, 100)
 			const segmentHash = createHash("sha256")
 				.update(
-					`${filePath}-${originalLineNumber}-${originalLineNumber}-${startCharIndex}-${segment.length}-${segmentPreview}`,
+					`${filePath}-${originalLineNumber}-${originalLineNumber}-${startCharIndex}-${content.length}-${segmentPreview}`,
 				)
 				.digest("hex")
 
@@ -291,7 +357,7 @@ export class CodeParser implements ICodeParser {
 					type: `${chunkType}_segment`,
 					start_line: originalLineNumber,
 					end_line: originalLineNumber,
-					content: segment,
+					content,
 					segmentHash,
 					fileHash,
 				})
@@ -302,9 +368,10 @@ export class CodeParser implements ICodeParser {
 			const line = lines[i]
 			const lineLength = line.length + (i < lines.length - 1 ? 1 : 0) // +1 for newline, except last line
 			const originalLineNumber = baseStartLine + i
+			const lineMax = maxCharsForCurrentChunk()
 
-			// Handle oversized lines (longer than effectiveMaxChars)
-			if (lineLength > effectiveMaxChars) {
+			// Handle oversized lines (longer than current chunk budget)
+			if (lineLength > lineMax) {
 				// Finalize any existing normal chunk before processing the oversized line
 				if (currentChunkLines.length > 0) {
 					finalizeChunk(i - 1)
@@ -325,7 +392,7 @@ export class CodeParser implements ICodeParser {
 			}
 
 			// Handle normally sized lines
-			if (currentChunkLength > 0 && currentChunkLength + lineLength > effectiveMaxChars) {
+			if (currentChunkLength > 0 && currentChunkLength + lineLength > maxCharsForCurrentChunk()) {
 				// Re-balancing Logic
 				let splitIndex = i - 1
 				let remainderLength = 0
@@ -406,7 +473,190 @@ export class CodeParser implements ICodeParser {
 	}
 
 	/**
-	 * Helper method to process markdown content sections with consistent chunking logic
+	 * Splits markdown lines into segments that respect fenced code blocks and tables
+	 * as atomic (unsplittable) units. Returns an array of segments, each with its
+	 * lines, starting line number (1-based), and whether it's an atomic block.
+	 */
+	private _splitMarkdownIntoSegments(
+		lines: string[],
+		baseStartLine: number,
+	): Array<{ lines: string[]; startLine: number; atomic: boolean }> {
+		const segments: Array<{ lines: string[]; startLine: number; atomic: boolean }> = []
+		const fenceRegex = /^(\s*)(```|~~~)/
+
+		let i = 0
+		let normalStart = 0
+
+		const flushNormal = (endExclusive: number) => {
+			if (endExclusive > normalStart) {
+				const slice = lines.slice(normalStart, endExclusive)
+				if (slice.some((l) => l.trim().length > 0)) {
+					segments.push({
+						lines: slice,
+						startLine: baseStartLine + normalStart,
+						atomic: false,
+					})
+				}
+			}
+		}
+
+		while (i < lines.length) {
+			const fenceMatch = lines[i].match(fenceRegex)
+			if (fenceMatch) {
+				flushNormal(i)
+				const fenceIndent = fenceMatch[1]
+				const fenceChar = fenceMatch[2]
+				const closingRegex = new RegExp(`^${fenceIndent}${fenceChar}{${fenceChar.length},}\\s*$`)
+				const blockStart = i
+				i++
+				while (i < lines.length && !closingRegex.test(lines[i])) {
+					i++
+				}
+				if (i < lines.length) {
+					i++ // include the closing fence line
+				}
+				segments.push({
+					lines: lines.slice(blockStart, i),
+					startLine: baseStartLine + blockStart,
+					atomic: true,
+				})
+				normalStart = i
+				continue
+			}
+
+			if (this._isTableRow(lines[i])) {
+				flushNormal(i)
+				const tableStart = i
+				while (i < lines.length && this._isTableRow(lines[i])) {
+					i++
+				}
+				segments.push({
+					lines: lines.slice(tableStart, i),
+					startLine: baseStartLine + tableStart,
+					atomic: true,
+				})
+				normalStart = i
+				continue
+			}
+
+			i++
+		}
+
+		flushNormal(lines.length)
+		return segments
+	}
+
+	private _isTableRow(line: string): boolean {
+		const trimmed = line.trim()
+		return trimmed.startsWith("|") && trimmed.endsWith("|") && trimmed.length > 1
+	}
+
+	/**
+	 * Prefix for table block text: parent section title (ATX line from section start, or `# title`).
+	 */
+	private _tableHeadingPrefix(lines: string[], identifier: string | null): string {
+		if (!identifier?.trim()) {
+			return ""
+		}
+		const first = lines[0]?.trimEnd() ?? ""
+		if (/^#{1,6}\s/.test(first.trim())) {
+			return `${first}\n\n`
+		}
+		return `# ${identifier.trim()}\n\n`
+	}
+
+	/**
+	 * Chunks an oversized markdown table while preserving the header rows
+	 * (first row + separator row) in every chunk for context completeness.
+	 */
+	private _chunkTableWithHeader(
+		lines: string[],
+		filePath: string,
+		fileHash: string,
+		type: string,
+		seenSegmentHashes: Set<string>,
+		baseStartLine: number,
+		headingPrefix: string = "",
+	): CodeBlock[] {
+		const tableMax = MAX_TABLE_BLOCK_CHARS
+		const results: CodeBlock[] = []
+
+		let headerLines: string[] = []
+		let headerLength = 0
+		let dataStartIdx = 0
+
+		if (lines.length >= 2 && /^\|\s*---/.test(lines[1].trim())) {
+			headerLines = [lines[0], lines[1]]
+			headerLength = headerLines.join("\n").length + 1
+			dataStartIdx = 2
+		} else if (lines.length >= 1) {
+			headerLines = [lines[0]]
+			headerLength = lines[0].length + 1
+			dataStartIdx = 1
+		}
+
+		const prefixLen = headingPrefix.length
+		const maxDataChars = tableMax - headerLength - prefixLen
+
+		if (maxDataChars < MIN_BLOCK_CHARS || dataStartIdx >= lines.length) {
+			return this._chunkTextByLines(lines, filePath, fileHash, type, seenSegmentHashes, baseStartLine, headingPrefix)
+		}
+
+		let chunkDataLines: string[] = []
+		let chunkDataLength = 0
+		let chunkDataStartIdx = dataStartIdx
+
+		const finalizeTableChunk = (endIdx: number) => {
+			if (chunkDataLines.length === 0) return
+			const chunkLines = [...headerLines, ...chunkDataLines]
+			const tableBody = chunkLines.join("\n")
+			const chunkContent = headingPrefix + tableBody
+			if (chunkContent.trim().length < MIN_BLOCK_CHARS) return
+
+			const chunkStartLine = baseStartLine + chunkDataStartIdx
+			const chunkEndLine = baseStartLine + endIdx
+			const contentPreview = chunkContent.slice(0, 100)
+			const segmentHash = createHash("sha256")
+				.update(`${filePath}-${chunkStartLine}-${chunkEndLine}-${chunkContent.length}-${contentPreview}`)
+				.digest("hex")
+
+			if (!seenSegmentHashes.has(segmentHash)) {
+				seenSegmentHashes.add(segmentHash)
+				results.push({
+					file_path: filePath,
+					identifier: null,
+					type,
+					start_line: chunkStartLine,
+					end_line: chunkEndLine,
+					content: chunkContent,
+					segmentHash,
+					fileHash,
+				})
+			}
+			chunkDataLines = []
+			chunkDataLength = 0
+			chunkDataStartIdx = endIdx + 1
+		}
+
+		for (let i = dataStartIdx; i < lines.length; i++) {
+			const lineLen = lines[i].length + (i < lines.length - 1 ? 1 : 0)
+			if (chunkDataLength > 0 && chunkDataLength + lineLen > maxDataChars) {
+				finalizeTableChunk(i - 1)
+			}
+			chunkDataLines.push(lines[i])
+			chunkDataLength += lineLen
+		}
+
+		if (chunkDataLines.length > 0) {
+			finalizeTableChunk(lines.length - 1)
+		}
+
+		return results
+	}
+
+	/**
+	 * Helper method to process markdown content sections with consistent chunking logic.
+	 * Tables and fenced code blocks are kept intact as atomic units.
 	 */
 	private processMarkdownSection(
 		lines: string[],
@@ -423,47 +673,145 @@ export class CodeParser implements ICodeParser {
 			return []
 		}
 
-		// Check if content needs chunking (either total size or individual line size)
+		const effectiveMax = MAX_BLOCK_CHARS * MAX_CHARS_TOLERANCE_FACTOR
+		const tableHeadingPrefix = this._tableHeadingPrefix(lines, identifier)
+
 		const needsChunking =
-			content.length > MAX_BLOCK_CHARS * MAX_CHARS_TOLERANCE_FACTOR ||
-			lines.some((line) => line.length > MAX_BLOCK_CHARS * MAX_CHARS_TOLERANCE_FACTOR)
+			content.length > effectiveMax || lines.some((line) => line.length > effectiveMax)
 
-		if (needsChunking) {
-			// Apply chunking for large content or oversized lines
-			const chunks = this._chunkTextByLines(lines, filePath, fileHash, type, seenSegmentHashes, startLine)
-			// Preserve identifier in all chunks if provided
-			if (identifier) {
-				chunks.forEach((chunk) => {
-					chunk.identifier = identifier
-				})
+		if (!needsChunking) {
+			const endLine = startLine + lines.length - 1
+			const contentPreview = content.slice(0, 100)
+			const segmentHash = createHash("sha256")
+				.update(`${filePath}-${startLine}-${endLine}-${content.length}-${contentPreview}`)
+				.digest("hex")
+
+			if (!seenSegmentHashes.has(segmentHash)) {
+				seenSegmentHashes.add(segmentHash)
+				return [
+					{
+						file_path: filePath,
+						identifier,
+						type,
+						start_line: startLine,
+						end_line: endLine,
+						content,
+						segmentHash,
+						fileHash,
+					},
+				]
 			}
-			return chunks
+			return []
 		}
 
-		// Create a single block for normal-sized content with no oversized lines
-		const endLine = startLine + lines.length - 1
-		const contentPreview = content.slice(0, 100)
-		const segmentHash = createHash("sha256")
-			.update(`${filePath}-${startLine}-${endLine}-${content.length}-${contentPreview}`)
-			.digest("hex")
+		const segments = this._splitMarkdownIntoSegments(lines, startLine)
+		const results: CodeBlock[] = []
 
-		if (!seenSegmentHashes.has(segmentHash)) {
-			seenSegmentHashes.add(segmentHash)
-			return [
-				{
-					file_path: filePath,
-					identifier,
-					type,
-					start_line: startLine,
-					end_line: endLine,
-					content,
-					segmentHash,
+		for (const segment of segments) {
+			const segContent = segment.lines.join("\n")
+
+			if (segContent.trim().length < MIN_BLOCK_CHARS) {
+				continue
+			}
+
+			if (segment.atomic) {
+				const isTable = segment.lines.every((l) => this._isTableRow(l))
+				const tableContent =
+					isTable && tableHeadingPrefix ? tableHeadingPrefix + segContent : segContent
+				if (isTable && tableContent.length <= MAX_TABLE_BLOCK_CHARS) {
+					const endLine = segment.startLine + segment.lines.length - 1
+					const contentPreview = tableContent.slice(0, 100)
+					const segmentHash = createHash("sha256")
+						.update(
+							`${filePath}-${segment.startLine}-${endLine}-${tableContent.length}-${contentPreview}`,
+						)
+						.digest("hex")
+
+					if (!seenSegmentHashes.has(segmentHash)) {
+						seenSegmentHashes.add(segmentHash)
+						results.push({
+							file_path: filePath,
+							identifier: null,
+							type,
+							start_line: segment.startLine,
+							end_line: endLine,
+							content: tableContent,
+							segmentHash,
+							fileHash,
+						})
+					}
+				} else if (isTable && tableContent.length > MAX_TABLE_BLOCK_CHARS) {
+					results.push(
+						...this._chunkTableWithHeader(
+							segment.lines,
+							filePath,
+							fileHash,
+							type,
+							seenSegmentHashes,
+							segment.startLine,
+							tableHeadingPrefix,
+						),
+					)
+				} else if (!isTable) {
+					const fencedContent = tableHeadingPrefix ? tableHeadingPrefix + segContent : segContent
+					if (fencedContent.length <= MAX_FENCED_CODE_BLOCK_CHARS) {
+						const endLine = segment.startLine + segment.lines.length - 1
+						const contentPreview = fencedContent.slice(0, 100)
+						const segmentHash = createHash("sha256")
+							.update(
+								`${filePath}-${segment.startLine}-${endLine}-${fencedContent.length}-${contentPreview}`,
+							)
+							.digest("hex")
+
+						if (!seenSegmentHashes.has(segmentHash)) {
+							seenSegmentHashes.add(segmentHash)
+							results.push({
+								file_path: filePath,
+								identifier: null,
+								type,
+								start_line: segment.startLine,
+								end_line: endLine,
+								content: fencedContent,
+								segmentHash,
+								fileHash,
+							})
+						}
+					} else {
+						results.push(
+							...this._chunkTextByLines(
+								segment.lines,
+								filePath,
+								fileHash,
+								type,
+								seenSegmentHashes,
+								segment.startLine,
+								tableHeadingPrefix,
+								MAX_FENCED_CODE_BLOCK_CHARS,
+							),
+						)
+					}
+				}
+			} else {
+				const chunks = this._chunkTextByLines(
+					segment.lines,
+					filePath,
 					fileHash,
-				},
-			]
+					type,
+					seenSegmentHashes,
+					segment.startLine,
+					tableHeadingPrefix,
+				)
+				results.push(...chunks)
+			}
 		}
 
-		return []
+		if (identifier) {
+			results.forEach((chunk) => {
+				chunk.identifier = identifier
+			})
+		}
+
+		return results
 	}
 
 	private parseMarkdownContent(

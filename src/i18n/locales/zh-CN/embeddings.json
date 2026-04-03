@@ -29,6 +29,7 @@
 		"failedToProcessBatchWithError": "尝试 {{maxRetries}} 次后批次处理失败：{{errorMessage}}"
 	},
 	"vectorStore": {
+		"embeddedStoreLoadFailed": "无法打开嵌入式索引（路径 {{path}}）。错误：{{errorMessage}}",
 		"qdrantConnectionFailed": "连接 Qdrant 向量数据库失败。请确保 Qdrant 正在运行并可在 {{qdrantUrl}} 访问。错误：{{errorMessage}}",
 		"vectorDimensionMismatch": "无法更新新模型的向量索引。请尝试清除索引并重新开始。详细信息：{{errorMessage}}"
 	},

@@ -681,6 +681,7 @@ export interface WebviewMessage {
 	codeIndexSettings?: {
 		// Global state settings
 		codebaseIndexEnabled: boolean
+		codebaseIndexVectorStore?: "qdrant" | "embedded"
 		codebaseIndexQdrantUrl: string
 		codebaseIndexEmbedderProvider:
 			| "openai"

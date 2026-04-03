@@ -9,7 +9,7 @@
 	"toolRepetitionLimitReached": "NeonTractor appears to be stuck in a loop, attempting the same action ({{toolName}}) repeatedly. This might indicate a problem with its current strategy. Consider rephrasing the task, providing more specific instructions, or guiding it towards a different approach.",
 	"unknownToolError": "NeonTractor tried to use an unknown tool: \"{{toolName}}\". Retrying...",
 	"codebaseSearch": {
-		"approval": "Searching for '{{query}}' in codebase..."
+		"approval": "Searching for '{{query}}' in document database..."
 	},
 	"newTask": {
 		"errors": {

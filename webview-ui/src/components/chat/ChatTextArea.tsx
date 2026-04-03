@@ -1347,7 +1347,7 @@ export const ChatTextArea = forwardRef<HTMLTextAreaElement, ChatTextAreaProps>(
 								</button>
 							</StandardTooltip>
 						)}
-						{/* {!isEditMode ? <IndexingStatusBadge /> : null} */}
+						{!isEditMode ? <IndexingStatusBadge /> : null}
 						{/* {!isEditMode && cloudUserInfo && <CloudAccountSwitcher />} */}
 					</div>
 				</div>

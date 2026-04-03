@@ -12,7 +12,12 @@ import {
 import * as ProgressPrimitive from "@radix-ui/react-progress"
 import { AlertTriangle } from "lucide-react"
 
-import { type IndexingStatus, type EmbedderProvider, CODEBASE_INDEX_DEFAULTS } from "@roo-code/types"
+import {
+	type IndexingStatus,
+	type EmbedderProvider,
+	type CodebaseIndexVectorStore,
+	CODEBASE_INDEX_DEFAULTS,
+} from "@roo-code/types"
 
 import { vscode } from "@src/utils/vscode"
 import { useExtensionState } from "@src/context/ExtensionStateContext"
@@ -59,6 +64,7 @@ interface CodeIndexPopoverProps {
 interface LocalCodeIndexSettings {
 	// Global state settings
 	codebaseIndexEnabled: boolean
+	codebaseIndexVectorStore: CodebaseIndexVectorStore
 	codebaseIndexQdrantUrl: string
 	codebaseIndexEmbedderProvider: EmbedderProvider
 	codebaseIndexEmbedderBaseUrl?: string
@@ -84,13 +90,23 @@ interface LocalCodeIndexSettings {
 }
 
 // Validation schema for codebase index settings
-const createValidationSchema = (provider: EmbedderProvider, t: any) => {
+const createValidationSchema = (
+	provider: EmbedderProvider,
+	vectorStore: CodebaseIndexVectorStore,
+	t: any,
+) => {
+	const qdrantUrlSchema =
+		vectorStore === "embedded"
+			? z.string().optional()
+			: z
+					.string()
+					.min(1, t("settings:codeIndex.validation.qdrantUrlRequired"))
+					.url(t("settings:codeIndex.validation.invalidQdrantUrl"))
+
 	const baseSchema = z.object({
 		codebaseIndexEnabled: z.boolean(),
-		codebaseIndexQdrantUrl: z
-			.string()
-			.min(1, t("settings:codeIndex.validation.qdrantUrlRequired"))
-			.url(t("settings:codeIndex.validation.invalidQdrantUrl")),
+		codebaseIndexVectorStore: z.enum(["qdrant", "embedded"]),
+		codebaseIndexQdrantUrl: qdrantUrlSchema,
 		codeIndexQdrantApiKey: z.string().optional(),
 	})
 
@@ -207,6 +223,7 @@ export const CodeIndexPopover: React.FC<CodeIndexPopoverProps> = ({
 	// Default settings template
 	const getDefaultSettings = (): LocalCodeIndexSettings => ({
 		codebaseIndexEnabled: true,
+		codebaseIndexVectorStore: "embedded",
 		codebaseIndexQdrantUrl: "",
 		codebaseIndexEmbedderProvider: "openai",
 		codebaseIndexEmbedderBaseUrl: "",
@@ -241,8 +258,11 @@ export const CodeIndexPopover: React.FC<CodeIndexPopoverProps> = ({
 	// Initialize settings from global state
 	useEffect(() => {
 		if (codebaseIndexConfig) {
+			const vectorStore: CodebaseIndexVectorStore =
+				codebaseIndexConfig.codebaseIndexVectorStore === "qdrant" ? "qdrant" : "embedded"
 			const settings = {
 				codebaseIndexEnabled: codebaseIndexConfig.codebaseIndexEnabled ?? true,
+				codebaseIndexVectorStore: vectorStore,
 				codebaseIndexQdrantUrl: codebaseIndexConfig.codebaseIndexQdrantUrl || "",
 				codebaseIndexEmbedderProvider: codebaseIndexConfig.codebaseIndexEmbedderProvider || "openai",
 				codebaseIndexEmbedderBaseUrl: codebaseIndexConfig.codebaseIndexEmbedderBaseUrl || "",
@@ -449,7 +469,11 @@ export const CodeIndexPopover: React.FC<CodeIndexPopoverProps> = ({
 
 	// Validation function
 	const validateSettings = (): boolean => {
-		const schema = createValidationSchema(currentSettings.codebaseIndexEmbedderProvider, t)
+		const schema = createValidationSchema(
+			currentSettings.codebaseIndexEmbedderProvider,
+			currentSettings.codebaseIndexVectorStore ?? "embedded",
+			t,
+		)
 
 		// Prepare data for validation
 		const dataToValidate: any = {}
@@ -1430,54 +1454,92 @@ export const CodeIndexPopover: React.FC<CodeIndexPopoverProps> = ({
 										</>
 									)}
 
-									{/* Qdrant Settings */}
+									{/* Vector store */}
 									<div className="space-y-2">
 										<label className="text-sm font-medium">
-											{t("settings:codeIndex.qdrantUrlLabel")}
+											{t("settings:codeIndex.vectorStoreLabel")}
 										</label>
-										<VSCodeTextField
-											value={currentSettings.codebaseIndexQdrantUrl || ""}
-											onInput={(e: any) =>
-												updateSetting("codebaseIndexQdrantUrl", e.target.value)
-											}
-											onBlur={(e: any) => {
-												// Set default Qdrant URL if field is empty
-												if (!e.target.value.trim()) {
-													currentSettings.codebaseIndexQdrantUrl = DEFAULT_QDRANT_URL
-													updateSetting("codebaseIndexQdrantUrl", DEFAULT_QDRANT_URL)
-												}
-											}}
-											placeholder={t("settings:codeIndex.qdrantUrlPlaceholder")}
-											className={cn("w-full", {
-												"border-red-500": formErrors.codebaseIndexQdrantUrl,
-											})}
-										/>
-										{formErrors.codebaseIndexQdrantUrl && (
-											<p className="text-xs text-vscode-errorForeground mt-1 mb-0">
-												{formErrors.codebaseIndexQdrantUrl}
+										<Select
+											value={currentSettings.codebaseIndexVectorStore ?? "embedded"}
+											onValueChange={(value) =>
+												updateSetting(
+													"codebaseIndexVectorStore",
+													value as CodebaseIndexVectorStore,
+												)
+											}>
+											<SelectTrigger className="w-full">
+												<SelectValue />
+											</SelectTrigger>
+											<SelectContent>
+												<SelectItem value="qdrant">
+													{t("settings:codeIndex.vectorStoreQdrant")}
+												</SelectItem>
+												<SelectItem value="embedded">
+													{t("settings:codeIndex.vectorStoreEmbedded")}
+												</SelectItem>
+											</SelectContent>
+										</Select>
+										{currentSettings.codebaseIndexVectorStore === "embedded" && (
+											<p className="text-xs text-vscode-descriptionForeground mt-1 mb-0">
+												{t("settings:codeIndex.embeddedVectorDescription")}
 											</p>
 										)}
 									</div>
 
-									<div className="space-y-2">
-										<label className="text-sm font-medium">
-											{t("settings:codeIndex.qdrantApiKeyLabel")}
-										</label>
-										<VSCodeTextField
-											type="password"
-											value={currentSettings.codeIndexQdrantApiKey || ""}
-											onInput={(e: any) => updateSetting("codeIndexQdrantApiKey", e.target.value)}
-											placeholder={t("settings:codeIndex.qdrantApiKeyPlaceholder")}
-											className={cn("w-full", {
-												"border-red-500": formErrors.codeIndexQdrantApiKey,
-											})}
-										/>
-										{formErrors.codeIndexQdrantApiKey && (
-											<p className="text-xs text-vscode-errorForeground mt-1 mb-0">
-												{formErrors.codeIndexQdrantApiKey}
-											</p>
-										)}
-									</div>
+									{/* Qdrant Settings */}
+									{currentSettings.codebaseIndexVectorStore !== "embedded" && (
+										<>
+											<div className="space-y-2">
+												<label className="text-sm font-medium">
+													{t("settings:codeIndex.qdrantUrlLabel")}
+												</label>
+												<VSCodeTextField
+													value={currentSettings.codebaseIndexQdrantUrl || ""}
+													onInput={(e: any) =>
+														updateSetting("codebaseIndexQdrantUrl", e.target.value)
+													}
+													onBlur={(e: any) => {
+														// Set default Qdrant URL if field is empty
+														if (!e.target.value.trim()) {
+															currentSettings.codebaseIndexQdrantUrl = DEFAULT_QDRANT_URL
+															updateSetting("codebaseIndexQdrantUrl", DEFAULT_QDRANT_URL)
+														}
+													}}
+													placeholder={t("settings:codeIndex.qdrantUrlPlaceholder")}
+													className={cn("w-full", {
+														"border-red-500": formErrors.codebaseIndexQdrantUrl,
+													})}
+												/>
+												{formErrors.codebaseIndexQdrantUrl && (
+													<p className="text-xs text-vscode-errorForeground mt-1 mb-0">
+														{formErrors.codebaseIndexQdrantUrl}
+													</p>
+												)}
+											</div>
+
+											<div className="space-y-2">
+												<label className="text-sm font-medium">
+													{t("settings:codeIndex.qdrantApiKeyLabel")}
+												</label>
+												<VSCodeTextField
+													type="password"
+													value={currentSettings.codeIndexQdrantApiKey || ""}
+													onInput={(e: any) =>
+														updateSetting("codeIndexQdrantApiKey", e.target.value)
+													}
+													placeholder={t("settings:codeIndex.qdrantApiKeyPlaceholder")}
+													className={cn("w-full", {
+														"border-red-500": formErrors.codeIndexQdrantApiKey,
+													})}
+												/>
+												{formErrors.codeIndexQdrantApiKey && (
+													<p className="text-xs text-vscode-errorForeground mt-1 mb-0">
+														{formErrors.codeIndexQdrantApiKey}
+													</p>
+												)}
+											</div>
+										</>
+									)}
 								</div>
 							)}
 						</div>

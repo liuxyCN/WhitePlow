@@ -29,6 +29,7 @@
 		"failedToProcessBatchWithError": "Failed to process batch after {{maxRetries}} attempts: {{errorMessage}}"
 	},
 	"vectorStore": {
+		"embeddedStoreLoadFailed": "Failed to open embedded index at {{path}}. Error: {{errorMessage}}",
 		"qdrantConnectionFailed": "Failed to connect to Qdrant vector database. Please ensure Qdrant is running and accessible at {{qdrantUrl}}. Error: {{errorMessage}}",
 		"vectorDimensionMismatch": "Failed to update vector index for new model. Please try clearing the index and starting again. Details: {{errorMessage}}"
 	},
