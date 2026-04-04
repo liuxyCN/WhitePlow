@@ -35,6 +35,7 @@ import { TerminalRegistry } from "./integrations/terminal/TerminalRegistry"
 import { openAiCodexOAuthManager } from "./integrations/openai-codex/oauth"
 import { McpServerManager } from "./services/mcp/McpServerManager"
 import { CodeIndexManager } from "./services/code-index/manager"
+import { DocumentMarkdownWatcher } from "./services/document-markdown/document-markdown-watcher"
 import { MdmService } from "./services/mdm/MdmService"
 import { migrateSettings } from "./utils/migrateSettings"
 import { autoImportSettings } from "./utils/autoImportSettings"
@@ -193,6 +194,27 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	// Initialize the provider *before* the Roo Code Cloud service.
 	const provider = new ClineProvider(context, outputChannel, "sidebar", contextProxy, mdmService)
+
+	// Per-folder document → Markdown watchers (file-cool via MCP Gateway).
+	if (vscode.workspace.workspaceFolders) {
+		for (const folder of vscode.workspace.workspaceFolders) {
+			const dm = DocumentMarkdownWatcher.getInstance(
+				context,
+				folder.uri.fsPath,
+				() => provider.getMcpGatewayFileCoolConfig(),
+				() => provider.isDocumentMarkdownFeatureEnabled(),
+			)
+			if (dm) {
+				context.subscriptions.push(dm)
+				void dm.initialize().catch((error) => {
+					const message = error instanceof Error ? error.message : String(error)
+					outputChannel.appendLine(
+						`[DocumentMarkdownWatcher] Error initializing for ${folder.uri.fsPath}: ${message}`,
+					)
+				})
+			}
+		}
+	}
 
 	// Initialize Roo Code Cloud service.
 	const postStateListener = () => ClineProvider.getVisibleInstance()?.postStateToWebviewWithoutClineMessages()

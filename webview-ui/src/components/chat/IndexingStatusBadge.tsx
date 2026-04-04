@@ -11,6 +11,7 @@ import { useExtensionState } from "@src/context/ExtensionStateContext"
 import { PopoverTrigger, StandardTooltip, Button } from "@src/components/ui"
 
 import { CodeIndexPopover } from "./CodeIndexPopover"
+import { DocumentMarkdownStatusBadge } from "./DocumentMarkdownPopover"
 
 interface IndexingStatusBadgeProps {
 	className?: string
@@ -86,30 +87,32 @@ export const IndexingStatusBadge: React.FC<IndexingStatusBadgeProps> = ({ classN
 	}, [indexingStatus.systemStatus])
 
 	return (
-		<CodeIndexPopover indexingStatus={indexingStatus}>
-			<StandardTooltip content={tooltipText}>
-				<PopoverTrigger asChild>
-					<Button
-						variant="ghost"
-						size="sm"
-						aria-label={tooltipText}
-						className={cn(
-							"relative h-5 w-5 p-0",
-							"text-vscode-foreground opacity-85",
-							"hover:opacity-100 hover:bg-[rgba(255,255,255,0.03)]",
-							"focus:outline-none focus-visible:ring-1 focus-visible:ring-vscode-focusBorder",
-							className,
-						)}>
-						<Database className="w-4 h-4" />
-						<span
+		<div className={cn("flex items-center gap-0.5", className)}>
+			<DocumentMarkdownStatusBadge />
+			<CodeIndexPopover indexingStatus={indexingStatus}>
+				<StandardTooltip content={tooltipText}>
+					<PopoverTrigger asChild>
+						<Button
+							variant="ghost"
+							size="sm"
+							aria-label={tooltipText}
 							className={cn(
-								"absolute top-0 right-0 w-1.5 h-1.5 rounded-full transition-colors duration-200",
-								statusColorClass,
-							)}
-						/>
-					</Button>
-				</PopoverTrigger>
-			</StandardTooltip>
-		</CodeIndexPopover>
+								"relative h-5 w-5 p-0",
+								"text-vscode-foreground opacity-85",
+								"hover:opacity-100 hover:bg-[rgba(255,255,255,0.03)]",
+								"focus:outline-none focus-visible:ring-1 focus-visible:ring-vscode-focusBorder",
+							)}>
+							<Database className="w-4 h-4" />
+							<span
+								className={cn(
+									"absolute top-0 right-0 w-1.5 h-1.5 rounded-full transition-colors duration-200",
+									statusColorClass,
+								)}
+							/>
+						</Button>
+					</PopoverTrigger>
+				</StandardTooltip>
+			</CodeIndexPopover>
+		</div>
 	)
 }

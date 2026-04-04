@@ -282,6 +282,9 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 			codebaseIndexSearchMaxResults: undefined,
 			codebaseIndexSearchMinScore: undefined,
 		},
+		documentMarkdownConfig: {
+			documentMarkdownEnabled: true,
+		},
 		codebaseIndexModels: { ollama: {}, openai: {} },
 		includeDiagnosticMessages: true,
 		maxDiagnosticMessages: 50,

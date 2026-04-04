@@ -105,6 +105,10 @@ import { MarketplaceManager } from "../../services/marketplace"
 import { ShadowCheckpointService } from "../../services/checkpoints/ShadowCheckpointService"
 import { CodeIndexManager } from "../../services/code-index/manager"
 import type { IndexProgressUpdate } from "../../services/code-index/interfaces/manager"
+import {
+	DocumentMarkdownWatcher,
+	DOCUMENT_MARKDOWN_AUTO_ENABLE_DEFAULT_KEY,
+} from "../../services/document-markdown/document-markdown-watcher"
 import { MdmService } from "../../services/mdm/MdmService"
 import { SkillsManager } from "../../services/skills/SkillsManager"
 
@@ -170,6 +174,8 @@ export class ClineProvider
 	private clineStack: Task[] = []
 	private codeIndexStatusSubscription?: vscode.Disposable
 	private codeIndexManager?: CodeIndexManager
+	private documentMarkdownStatusSubscription?: vscode.Disposable
+	private documentMarkdownWatcher?: DocumentMarkdownWatcher
 	private _workspaceTracker?: WorkspaceTracker // workSpaceTracker read-only for access outside this class
 	protected mcpHub?: McpHub // Change from private to protected
 	protected skillsManager?: SkillsManager
@@ -934,12 +940,14 @@ export class ClineProvider
 
 		// Initialize code index status subscription for the current workspace.
 		this.updateCodeIndexStatusSubscription()
+		this.updateDocumentMarkdownStatusSubscription()
 
 		// Listen for active editor changes to update code index status for the
 		// current workspace.
 		const activeEditorSubscription = vscode.window.onDidChangeActiveTextEditor(() => {
 			// Update subscription when workspace might have changed.
 			this.updateCodeIndexStatusSubscription()
+			this.updateDocumentMarkdownStatusSubscription()
 		})
 		this.webviewDisposables.push(activeEditorSubscription)
 
@@ -1593,6 +1601,49 @@ export class ClineProvider
 	}
 
 	/**
+	 * ChinalifePE: set global "auto-enable document conversion for new workspaces" to on and reapply all
+	 * open-folder watchers — same role as {@link CodeIndexManager.setAutoEnableDefault}(true) for indexing.
+	 */
+	private async syncChinalifepeDocumentMarkdownAutoDefault(): Promise<void> {
+		const existing =
+			(this.getGlobalState("documentMarkdownConfig") as Record<string, unknown> | undefined) ?? {}
+		await this.updateGlobalState("documentMarkdownConfig", {
+			...existing,
+			documentMarkdownEnabled: true,
+		})
+		await this.context.globalState.update(DOCUMENT_MARKDOWN_AUTO_ENABLE_DEFAULT_KEY, true)
+		await DocumentMarkdownWatcher.reapplyAllWorkspaceFolders(
+			this.context,
+			() => this.getMcpGatewayFileCoolConfig(),
+			() => this.isDocumentMarkdownFeatureEnabled(),
+		)
+		this.updateDocumentMarkdownStatusSubscription()
+		this.postCurrentDocumentMarkdownStatusToWebview()
+	}
+
+	/** User toggle: default on for new workspace folders (persists globally). */
+	public async setDocumentMarkdownAutoEnableDefault(enabled: boolean): Promise<void> {
+		await this.context.globalState.update(DOCUMENT_MARKDOWN_AUTO_ENABLE_DEFAULT_KEY, enabled)
+		await DocumentMarkdownWatcher.reapplyAllWorkspaceFolders(
+			this.context,
+			() => this.getMcpGatewayFileCoolConfig(),
+			() => this.isDocumentMarkdownFeatureEnabled(),
+		)
+		this.updateDocumentMarkdownStatusSubscription()
+		this.postCurrentDocumentMarkdownStatusToWebview()
+	}
+
+	private postCurrentDocumentMarkdownStatusToWebview(): void {
+		const w = this.getCurrentWorkspaceDocumentMarkdownWatcher()
+		if (this.view && w) {
+			this.postMessageToWebview({
+				type: "documentMarkdownStatusUpdate",
+				values: w.getCurrentStatus(),
+			})
+		}
+	}
+
+	/**
 	 * Document index uses {@link openAiBaseUrl} for ChinalifePE embedder; re-read after API profile save.
 	 */
 	private codebaseIndexUsesChinalifepeEmbedder(): boolean {
@@ -1669,6 +1720,10 @@ export class ClineProvider
 					providerSettings.apiProvider === "chinalifepe"
 				) {
 					await this.applyWelcomeChinalifepeCodeIndexDefaults()
+				}
+
+				if (activate && providerSettings.apiProvider === "chinalifepe") {
+					await this.syncChinalifepeDocumentMarkdownAutoDefault()
 				}
 
 				// ChinalifePE embedding reads openAiBaseUrl from the active profile — refresh after any save
@@ -1778,6 +1833,10 @@ export class ClineProvider
 
 		if (this.codebaseIndexUsesChinalifepeEmbedder()) {
 			await this.syncChinalifepeEmbedderCodeIndexManager()
+		}
+
+		if (providerSettings.apiProvider === "chinalifepe") {
+			await this.syncChinalifepeDocumentMarkdownAutoDefault()
 		}
 
 		if (providerSettings.apiProvider) {
@@ -2308,6 +2367,7 @@ export class ClineProvider
 			organizationSettingsVersion,
 			customCondensingPrompt,
 			codebaseIndexConfig,
+			documentMarkdownConfig,
 			codebaseIndexModels,
 			profileThresholds,
 			alwaysAllowFollowupQuestions,
@@ -2466,6 +2526,9 @@ export class ClineProvider
 				codebaseIndexBedrockRegion: codebaseIndexConfig?.codebaseIndexBedrockRegion,
 				codebaseIndexBedrockProfile: codebaseIndexConfig?.codebaseIndexBedrockProfile,
 				codebaseIndexOpenRouterSpecificProvider: codebaseIndexConfig?.codebaseIndexOpenRouterSpecificProvider,
+			},
+			documentMarkdownConfig: {
+				documentMarkdownEnabled: documentMarkdownConfig?.documentMarkdownEnabled ?? true,
 			},
 			// Only set mdmCompliant if there's an actual MDM policy
 			// undefined means no MDM policy, true means compliant, false means non-compliant
@@ -2710,6 +2773,9 @@ export class ClineProvider
 				codebaseIndexOpenRouterSpecificProvider:
 					stateValues.codebaseIndexConfig?.codebaseIndexOpenRouterSpecificProvider,
 			},
+			documentMarkdownConfig: {
+				documentMarkdownEnabled: stateValues.documentMarkdownConfig?.documentMarkdownEnabled ?? true,
+			},
 			profileThresholds: stateValues.profileThresholds ?? {},
 			lockApiConfigAcrossModes: this.context.workspaceState.get("lockApiConfigAcrossModes", false),
 			includeDiagnosticMessages: stateValues.includeDiagnosticMessages ?? true,
@@ -2927,6 +2993,47 @@ export class ClineProvider
 	}
 
 	/**
+	 * MCP Gateway configuration for file-cool (document → Markdown). Mirrors McpHub gateway checks.
+	 */
+	public async getMcpGatewayFileCoolConfig(): Promise<{ apiUrl: string; apiKey: string } | null> {
+		const { mcpGatewayEnabled, mcpGatewayUrl, mcpGatewayApiKey } = await this.getState()
+		if (!mcpGatewayEnabled) {
+			return null
+		}
+		const url = mcpGatewayUrl?.trim()
+		const key = mcpGatewayApiKey?.trim()
+		if (!url || !key) {
+			return null
+		}
+		return { apiUrl: url, apiKey: key }
+	}
+
+	/** Global document → Markdown feature flag (`documentMarkdownConfig.documentMarkdownEnabled`); default on. */
+	public isDocumentMarkdownFeatureEnabled(): boolean {
+		const cfg = this.getGlobalState("documentMarkdownConfig") as { documentMarkdownEnabled?: boolean } | undefined
+		return cfg?.documentMarkdownEnabled !== false
+	}
+
+	public async refreshDocumentMarkdownWatchersAfterGlobalConfigChange(): Promise<void> {
+		await DocumentMarkdownWatcher.reapplyAllWorkspaceFolders(
+			this.context,
+			() => this.getMcpGatewayFileCoolConfig(),
+			() => this.isDocumentMarkdownFeatureEnabled(),
+		)
+		this.updateDocumentMarkdownStatusSubscription()
+		this.postCurrentDocumentMarkdownStatusToWebview()
+	}
+
+	public getCurrentWorkspaceDocumentMarkdownWatcher(): DocumentMarkdownWatcher | undefined {
+		return DocumentMarkdownWatcher.getInstance(
+			this.context,
+			this.cwd,
+			() => this.getMcpGatewayFileCoolConfig(),
+			() => this.isDocumentMarkdownFeatureEnabled(),
+		)
+	}
+
+	/**
 	 * Updates the code index status subscription to listen to the current workspace manager
 	 */
 	private updateCodeIndexStatusSubscription(): void {
@@ -2969,6 +3076,59 @@ export class ClineProvider
 			this.postMessageToWebview({
 				type: "indexingStatusUpdate",
 				values: currentManager.getCurrentStatus(),
+			})
+		}
+	}
+
+	/**
+	 * Subscribes to workspace document → Markdown conversion status (file-cool).
+	 */
+	private updateDocumentMarkdownStatusSubscription(): void {
+		const currentWatcher = this.getCurrentWorkspaceDocumentMarkdownWatcher()
+
+		if (currentWatcher === this.documentMarkdownWatcher) {
+			return
+		}
+
+		if (this.documentMarkdownStatusSubscription) {
+			this.documentMarkdownStatusSubscription.dispose()
+			this.documentMarkdownStatusSubscription = undefined
+		}
+
+		this.documentMarkdownWatcher = currentWatcher
+
+		if (currentWatcher) {
+			this.documentMarkdownStatusSubscription = currentWatcher.onDidChangeStatus(() => {
+				if (currentWatcher === this.getCurrentWorkspaceDocumentMarkdownWatcher()) {
+					this.postMessageToWebview({
+						type: "documentMarkdownStatusUpdate",
+						values: currentWatcher.getCurrentStatus(),
+					})
+				}
+			})
+
+			if (this.view) {
+				this.webviewDisposables.push(this.documentMarkdownStatusSubscription)
+			}
+
+			this.postMessageToWebview({
+				type: "documentMarkdownStatusUpdate",
+				values: currentWatcher.getCurrentStatus(),
+			})
+		} else {
+			const featureOn = this.isDocumentMarkdownFeatureEnabled()
+			this.postMessageToWebview({
+				type: "documentMarkdownStatusUpdate",
+				values: {
+					enabled: false,
+					featureEnabled: featureOn,
+					workspaceEnabled: false,
+					systemStatus: "Standby",
+					processedItems: 0,
+					totalItems: 0,
+					recentErrors: [],
+					autoEnableDefault: DocumentMarkdownWatcher.getAutoEnableDefault(this.context),
+				},
 			})
 		}
 	}

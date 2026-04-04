@@ -432,6 +432,13 @@
 		"status": "Trạng thái chỉ mục",
 		"stopping": "Đang dừng lập chỉ mục..."
 	},
+	"documentMarkdownStatus": {
+		"standby": "Document conversion (off)",
+		"idle": "Document conversion",
+		"processing": "Converting {{percentage}}%",
+		"error": "Document conversion error",
+		"status": "Document conversion status"
+	},
 	"versionIndicator": {
 		"ariaLabel": "Phiên bản {{version}} - Nhấp để xem ghi chú phát hành"
 	},

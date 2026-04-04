@@ -74,5 +74,9 @@
 		"indexingRequiresWorkspace": "索引需要打开的工作区文件夹",
 		"indexingStopped": "用户已停止索引。",
 		"indexingStoppedPartial": "索引已停止。部分索引数据已保留。"
+	},
+	"documentMarkdown": {
+		"queueProgress": "正在处理 {{processed}} / {{total}} 个文件。当前：{{current}}",
+		"queueFinished": "已完成队列中的 {{total}} 个文件。"
 	}
 }

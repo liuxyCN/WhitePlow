@@ -38,7 +38,8 @@ export class FileWatcher implements IFileWatcher {
 	private accumulatedEvents: Map<string, { uri: vscode.Uri; type: "create" | "change" | "delete" }> = new Map()
 	private batchProcessDebounceTimer?: NodeJS.Timeout
 	private readonly BATCH_DEBOUNCE_DELAY_MS = 500
-	private readonly FILE_PROCESSING_CONCURRENCY_LIMIT = 10
+	/** Serialize `processFile` — one file at a time per batch (no parallel embedding/parse). */
+	private readonly FILE_PROCESSING_CONCURRENCY_LIMIT = 1
 	private readonly batchSegmentThreshold: number
 
 	private readonly _onDidStartBatchProcessing = new vscode.EventEmitter<string[]>()

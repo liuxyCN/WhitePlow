@@ -432,6 +432,13 @@
 		"status": "İndeks durumu",
 		"stopping": "İndeksleme durduruluyor..."
 	},
+	"documentMarkdownStatus": {
+		"standby": "Document conversion (off)",
+		"idle": "Document conversion",
+		"processing": "Converting {{percentage}}%",
+		"error": "Document conversion error",
+		"status": "Document conversion status"
+	},
 	"versionIndicator": {
 		"ariaLabel": "Sürüm {{version}} - Sürüm notlarını görüntülemek için tıklayın"
 	},

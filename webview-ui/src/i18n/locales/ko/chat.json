@@ -431,6 +431,13 @@
 		"status": "인덱스 상태",
 		"stopping": "인덱싱 중지 중..."
 	},
+	"documentMarkdownStatus": {
+		"standby": "Document conversion (off)",
+		"idle": "Document conversion",
+		"processing": "Converting {{percentage}}%",
+		"error": "Document conversion error",
+		"status": "Document conversion status"
+	},
 	"versionIndicator": {
 		"ariaLabel": "버전 {{version}} - 릴리스 노트를 보려면 클릭하세요"
 	},

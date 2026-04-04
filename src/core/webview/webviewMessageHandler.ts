@@ -47,6 +47,7 @@ import { type RouterName, toRouterName } from "../../shared/api"
 import { MessageEnhancer } from "./messageEnhancer"
 
 import { CodeIndexManager } from "../../services/code-index/manager"
+import { DocumentMarkdownWatcher } from "../../services/document-markdown/document-markdown-watcher"
 import { checkExistKey } from "../../shared/checkExistApiConfig"
 import { experimentDefault } from "../../shared/experiments"
 import { Terminal } from "../../integrations/terminal/Terminal"
@@ -939,6 +940,14 @@ export const webviewMessageHandler = async (
 							...(getGlobalState("experiments") ?? experimentDefault),
 							...(value as Record<ExperimentId, boolean>),
 						}
+					} else if (key === "documentMarkdownConfig") {
+						if (value === undefined) {
+							continue
+						}
+						newValue = {
+							...(getGlobalState("documentMarkdownConfig") ?? {}),
+							...(value as Record<string, unknown>),
+						}
 					} else if (key === "customSupportPrompts") {
 						if (!value) {
 							continue
@@ -949,6 +958,10 @@ export const webviewMessageHandler = async (
 				}
 
 				await provider.postStateToWebview()
+
+				if (message.updatedSettings && "documentMarkdownConfig" in message.updatedSettings) {
+					await provider.refreshDocumentMarkdownWatchersAfterGlobalConfigChange()
+				}
 			}
 
 			break
@@ -3170,6 +3183,91 @@ export const webviewMessageHandler = async (
 				type: "indexingStatusUpdate",
 				values: status,
 			})
+			break
+		}
+		case "requestDocumentMarkdownStatus": {
+			const watcher = provider.getCurrentWorkspaceDocumentMarkdownWatcher()
+			if (!watcher) {
+				provider.postMessageToWebview({
+					type: "documentMarkdownStatusUpdate",
+					values: {
+						enabled: false,
+						featureEnabled: provider.isDocumentMarkdownFeatureEnabled(),
+						workspaceEnabled: false,
+						systemStatus: "Standby",
+						processedItems: 0,
+						totalItems: 0,
+						recentErrors: [],
+						message: t("embeddings:orchestrator.indexingRequiresWorkspace"),
+						autoEnableDefault: DocumentMarkdownWatcher.getAutoEnableDefault(provider.context),
+					},
+				})
+				break
+			}
+			provider.postMessageToWebview({
+				type: "documentMarkdownStatusUpdate",
+				values: watcher.getCurrentStatus(),
+			})
+			break
+		}
+		case "toggleDocumentMarkdownWorkspace": {
+			const watcher = provider.getCurrentWorkspaceDocumentMarkdownWatcher()
+			if (!watcher) {
+				provider.log("Cannot toggle document markdown conversion: No workspace folder open")
+				break
+			}
+			try {
+				await watcher.setWorkspaceEnabled(message.bool ?? false)
+			} catch (error) {
+				provider.log(
+					`Error setting document markdown conversion: ${error instanceof Error ? error.message : String(error)}`,
+				)
+			}
+			provider.postMessageToWebview({
+				type: "documentMarkdownStatusUpdate",
+				values: watcher.getCurrentStatus(),
+			})
+			break
+		}
+		case "documentMarkdownScanWorkspace": {
+			const watcher = provider.getCurrentWorkspaceDocumentMarkdownWatcher()
+			if (!watcher) {
+				provider.log("Cannot scan documents: No workspace folder open")
+				break
+			}
+			try {
+				await watcher.scanWorkspaceDocuments()
+			} catch (error) {
+				provider.log(
+					`Error scanning workspace documents: ${error instanceof Error ? error.message : String(error)}`,
+				)
+			}
+			provider.postMessageToWebview({
+				type: "documentMarkdownStatusUpdate",
+				values: watcher.getCurrentStatus(),
+			})
+			break
+		}
+		case "documentMarkdownClearErrors": {
+			const watcher = provider.getCurrentWorkspaceDocumentMarkdownWatcher()
+			if (!watcher) {
+				break
+			}
+			watcher.clearRecentErrors()
+			provider.postMessageToWebview({
+				type: "documentMarkdownStatusUpdate",
+				values: watcher.getCurrentStatus(),
+			})
+			break
+		}
+		case "setDocumentMarkdownAutoEnableDefault": {
+			try {
+				await provider.setDocumentMarkdownAutoEnableDefault(message.bool ?? true)
+			} catch (error) {
+				provider.log(
+					`Error setting document markdown auto-enable default: ${error instanceof Error ? error.message : String(error)}`,
+				)
+			}
 			break
 		}
 		case "requestCodeIndexSecretStatus": {

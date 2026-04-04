@@ -74,6 +74,7 @@ export interface ExtensionMessage {
 		| "singleRouterModelFetchResponse"
 		| "rooCreditBalance"
 		| "indexingStatusUpdate"
+		| "documentMarkdownStatusUpdate"
 		| "indexCleared"
 		| "codebaseIndexConfig"
 		| "marketplaceInstallResult"
@@ -306,6 +307,7 @@ export type ExtensionState = Pick<
 	| "enhancementApiConfigId"
 	| "customCondensingPrompt"
 	| "codebaseIndexConfig"
+	| "documentMarkdownConfig"
 	| "codebaseIndexModels"
 	| "profileThresholds"
 	| "includeDiagnosticMessages"
@@ -529,6 +531,11 @@ export interface WebviewMessage {
 		| "switchOrganization"
 		| "condenseTaskContextRequest"
 		| "requestIndexingStatus"
+		| "requestDocumentMarkdownStatus"
+		| "toggleDocumentMarkdownWorkspace"
+		| "documentMarkdownScanWorkspace"
+		| "documentMarkdownClearErrors"
+		| "setDocumentMarkdownAutoEnableDefault"
 		| "startIndexing"
 		| "stopIndexing"
 		| "clearIndexData"
@@ -621,7 +628,7 @@ export interface WebviewMessage {
 	apiConfiguration?: ProviderSettings
 	images?: string[]
 	bool?: boolean
-	/** Welcome flow: when saving ChinalifePE, enable document index with ChinalifePE embedder. */
+	/** Welcome flow: when saving ChinalifePE, enable code index (ChinalifePE embedder) and workspace document → Markdown conversion. */
 	welcomeChinalifepeDefaults?: boolean
 	value?: number
 	stepIndex?: number
@@ -793,6 +800,31 @@ export interface IndexingStatus {
 export interface IndexingStatusUpdateMessage {
 	type: "indexingStatusUpdate"
 	values: IndexingStatus
+}
+
+/** Workspace document → Markdown conversion (file-cool) status for the chat toolbar. */
+export interface DocumentMarkdownStatus {
+	/** True when global feature is on and this workspace is enabled (effective). */
+	enabled: boolean
+	/** Global master switch from `documentMarkdownConfig.documentMarkdownEnabled` (false only when explicitly off). */
+	featureEnabled?: boolean
+	/** Per-workspace resolved enablement (explicit workspace state or auto-enable default). */
+	workspaceEnabled?: boolean
+	systemStatus: "Standby" | "Idle" | "Processing" | "Error"
+	message?: string
+	processedItems: number
+	totalItems: number
+	currentFile?: string
+	recentErrors: string[]
+	workspacePath?: string
+	gatewayConfigured?: boolean
+	/** Global default for folders with no per-workspace override (like code index auto-enable). */
+	autoEnableDefault?: boolean
+}
+
+export interface DocumentMarkdownStatusUpdateMessage {
+	type: "documentMarkdownStatusUpdate"
+	values: DocumentMarkdownStatus
 }
 
 export interface LanguageModelChatSelector {

@@ -431,6 +431,13 @@
 		"status": "インデックス状態",
 		"stopping": "インデックス作成を停止中..."
 	},
+	"documentMarkdownStatus": {
+		"standby": "Document conversion (off)",
+		"idle": "Document conversion",
+		"processing": "Converting {{percentage}}%",
+		"error": "Document conversion error",
+		"status": "Document conversion status"
+	},
 	"versionIndicator": {
 		"ariaLabel": "バージョン {{version}} - クリックしてリリースノートを表示"
 	},

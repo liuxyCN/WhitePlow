@@ -431,6 +431,13 @@
 		"status": "Index-Status",
 		"stopping": "Indexierung wird gestoppt..."
 	},
+	"documentMarkdownStatus": {
+		"standby": "Document conversion (off)",
+		"idle": "Document conversion",
+		"processing": "Converting {{percentage}}%",
+		"error": "Document conversion error",
+		"status": "Document conversion status"
+	},
 	"versionIndicator": {
 		"ariaLabel": "Version {{version}} - Klicken Sie, um die Versionshinweise anzuzeigen"
 	},

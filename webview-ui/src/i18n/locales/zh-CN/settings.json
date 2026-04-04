@@ -225,6 +225,26 @@
 		"workspaceDisabledMessage": "索引已配置，但尚未为此工作区启用。",
 		"autoEnableDefaultLabel": "自动为新工作区启用索引"
 	},
+	"documentMarkdown": {
+		"title": "文档转 Markdown",
+		"description": "通过 file-cool 将工作区内的 Office 与 PDF 转为 Markdown（与代码库索引无关的独立开关）。",
+		"statusTitle": "状态",
+		"enableLabel": "启用文档转 Markdown",
+		"enableDescription": "总开关：控制自动转换与工具栏相关能力；关闭后任何工作区都不会执行文档转换。",
+		"autoEnableDefaultLabel": "自动为新工作区启用文档转换",
+		"workspaceToggleLabel": "为此工作区启用转换",
+		"workspaceDisabledMessage": "已在全局启用，但尚未为本工作区启用转换。",
+		"gatewayRequired": "请在 MCP 设置中配置网关 URL 与 API Key。",
+		"statuses": {
+			"standby": "待机",
+			"idle": "就绪",
+			"processing": "转换中",
+			"error": "错误"
+		},
+		"startScanButton": "扫描工作区",
+		"errorsTitle": "最近错误",
+		"clearErrorsButton": "清空错误日志"
+	},
 	"autoApprove": {
 		"toggleShortcut": "您可以<SettingsLink>在 IDE 首选项中</SettingsLink>为此设置配置全局快捷方式。",
 		"description": "允许 NeonTractor 自动执行操作而无需批准。只有在您完全信任 AI 并了解相关安全风险的情况下才启用这些设置。",

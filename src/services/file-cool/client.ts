@@ -116,7 +116,10 @@ async function processFiles(
 		}
 
 		for (const [key, value] of Object.entries(options)) {
-			formData.append(key, value)
+			if (value === undefined || value === null) {
+				continue
+			}
+			formData.append(key, typeof value === "string" || value instanceof Blob ? value : String(value))
 		}
 
 		// 发送 multipart 请求到 API

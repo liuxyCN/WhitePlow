@@ -437,6 +437,13 @@
 		"status": "Status indeks",
 		"stopping": "Menghentikan pengindeksan..."
 	},
+	"documentMarkdownStatus": {
+		"standby": "Document conversion (off)",
+		"idle": "Document conversion",
+		"processing": "Converting {{percentage}}%",
+		"error": "Document conversion error",
+		"status": "Document conversion status"
+	},
 	"versionIndicator": {
 		"ariaLabel": "Versi {{version}} - Klik untuk melihat catatan rilis"
 	},

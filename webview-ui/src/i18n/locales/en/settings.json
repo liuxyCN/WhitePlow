@@ -288,6 +288,26 @@
 		"workspaceDisabledMessage": "Indexing is configured but not enabled for this workspace.",
 		"autoEnableDefaultLabel": "Auto-enable indexing for new workspaces"
 	},
+	"documentMarkdown": {
+		"title": "Document to Markdown",
+		"description": "Convert Office and PDF files in the workspace to Markdown using file-cool (independent of codebase index).",
+		"statusTitle": "Status",
+		"enableLabel": "Enable document to Markdown",
+		"enableDescription": "Master switch for automatic conversion and toolbar controls. When off, no workspace will convert documents.",
+		"autoEnableDefaultLabel": "Auto-enable document conversion for new workspaces",
+		"workspaceToggleLabel": "Enable conversion for this workspace",
+		"workspaceDisabledMessage": "Conversion is enabled globally but not for this workspace.",
+		"gatewayRequired": "Configure MCP Gateway URL and API Key in MCP settings for conversion to work.",
+		"statuses": {
+			"standby": "Standby",
+			"idle": "Ready",
+			"processing": "Converting",
+			"error": "Error"
+		},
+		"startScanButton": "Scan workspace",
+		"errorsTitle": "Recent errors",
+		"clearErrorsButton": "Clear log"
+	},
 	"autoApprove": {
 		"description": "Run these actions without asking for permission. Only enable for actions you fully trust and if you understand the security risks.",
 		"toggleShortcut": "You can configure a keyboard shortcut for this setting <SettingsLink>in your IDE preferences</SettingsLink>.",

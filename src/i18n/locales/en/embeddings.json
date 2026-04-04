@@ -74,5 +74,9 @@
 		"indexingRequiresWorkspace": "Indexing requires an open workspace folder",
 		"indexingStopped": "Indexing stopped by user.",
 		"indexingStoppedPartial": "Indexing stopped. Partial index data preserved."
+	},
+	"documentMarkdown": {
+		"queueProgress": "Processing {{processed}} / {{total}} files. Current: {{current}}",
+		"queueFinished": "Finished processing {{total}} files from queue."
 	}
 }
