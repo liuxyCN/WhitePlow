@@ -25,6 +25,7 @@ export class CodeIndexConfigManager {
 	private openAiOptions?: ApiHandlerOptions
 	private ollamaOptions?: ApiHandlerOptions
 	private openAiCompatibleOptions?: { baseUrl: string; apiKey: string }
+	private chinalifepeOptions?: { baseUrl: string; apiKey: string }
 	private geminiOptions?: { apiKey: string }
 	private mistralOptions?: { apiKey: string }
 	private vercelAiGatewayOptions?: { apiKey: string }
@@ -131,6 +132,8 @@ export class CodeIndexConfigManager {
 			this.embedderProvider = "bedrock"
 		} else if (codebaseIndexEmbedderProvider === "openrouter") {
 			this.embedderProvider = "openrouter"
+		} else if (codebaseIndexEmbedderProvider === "chinalifepe") {
+			this.embedderProvider = "chinalifepe"
 		} else {
 			this.embedderProvider = "openai"
 		}
@@ -148,6 +151,17 @@ export class CodeIndexConfigManager {
 						apiKey: openAiCompatibleApiKey,
 					}
 				: undefined
+
+		// ChinalifePE: same OpenAI-compatible URL + API key as the main ChinalifePE API profile
+		if (this.embedderProvider === "chinalifepe") {
+			const rawPeBase = this.contextProxy?.getGlobalState("openAiBaseUrl") as string | undefined
+			const trimmed = (rawPeBase?.trim() || "https://ai.chinalifepe.com").replace(/\/$/, "")
+			const baseWithV1 = trimmed.endsWith("/v1") ? trimmed : `${trimmed}/v1`
+			const peKey = this.contextProxy?.getSecret("openAiApiKey") ?? ""
+			this.chinalifepeOptions = { baseUrl: baseWithV1, apiKey: peKey }
+		} else {
+			this.chinalifepeOptions = undefined
+		}
 
 		this.geminiOptions = geminiApiKey ? { apiKey: geminiApiKey } : undefined
 		this.mistralOptions = mistralApiKey ? { apiKey: mistralApiKey } : undefined
@@ -174,6 +188,7 @@ export class CodeIndexConfigManager {
 			openAiOptions?: ApiHandlerOptions
 			ollamaOptions?: ApiHandlerOptions
 			openAiCompatibleOptions?: { baseUrl: string; apiKey: string }
+			chinalifepeOptions?: { baseUrl: string; apiKey: string }
 			geminiOptions?: { apiKey: string }
 			mistralOptions?: { apiKey: string }
 			vercelAiGatewayOptions?: { apiKey: string }
@@ -197,6 +212,8 @@ export class CodeIndexConfigManager {
 			ollamaBaseUrl: this.ollamaOptions?.ollamaBaseUrl ?? "",
 			openAiCompatibleBaseUrl: this.openAiCompatibleOptions?.baseUrl ?? "",
 			openAiCompatibleApiKey: this.openAiCompatibleOptions?.apiKey ?? "",
+			chinalifepeBaseUrl: this.chinalifepeOptions?.baseUrl ?? "",
+			chinalifepeApiKey: this.chinalifepeOptions?.apiKey ?? "",
 			geminiApiKey: this.geminiOptions?.apiKey ?? "",
 			mistralApiKey: this.mistralOptions?.apiKey ?? "",
 			vercelAiGatewayApiKey: this.vercelAiGatewayOptions?.apiKey ?? "",
@@ -227,6 +244,7 @@ export class CodeIndexConfigManager {
 				openAiOptions: this.openAiOptions,
 				ollamaOptions: this.ollamaOptions,
 				openAiCompatibleOptions: this.openAiCompatibleOptions,
+				chinalifepeOptions: this.chinalifepeOptions,
 				geminiOptions: this.geminiOptions,
 				mistralOptions: this.mistralOptions,
 				vercelAiGatewayOptions: this.vercelAiGatewayOptions,
@@ -274,6 +292,9 @@ export class CodeIndexConfigManager {
 		} else if (this.embedderProvider === "openrouter") {
 			const apiKey = this.openRouterOptions?.apiKey
 			return !!(apiKey && qdrantOk)
+		} else if (this.embedderProvider === "chinalifepe") {
+			const apiKey = this.chinalifepeOptions?.apiKey
+			return !!(apiKey && qdrantOk)
 		}
 		return false // Should not happen if embedderProvider is always set correctly
 	}
@@ -305,6 +326,8 @@ export class CodeIndexConfigManager {
 		const prevOllamaBaseUrl = prev?.ollamaBaseUrl ?? ""
 		const prevOpenAiCompatibleBaseUrl = prev?.openAiCompatibleBaseUrl ?? ""
 		const prevOpenAiCompatibleApiKey = prev?.openAiCompatibleApiKey ?? ""
+		const prevChinalifepeBaseUrl = prev?.chinalifepeBaseUrl ?? ""
+		const prevChinalifepeApiKey = prev?.chinalifepeApiKey ?? ""
 		const prevModelDimension = prev?.modelDimension
 		const prevGeminiApiKey = prev?.geminiApiKey ?? ""
 		const prevMistralApiKey = prev?.mistralApiKey ?? ""
@@ -348,6 +371,8 @@ export class CodeIndexConfigManager {
 		const currentOllamaBaseUrl = this.ollamaOptions?.ollamaBaseUrl ?? ""
 		const currentOpenAiCompatibleBaseUrl = this.openAiCompatibleOptions?.baseUrl ?? ""
 		const currentOpenAiCompatibleApiKey = this.openAiCompatibleOptions?.apiKey ?? ""
+		const currentChinalifepeBaseUrl = this.chinalifepeOptions?.baseUrl ?? ""
+		const currentChinalifepeApiKey = this.chinalifepeOptions?.apiKey ?? ""
 		const currentModelDimension = this.modelDimension
 		const currentGeminiApiKey = this.geminiOptions?.apiKey ?? ""
 		const currentMistralApiKey = this.mistralOptions?.apiKey ?? ""
@@ -376,6 +401,10 @@ export class CodeIndexConfigManager {
 			prevOpenAiCompatibleBaseUrl !== currentOpenAiCompatibleBaseUrl ||
 			prevOpenAiCompatibleApiKey !== currentOpenAiCompatibleApiKey
 		) {
+			return true
+		}
+
+		if (prevChinalifepeBaseUrl !== currentChinalifepeBaseUrl || prevChinalifepeApiKey !== currentChinalifepeApiKey) {
 			return true
 		}
 
@@ -459,6 +488,7 @@ export class CodeIndexConfigManager {
 			openAiOptions: this.openAiOptions,
 			ollamaOptions: this.ollamaOptions,
 			openAiCompatibleOptions: this.openAiCompatibleOptions,
+			chinalifepeOptions: this.chinalifepeOptions,
 			geminiOptions: this.geminiOptions,
 			mistralOptions: this.mistralOptions,
 			vercelAiGatewayOptions: this.vercelAiGatewayOptions,

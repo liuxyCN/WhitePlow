@@ -621,6 +621,8 @@ export interface WebviewMessage {
 	apiConfiguration?: ProviderSettings
 	images?: string[]
 	bool?: boolean
+	/** Welcome flow: when saving ChinalifePE, enable document index with ChinalifePE embedder. */
+	welcomeChinalifepeDefaults?: boolean
 	value?: number
 	stepIndex?: number
 	isLaunchAction?: boolean

@@ -192,6 +192,13 @@ const createValidationSchema = (
 					.min(1, t("settings:codeIndex.validation.modelSelectionRequired")),
 			})
 
+		case "chinalifepe":
+			return baseSchema.extend({
+				codebaseIndexEmbedderModelId: z
+					.string()
+					.min(1, t("settings:codeIndex.validation.modelSelectionRequired")),
+			})
+
 		default:
 			return baseSchema
 	}
@@ -215,6 +222,7 @@ export const CodeIndexPopover: React.FC<CodeIndexPopoverProps> = ({
 
 	// Form validation state
 	const [formErrors, setFormErrors] = useState<Record<string, string>>({})
+	const [hasMainOpenAiApiKey, setHasMainOpenAiApiKey] = useState(false)
 
 	// Discard changes dialog state
 	const [isDiscardDialogShow, setDiscardDialogShow] = useState(false)
@@ -366,6 +374,7 @@ export const CodeIndexPopover: React.FC<CodeIndexPopoverProps> = ({
 			if (event.data.type === "codeIndexSecretStatus") {
 				// Update settings to show placeholders for existing secrets
 				const secretStatus = event.data.values
+				setHasMainOpenAiApiKey(!!secretStatus.hasOpenAiApiKey)
 
 				// Update both current and initial settings based on what secrets exist
 				const updateWithSecrets = (prev: LocalCodeIndexSettings): LocalCodeIndexSettings => {
@@ -499,6 +508,10 @@ export const CodeIndexPopover: React.FC<CodeIndexPopoverProps> = ({
 		try {
 			// Validate using the schema
 			schema.parse(dataToValidate)
+			if (currentSettings.codebaseIndexEmbedderProvider === "chinalifepe" && !hasMainOpenAiApiKey) {
+				setFormErrors({ chinalifepeMainApiKey: t("settings:codeIndex.chinalifepeMainApiKeyRequired") })
+				return false
+			}
 			setFormErrors({})
 			return true
 		} catch (error) {
@@ -727,8 +740,11 @@ export const CodeIndexPopover: React.FC<CodeIndexPopoverProps> = ({
 											value={currentSettings.codebaseIndexEmbedderProvider}
 											onValueChange={(value: EmbedderProvider) => {
 												updateSetting("codebaseIndexEmbedderProvider", value)
-												// Clear model selection when switching providers
-												updateSetting("codebaseIndexEmbedderModelId", "")
+												// Clear model selection when switching providers (ChinalifePE has a default embedding model id)
+												updateSetting(
+													"codebaseIndexEmbedderModelId",
+													value === "chinalifepe" ? "qwen3-embedding" : "",
+												)
 
 												// Auto-populate Region and Profile when switching to Bedrock
 												// if the main API provider is also configured for Bedrock
@@ -761,16 +777,16 @@ export const CodeIndexPopover: React.FC<CodeIndexPopoverProps> = ({
 												<SelectValue />
 											</SelectTrigger>
 											<SelectContent>
-												<SelectItem value="openai">
+												{/* <SelectItem value="openai">
 													{t("settings:codeIndex.openaiProvider")}
 												</SelectItem>
 												<SelectItem value="ollama">
 													{t("settings:codeIndex.ollamaProvider")}
-												</SelectItem>
+												</SelectItem> */}
 												<SelectItem value="openai-compatible">
 													{t("settings:codeIndex.openaiCompatibleProvider")}
 												</SelectItem>
-												<SelectItem value="gemini">
+												{/* <SelectItem value="gemini">
 													{t("settings:codeIndex.geminiProvider")}
 												</SelectItem>
 												<SelectItem value="mistral">
@@ -784,6 +800,9 @@ export const CodeIndexPopover: React.FC<CodeIndexPopoverProps> = ({
 												</SelectItem>
 												<SelectItem value="openrouter">
 													{t("settings:codeIndex.openRouterProvider")}
+												</SelectItem> */}
+												<SelectItem value="chinalifepe">
+													{t("settings:codeIndex.chinalifepeProvider")}
 												</SelectItem>
 											</SelectContent>
 										</Select>
@@ -1451,6 +1470,57 @@ export const CodeIndexPopover: React.FC<CodeIndexPopoverProps> = ({
 														</p>
 													</div>
 												)}
+										</>
+									)}
+
+									{currentSettings.codebaseIndexEmbedderProvider === "chinalifepe" && (
+										<>
+											<p className="text-xs text-vscode-descriptionForeground mt-1 mb-0">
+												{t("settings:codeIndex.chinalifepeDescription")}
+											</p>
+											{formErrors.chinalifepeMainApiKey && (
+												<p className="text-xs text-vscode-errorForeground mt-1 mb-0">
+													{formErrors.chinalifepeMainApiKey}
+												</p>
+											)}
+											<div className="space-y-2">
+												<label className="text-sm font-medium">
+													{t("settings:codeIndex.modelLabel")}
+												</label>
+												<VSCodeDropdown
+													value={currentSettings.codebaseIndexEmbedderModelId}
+													onChange={(e: any) =>
+														updateSetting("codebaseIndexEmbedderModelId", e.target.value)
+													}
+													className={cn("w-full", {
+														"border-red-500": formErrors.codebaseIndexEmbedderModelId,
+													})}>
+													<VSCodeOption value="" className="p-2">
+														{t("settings:codeIndex.selectModel")}
+													</VSCodeOption>
+													{getAvailableModels().map((modelId) => {
+														const model =
+															codebaseIndexModels?.[
+																currentSettings.codebaseIndexEmbedderProvider as keyof typeof codebaseIndexModels
+															]?.[modelId]
+														return (
+															<VSCodeOption key={modelId} value={modelId} className="p-2">
+																{modelId}{" "}
+																{model
+																	? t("settings:codeIndex.modelDimensions", {
+																			dimension: model.dimension,
+																		})
+																	: ""}
+															</VSCodeOption>
+														)
+													})}
+												</VSCodeDropdown>
+												{formErrors.codebaseIndexEmbedderModelId && (
+													<p className="text-xs text-vscode-errorForeground mt-1 mb-0">
+														{formErrors.codebaseIndexEmbedderModelId}
+													</p>
+												)}
+											</div>
 										</>
 									)}
 

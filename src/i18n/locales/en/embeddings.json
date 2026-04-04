@@ -52,6 +52,7 @@
 		"openAiConfigMissing": "OpenAI configuration missing for embedder creation",
 		"ollamaConfigMissing": "Ollama configuration missing for embedder creation",
 		"openAiCompatibleConfigMissing": "OpenAI Compatible configuration missing for embedder creation",
+		"chinalifepeConfigMissing": "ChinalifePE configuration missing for embedder creation (configure API URL and API key in the ChinalifePE provider profile)",
 		"geminiConfigMissing": "Gemini configuration missing for embedder creation",
 		"mistralConfigMissing": "Mistral configuration missing for embedder creation",
 		"openRouterConfigMissing": "OpenRouter configuration missing for embedder creation",

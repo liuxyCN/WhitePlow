@@ -1572,10 +1572,62 @@ export class ClineProvider
 		return !!this.getProviderProfileEntry(name)
 	}
 
+	/**
+	 * Welcome flow: turn on document library indexing with the ChinalifePE embedder when the user
+	 * completes onboarding with ChinalifePE as the API provider.
+	 */
+	private async applyWelcomeChinalifepeCodeIndexDefaults(): Promise<void> {
+		const existing =
+			(this.getGlobalState("codebaseIndexConfig") as Record<string, unknown> | undefined) ?? {}
+		const priorModelId = existing["codebaseIndexEmbedderModelId"]
+		const modelId =
+			typeof priorModelId === "string" && priorModelId.trim() !== ""
+				? priorModelId
+				: "qwen3-embedding"
+		await this.updateGlobalState("codebaseIndexConfig", {
+			...existing,
+			codebaseIndexEnabled: true,
+			codebaseIndexEmbedderProvider: "chinalifepe",
+			codebaseIndexEmbedderModelId: modelId,
+		})
+	}
+
+	/**
+	 * Document index uses {@link openAiBaseUrl} for ChinalifePE embedder; re-read after API profile save.
+	 */
+	private codebaseIndexUsesChinalifepeEmbedder(): boolean {
+		const cfg = this.getGlobalState("codebaseIndexConfig") as
+			| { codebaseIndexEmbedderProvider?: string }
+			| undefined
+		return cfg?.codebaseIndexEmbedderProvider === "chinalifepe"
+	}
+
+	/**
+	 * Reload in-memory code index config (and optionally initialize) so the running workspace manager
+	 * matches globalState — same idea as after saveCodeIndexSettingsAtomic.
+	 */
+	private async syncChinalifepeEmbedderCodeIndexManager(): Promise<void> {
+		const mgr = this.getCurrentWorkspaceCodeIndexManager()
+		if (!mgr) {
+			return
+		}
+		try {
+			await mgr.handleSettingsChange()
+			if (mgr.isFeatureEnabled && mgr.isFeatureConfigured && !mgr.isInitialized) {
+				await mgr.initialize(this.contextProxy)
+			}
+		} catch (error) {
+			this.log(
+				`ChinalifePE embedder code index sync: ${error instanceof Error ? error.message : String(error)}`,
+			)
+		}
+	}
+
 	async upsertProviderProfile(
 		name: string,
 		providerSettings: ProviderSettings,
 		activate: boolean = true,
+		options?: { welcomeChinalifepeDefaults?: boolean },
 	): Promise<string | undefined> {
 		try {
 			// TODO: Do we need to be calling `activateProfile`? It's not
@@ -1611,6 +1663,19 @@ export class ClineProvider
 
 				// Keep the current task's sticky provider profile in sync with the newly-activated profile.
 				await this.persistStickyProviderProfileToCurrentTask(name)
+
+				if (
+					options?.welcomeChinalifepeDefaults === true &&
+					providerSettings.apiProvider === "chinalifepe"
+				) {
+					await this.applyWelcomeChinalifepeCodeIndexDefaults()
+				}
+
+				// ChinalifePE embedding reads openAiBaseUrl from the active profile — refresh after any save
+				// so Base URL / key changes apply immediately (including welcome defaults above).
+				if (this.codebaseIndexUsesChinalifepeEmbedder()) {
+					await this.syncChinalifepeEmbedderCodeIndexManager()
+				}
 			} else {
 				await this.updateGlobalState("listApiConfigMeta", await this.providerSettingsManager.listConfig())
 			}
@@ -1710,6 +1775,10 @@ export class ClineProvider
 		}
 
 		await this.postStateToWebview()
+
+		if (this.codebaseIndexUsesChinalifepeEmbedder()) {
+			await this.syncChinalifepeEmbedderCodeIndexManager()
+		}
 
 		if (providerSettings.apiProvider) {
 			this.emit(RooCodeEventName.ProviderProfileChanged, { name, provider: providerSettings.apiProvider })

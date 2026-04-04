@@ -104,6 +104,15 @@ export class CodeIndexServiceFactory {
 				undefined, // maxItemTokens
 				config.openRouterOptions.specificProvider,
 			)
+		} else if (provider === "chinalifepe") {
+			if (!config.chinalifepeOptions?.baseUrl || !config.chinalifepeOptions?.apiKey) {
+				throw new Error(t("embeddings:serviceFactory.chinalifepeConfigMissing"))
+			}
+			return new OpenAICompatibleEmbedder(
+				config.chinalifepeOptions.baseUrl,
+				config.chinalifepeOptions.apiKey,
+				config.modelId,
+			)
 		}
 
 		throw new Error(
@@ -157,7 +166,7 @@ export class CodeIndexServiceFactory {
 		}
 
 		if (vectorSize === undefined || vectorSize <= 0) {
-			if (provider === "openai-compatible") {
+			if (provider === "openai-compatible" || provider === "chinalifepe") {
 				throw new Error(
 					t("embeddings:serviceFactory.vectorDimensionNotDeterminedOpenAiCompatible", { modelId, provider }),
 				)

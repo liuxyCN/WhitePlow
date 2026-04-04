@@ -79,6 +79,7 @@ export type EmbedderProvider =
 	| "openai"
 	| "ollama"
 	| "openai-compatible"
+	| "chinalifepe"
 	| "gemini"
 	| "mistral"
 	| "vercel-ai-gateway"

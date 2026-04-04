@@ -2336,7 +2336,9 @@ export const webviewMessageHandler = async (
 			break
 		case "upsertApiConfiguration":
 			if (message.text && message.apiConfiguration) {
-				await provider.upsertProviderProfile(message.text, message.apiConfiguration)
+				await provider.upsertProviderProfile(message.text, message.apiConfiguration, true, {
+					welcomeChinalifepeDefaults: message.welcomeChinalifepeDefaults === true,
+				})
 				// Refresh MCP tools after profile update, especially in-memory servers
 				// since gateway configuration may have changed based on the new profile
 				const mcpHub = provider.getMcpHub()
@@ -3183,6 +3185,7 @@ export const webviewMessageHandler = async (
 				"codebaseIndexVercelAiGatewayApiKey",
 			))
 			const hasOpenRouterApiKey = !!(await provider.context.secrets.get("codebaseIndexOpenRouterApiKey"))
+			const hasOpenAiApiKey = !!(await provider.context.secrets.get("openAiApiKey"))
 
 			provider.postMessageToWebview({
 				type: "codeIndexSecretStatus",
@@ -3194,6 +3197,7 @@ export const webviewMessageHandler = async (
 					hasMistralApiKey,
 					hasVercelAiGatewayApiKey,
 					hasOpenRouterApiKey,
+					hasOpenAiApiKey,
 				},
 			})
 			break

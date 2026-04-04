@@ -33,6 +33,9 @@ export const EMBEDDING_MODEL_PROFILES: EmbeddingModelProfiles = {
 			queryPrefix: "Represent this query for searching relevant code: ",
 		},
 	},
+	chinalifepe: {
+		"qwen3-embedding": { dimension: 4096, scoreThreshold: 0.4 },
+	},
 	gemini: {
 		"gemini-embedding-001": { dimension: 3072, scoreThreshold: 0.4 },
 		// Deprecated: text-embedding-004 is migrated to gemini-embedding-001 in GeminiEmbedder
@@ -157,6 +160,9 @@ export function getDefaultModelId(provider: EmbedderProvider): string {
 		case "openai":
 		case "openai-compatible":
 			return "text-embedding-3-small"
+
+		case "chinalifepe":
+			return "qwen3-embedding"
 
 		case "ollama": {
 			// Choose a sensible default for Ollama, e.g., the first one listed or a specific one

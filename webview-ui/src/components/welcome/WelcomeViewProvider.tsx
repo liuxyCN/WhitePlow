@@ -59,6 +59,7 @@ const WelcomeViewProvider = () => {
 				type: "upsertApiConfiguration",
 				text: currentApiConfigName,
 				apiConfiguration: rooConfig,
+				welcomeChinalifepeDefaults: true,
 			})
 			setAuthInProgress(false)
 			setShowManualEntry(false)
@@ -117,7 +118,12 @@ const WelcomeViewProvider = () => {
 			}
 
 			setErrorMessage(undefined)
-			vscode.postMessage({ type: "upsertApiConfiguration", text: currentApiConfigName, apiConfiguration })
+			vscode.postMessage({
+				type: "upsertApiConfiguration",
+				text: currentApiConfigName,
+				apiConfiguration,
+				welcomeChinalifepeDefaults: apiConfiguration.apiProvider === "chinalifepe",
+			})
 		}
 	}, [selectedProvider, cloudIsAuthenticated, apiConfiguration, currentApiConfigName])
 

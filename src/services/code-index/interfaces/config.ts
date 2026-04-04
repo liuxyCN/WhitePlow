@@ -12,6 +12,8 @@ export interface CodeIndexConfig {
 	openAiOptions?: ApiHandlerOptions
 	ollamaOptions?: ApiHandlerOptions
 	openAiCompatibleOptions?: { baseUrl: string; apiKey: string }
+	/** OpenAI-compatible endpoint at `{openAiBaseUrl}/v1` using profile `openAiApiKey`. */
+	chinalifepeOptions?: { baseUrl: string; apiKey: string }
 	geminiOptions?: { apiKey: string }
 	mistralOptions?: { apiKey: string }
 	vercelAiGatewayOptions?: { apiKey: string }
@@ -37,6 +39,8 @@ export type PreviousConfigSnapshot = {
 	ollamaBaseUrl?: string
 	openAiCompatibleBaseUrl?: string
 	openAiCompatibleApiKey?: string
+	chinalifepeBaseUrl?: string
+	chinalifepeApiKey?: string
 	geminiApiKey?: string
 	mistralApiKey?: string
 	vercelAiGatewayApiKey?: string
