@@ -571,8 +571,41 @@ export class FileWatcher implements IFileWatcher {
 				const batchSize = Math.max(1, this.batchSegmentThreshold)
 				for (let offset = 0; offset < texts.length; offset += batchSize) {
 					const slice = texts.slice(offset, offset + batchSize)
-					const { embeddings: batchEmbeddings } = await this.embedder.createEmbeddings(slice)
+					let batchEmbeddings: number[][] | undefined
+					let lastBatchError: Error | undefined
+					for (let attempt = 0; attempt < MAX_BATCH_RETRIES; attempt++) {
+						try {
+							const { embeddings: batch } = await this.embedder.createEmbeddings(slice)
+							if (batch.length !== slice.length) {
+								throw new Error(
+									`Embedding count mismatch for file batch: expected ${slice.length}, got ${batch.length}`,
+								)
+							}
+							batchEmbeddings = batch
+							break
+						} catch (error) {
+							lastBatchError = error as Error
+							console.error(
+								`[FileWatcher] createEmbeddings batch failed (attempt ${attempt + 1}/${MAX_BATCH_RETRIES}) for ${filePath}:`,
+								error,
+							)
+							if (attempt < MAX_BATCH_RETRIES - 1) {
+								await new Promise((resolve) =>
+									setTimeout(resolve, INITIAL_RETRY_DELAY_MS * Math.pow(2, attempt)),
+								)
+							}
+						}
+					}
+					if (!batchEmbeddings) {
+						throw lastBatchError ?? new Error("createEmbeddings failed after retries")
+					}
 					embeddings.push(...batchEmbeddings)
+				}
+
+				if (embeddings.length !== blocks.length) {
+					throw new Error(
+						`Embedding count mismatch for file: expected ${blocks.length}, got ${embeddings.length}`,
+					)
 				}
 
 				pointsToUpsert = blocks.map((block, index) => {
