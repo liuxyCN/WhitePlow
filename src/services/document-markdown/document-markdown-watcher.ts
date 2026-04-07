@@ -97,8 +97,6 @@ function getFileCoolConversionArgs(filePath: string): {
 				functionType: "xslx2md",
 				args: {
 					inputs: [filePath],
-					includeImages: false,
-					includeTables: true,
 					ocr: false,
 				},
 			}
@@ -116,15 +114,11 @@ function getFileCoolConversionArgs(filePath: string): {
 
 function baseDocConversionArgs(filePath: string): {
 	inputs: string[]
-	includeImages: boolean
-	includeTables: boolean
 	start: number
 	end: number
 } {
 	return {
 		inputs: [filePath],
-		includeImages: false,
-		includeTables: true,
 		start: 1,
 		end: 0,
 	}

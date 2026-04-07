@@ -567,7 +567,13 @@ export class FileWatcher implements IFileWatcher {
 			let pointsToUpsert: PointStruct[] = []
 			if (this.embedder && blocks.length > 0) {
 				const texts = blocks.map((block) => block.content)
-				const { embeddings } = await this.embedder.createEmbeddings(texts)
+				const embeddings: number[][] = []
+				const batchSize = Math.max(1, this.batchSegmentThreshold)
+				for (let offset = 0; offset < texts.length; offset += batchSize) {
+					const slice = texts.slice(offset, offset + batchSize)
+					const { embeddings: batchEmbeddings } = await this.embedder.createEmbeddings(slice)
+					embeddings.push(...batchEmbeddings)
+				}
 
 				pointsToUpsert = blocks.map((block, index) => {
 					const normalizedAbsolutePath = generateNormalizedAbsolutePath(block.file_path, this.workspacePath)

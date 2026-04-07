@@ -168,6 +168,8 @@ export class McpHub {
 	private isProgrammaticUpdate: boolean = false
 	private flagResetTimer?: NodeJS.Timeout
 	private sanitizedNameRegistry: Map<string, string> = new Map()
+	/** Serialize silent reconnects per server so parallel tool calls do not race. */
+	private silentReconnectChains: Map<string, Promise<void>> = new Map()
 	private initializationPromise: Promise<void>
 
 	constructor(provider: ClineProvider) {
@@ -1367,15 +1369,41 @@ export class McpHub {
 	private async fetchToolsList(serverName: string, source?: "global" | "project" | "memory"): Promise<McpTool[]> {
 		try {
 			// Use the helper method to find the connection
-			const connection = this.findConnection(serverName, source)
+			let connection = this.findConnection(serverName, source)
 
 			if (!connection || connection.type !== "connected") {
 				return []
 			}
 
+			const actualSourceForReconnect = (connection.server.source ?? "global") as "global" | "project" | "memory"
+
 			console.log(`Fetching tools for ${serverName} (source: ${source})...`)
 
-			const response = await connection.client.request({ method: "tools/list" }, ListToolsResultSchema)
+			let response: z.infer<typeof ListToolsResultSchema>
+			try {
+				response = await connection.client.request({ method: "tools/list" }, ListToolsResultSchema)
+			} catch (error) {
+				if (this.connectionUsesStreamableHttp(connection)) {
+					try {
+						console.warn(
+							`MCP streamable-http: reconnecting "${serverName}" after tools/list error:`,
+							this.collectErrorText(error),
+						)
+						await this.enqueueSilentReconnect(serverName, actualSourceForReconnect)
+						await this.notifyWebviewOfServerChanges()
+						const conn2 = this.findConnection(serverName, source)
+						if (!conn2 || conn2.type !== "connected" || conn2.server.disabled) {
+							throw error
+						}
+						connection = conn2
+						response = await connection.client.request({ method: "tools/list" }, ListToolsResultSchema)
+					} catch {
+						throw error
+					}
+				} else {
+					throw error
+				}
+			}
 
 			// Determine the actual source of the server
 			// Priority: use the passed source parameter first, then connection.server.source, finally default to "global"
@@ -1559,6 +1587,78 @@ export class McpHub {
 			const sanitizedName = sanitizeMcpName(name)
 			this.sanitizedNameRegistry.delete(sanitizedName)
 		}
+	}
+
+	private collectErrorText(error: unknown): string {
+		const parts: string[] = []
+		let current: unknown = error
+		const seen = new Set<unknown>()
+		for (let depth = 0; depth < 8 && current != null && !seen.has(current); depth++) {
+			seen.add(current)
+			if (current instanceof Error) {
+				parts.push(current.message)
+				current = current.cause
+			} else if (typeof current === "object" && current !== null && "message" in current) {
+				parts.push(String((current as { message: unknown }).message))
+				break
+			} else {
+				parts.push(String(current))
+				break
+			}
+		}
+		return parts.join(" | ")
+	}
+
+	private connectionUsesStreamableHttp(connection: ConnectedMcpConnection): boolean {
+		try {
+			const cfg = ServerConfigSchema.parse(JSON.parse(connection.server.config))
+			return cfg.type === "streamable-http"
+		} catch {
+			return false
+		}
+	}
+
+	private async performSilentReconnect(
+		serverName: string,
+		source: "global" | "project" | "memory",
+	): Promise<void> {
+		const mcpEnabled = await this.isMcpEnabled()
+		if (!mcpEnabled) {
+			throw new Error("MCP is disabled")
+		}
+
+		if (source === "memory") {
+			const connection = this.findConnection(serverName, "memory")
+			if (!connection) {
+				throw new Error(`Memory MCP server not found: ${serverName}`)
+			}
+			await this.reconnectMemoryServerPreservingGatewayMetadata(serverName, connection)
+			return
+		}
+
+		const connection = this.findConnection(serverName, source)
+		const config = connection?.server.config
+		if (!config) {
+			throw new Error(`No MCP connection config for server: ${serverName}`)
+		}
+
+		await this.deleteConnection(serverName, source)
+		const parsedConfig = JSON.parse(config)
+		const validatedConfig = this.validateServerConfig(parsedConfig, serverName)
+		await this.connectToServer(serverName, validatedConfig, source)
+	}
+
+	private enqueueSilentReconnect(serverName: string, source: "global" | "project" | "memory"): Promise<void> {
+		const key = `${serverName}\0${source}`
+		const tail = this.silentReconnectChains.get(key) ?? Promise.resolve()
+		const next = tail
+			.catch(() => {})
+			.then(() => this.performSilentReconnect(serverName, source))
+		this.silentReconnectChains.set(
+			key,
+			next.catch(() => {}),
+		)
+		return next
 	}
 
 	async updateServerConnections(
@@ -2478,6 +2578,8 @@ export class McpHub {
 			throw new Error(`Server "${serverName}" is disabled and cannot be used`)
 		}
 
+		const actualSource = (connection.server.source ?? "global") as "global" | "project" | "memory"
+
 		let timeout: number
 		try {
 			const parsedConfig = ServerConfigSchema.parse(JSON.parse(connection.server.config))
@@ -2488,19 +2590,47 @@ export class McpHub {
 			timeout = 600 * 1000
 		}
 
-		return await connection.client.request(
-			{
-				method: "tools/call",
-				params: {
-					name: toolName,
-					arguments: toolArguments,
-				},
+		const requestParams = {
+			method: "tools/call" as const,
+			params: {
+				name: toolName,
+				arguments: toolArguments,
 			},
-			CallToolResultSchema,
-			{
+		}
+
+		try {
+			return await connection.client.request(requestParams, CallToolResultSchema, {
 				timeout,
-			},
-		)
+			})
+		} catch (error) {
+			if (this.connectionUsesStreamableHttp(connection)) {
+				try {
+					console.warn(
+						`MCP streamable-http: reconnecting "${serverName}" after error:`,
+						this.collectErrorText(error),
+					)
+					await this.enqueueSilentReconnect(serverName, actualSource)
+					await this.notifyWebviewOfServerChanges()
+					const conn2 = this.findConnection(serverName, source)
+					if (!conn2 || conn2.type !== "connected" || conn2.server.disabled) {
+						throw error
+					}
+					let timeout2 = timeout
+					try {
+						const parsed2 = ServerConfigSchema.parse(JSON.parse(conn2.server.config))
+						timeout2 = (parsed2.timeout ?? 600) * 1000
+					} catch {
+						// keep timeout
+					}
+					return await conn2.client.request(requestParams, CallToolResultSchema, {
+						timeout: timeout2,
+					})
+				} catch {
+					throw error
+				}
+			}
+			throw error
+		}
 	}
 
 	/**

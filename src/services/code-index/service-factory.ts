@@ -21,7 +21,7 @@ import { VercelAiGatewayEmbedder } from "./embedders/vercel-ai-gateway"
 import { BedrockEmbedder } from "./embedders/bedrock"
 import { OpenRouterEmbedder } from "./embedders/openrouter"
 import { QdrantVectorStore } from "./vector-store/qdrant-client"
-import { EmbeddedVectorStore } from "./vector-store/embedded-vector-store"
+import { EmbeddedVectorStoreBinary } from "./vector-store/embedded-vector-store-binary"
 import { codeParser, DirectoryScanner, FileWatcher } from "./processors"
 import { ICodeParser, IEmbedder, IFileWatcher, IVectorStore } from "./interfaces"
 import { CodeIndexConfigManager } from "./config-manager"
@@ -178,7 +178,8 @@ export class CodeIndexServiceFactory {
 		const vectorStoreKind = CodeIndexConfigManager.normalizeVectorStore(config.vectorStore)
 
 		if (vectorStoreKind === "embedded") {
-			return new EmbeddedVectorStore(this.workspacePath, vectorSize)
+			// Binary `vec.bin` for smaller/faster persistence; JSON `EmbeddedVectorStore` (`vec.db`) unchanged for rollback.
+			return new EmbeddedVectorStoreBinary(this.workspacePath, vectorSize)
 		}
 
 		if (!config.qdrantUrl) {
