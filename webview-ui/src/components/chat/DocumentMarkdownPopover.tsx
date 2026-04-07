@@ -31,6 +31,22 @@ export const DocumentMarkdownPopover: React.FC<DocumentMarkdownPopoverProps> = (
 	const featureOn = documentMarkdownConfig?.documentMarkdownEnabled !== false
 	const workspaceOn = internalStatus.workspaceEnabled ?? false
 
+	const officeTypeOn = documentMarkdownConfig?.documentMarkdownConvertOffice !== false
+	const pdfTypeOn = documentMarkdownConfig?.documentMarkdownConvertPdf !== false
+	const imagesTypeOn = documentMarkdownConfig?.documentMarkdownConvertImages === true
+
+	const updateDocumentMarkdownConfig = (partial: Record<string, boolean | undefined>) => {
+		vscode.postMessage({
+			type: "updateSettings",
+			updatedSettings: {
+				documentMarkdownConfig: {
+					...(documentMarkdownConfig ?? {}),
+					...partial,
+				},
+			},
+		})
+	}
+
 	useEffect(() => {
 		setInternalStatus(externalDocumentMarkdownStatus)
 	}, [externalDocumentMarkdownStatus])
@@ -73,15 +89,7 @@ export const DocumentMarkdownPopover: React.FC<DocumentMarkdownPopoverProps> = (
 		| "error"
 
 	const updateGlobalFeature = (checked: boolean) => {
-		vscode.postMessage({
-			type: "updateSettings",
-			updatedSettings: {
-				documentMarkdownConfig: {
-					...(documentMarkdownConfig ?? {}),
-					documentMarkdownEnabled: checked,
-				},
-			},
-		})
+		updateDocumentMarkdownConfig({ documentMarkdownEnabled: checked })
 	}
 
 	return (
@@ -124,6 +132,39 @@ export const DocumentMarkdownPopover: React.FC<DocumentMarkdownPopoverProps> = (
 							</StandardTooltip>
 						</div>
 					</div>
+
+					{featureOn && (
+						<div className="mb-4 space-y-2">
+							<h4 className="text-sm font-medium m-0">{t("settings:documentMarkdown.fileTypesTitle")}</h4>
+							<div className="flex items-center gap-2">
+								<VSCodeCheckbox
+									checked={officeTypeOn}
+									onChange={(e: any) =>
+										updateDocumentMarkdownConfig({ documentMarkdownConvertOffice: e.target.checked })
+									}>
+									<span className="text-sm">{t("settings:documentMarkdown.convertOfficeLabel")}</span>
+								</VSCodeCheckbox>
+							</div>
+							<div className="flex items-center gap-2">
+								<VSCodeCheckbox
+									checked={pdfTypeOn}
+									onChange={(e: any) =>
+										updateDocumentMarkdownConfig({ documentMarkdownConvertPdf: e.target.checked })
+									}>
+									<span className="text-sm">{t("settings:documentMarkdown.convertPdfLabel")}</span>
+								</VSCodeCheckbox>
+							</div>
+							<div className="flex items-center gap-2">
+								<VSCodeCheckbox
+									checked={imagesTypeOn}
+									onChange={(e: any) =>
+										updateDocumentMarkdownConfig({ documentMarkdownConvertImages: e.target.checked })
+									}>
+									<span className="text-sm">{t("settings:documentMarkdown.convertImagesLabel")}</span>
+								</VSCodeCheckbox>
+							</div>
+						</div>
+					)}
 
 					{/* Status (always visible when popover open — same idea as CodeIndexPopover) */}
 					<div className="space-y-2 mb-4">

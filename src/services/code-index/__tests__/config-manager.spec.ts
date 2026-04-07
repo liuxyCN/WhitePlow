@@ -847,8 +847,8 @@ describe("CodeIndexConfigManager", () => {
 					})
 
 					await configManager.loadConfiguration()
-					// Should fall back to default DEFAULT_SEARCH_MIN_SCORE (0.4)
-					expect(configManager.currentSearchMinScore).toBe(0.4)
+					// Should fall back to default DEFAULT_SEARCH_MIN_SCORE (0.6)
+					expect(configManager.currentSearchMinScore).toBe(0.6)
 				})
 
 				it("should respect user setting of 0 (edge case)", async () => {
@@ -960,7 +960,7 @@ describe("CodeIndexConfigManager", () => {
 
 					const anotherManager = new CodeIndexConfigManager(mockContextProxy)
 					await anotherManager.loadConfiguration()
-					expect(anotherManager.currentSearchMinScore).toBe(0.4) // Default
+					expect(anotherManager.currentSearchMinScore).toBe(0.6) // Default
 				})
 			})
 
@@ -989,7 +989,7 @@ describe("CodeIndexConfigManager", () => {
 
 					const newManager = new CodeIndexConfigManager(mockContextProxy)
 					await newManager.loadConfiguration()
-					expect(newManager.currentSearchMaxResults).toBe(50) // Default (DEFAULT_MAX_SEARCH_RESULTS)
+					expect(newManager.currentSearchMaxResults).toBe(20) // Default (DEFAULT_MAX_SEARCH_RESULTS)
 
 					// Test 3: Boundary values
 					mockContextProxy.getGlobalState.mockReturnValue({
@@ -1298,7 +1298,7 @@ describe("CodeIndexConfigManager", () => {
 				qdrantUrl: "http://qdrant.local",
 				qdrantApiKey: "test-qdrant-key",
 				searchMinScore: 0.4,
-				searchMaxResults: 50,
+				searchMaxResults: 20,
 			})
 		})
 

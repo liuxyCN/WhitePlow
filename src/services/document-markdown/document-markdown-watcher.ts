@@ -2,7 +2,7 @@ import * as vscode from "vscode"
 import * as path from "path"
 import * as fs from "fs/promises"
 
-import type { DocumentMarkdownStatus } from "@roo-code/types"
+import type { DocumentMarkdownStatus, DocumentMarkdownTypeFilters } from "@roo-code/types"
 
 import { t } from "../../i18n"
 import { RooIgnoreController } from "../../core/ignore/RooIgnoreController"
@@ -10,19 +10,46 @@ import { processFiles } from "../file-cool/client.js"
 import { generateRelativeFilePath } from "../code-index/shared/get-relative-path"
 import { isPathInIgnoredDirectory } from "../glob/ignore-utils"
 
-const DOCUMENT_EXTENSIONS = new Set([
-	".doc",
-	".docx",
-	".ppt",
-	".pptx",
-	".xls",
-	".xlsx",
-	".pdf",
+const OFFICE_EXTENSIONS = new Set([".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx"])
+const PDF_EXTENSIONS = new Set([".pdf"])
+const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png"])
+
+const ALL_SUPPORTED_EXTENSIONS = new Set<string>([
+	...OFFICE_EXTENSIONS,
+	...PDF_EXTENSIONS,
+	...IMAGE_EXTENSIONS,
 ])
+
+const DEFAULT_TYPE_FILTERS: DocumentMarkdownTypeFilters = {
+	office: true,
+	pdf: true,
+	images: false,
+}
+
+function isExtensionAllowedByTypeFilters(
+	ext: string,
+	filters: DocumentMarkdownTypeFilters,
+): boolean {
+	if (OFFICE_EXTENSIONS.has(ext)) {
+		return filters.office
+	}
+	if (PDF_EXTENSIONS.has(ext)) {
+		return filters.pdf
+	}
+	if (IMAGE_EXTENSIONS.has(ext)) {
+		return filters.images
+	}
+	return false
+}
 
 const MAX_DOCUMENT_BYTES = 50 * 1024 * 1024
 const DEBOUNCE_MS = 500
 const MAX_RECENT_ERRORS = 12
+
+/** Office 编辑时产生的锁文件（如 `~$报告.docx`），不是真实文档，勿参与转换。 */
+function isOfficeLockFile(fsPath: string): boolean {
+	return path.basename(fsPath).startsWith("~$")
+}
 
 /**
  * Global default for **new** workspace folders when no per-workspace override is stored — mirrors
@@ -31,7 +58,7 @@ const MAX_RECENT_ERRORS = 12
 export const DOCUMENT_MARKDOWN_AUTO_ENABLE_DEFAULT_KEY = "documentMarkdownAutoEnableDefault"
 
 /** Same glob for `FileSystemWatcher` and `findFiles` (must stay in sync). */
-const SUPPORTED_DOCS_RELATIVE_PATTERN = "**/*.{doc,docx,ppt,pptx,xls,xlsx,pdf}"
+const SUPPORTED_DOCS_RELATIVE_PATTERN = "**/*.{doc,docx,ppt,pptx,xls,xlsx,pdf,jpg,jpeg,png}"
 
 const GATEWAY_NOT_CONFIGURED_MESSAGE = "MCP Gateway URL or API Key is not configured."
 
@@ -75,6 +102,13 @@ function getFileCoolConversionArgs(filePath: string): {
 					ocr: false,
 				},
 			}
+		case ".jpg":
+		case ".jpeg":
+		case ".png":
+			return {
+				functionType: "ocr",
+				args: baseDocConversionArgs(filePath),
+			}
 		default:
 			return null
 	}
@@ -97,7 +131,7 @@ function baseDocConversionArgs(filePath: string): {
 }
 
 /**
- * Watches workspace for Office/PDF documents and queues conversion to Markdown via file-cool (MCP Gateway).
+ * Watches workspace for Office/PDF/image documents and queues conversion to Markdown via file-cool (MCP Gateway).
  */
 export class DocumentMarkdownWatcher implements vscode.Disposable {
 	private static instances = new Map<string, DocumentMarkdownWatcher>()
@@ -107,6 +141,7 @@ export class DocumentMarkdownWatcher implements vscode.Disposable {
 	private readonly context: vscode.ExtensionContext
 	private readonly getGatewayConfig: () => Promise<GatewayConfig | null>
 	private readonly getFeatureEnabled: () => boolean
+	private readonly getTypeFilters: () => DocumentMarkdownTypeFilters
 
 	private fileWatcher?: vscode.FileSystemWatcher
 	/** When a workspace `.md` is deleted, debounce and run a scan to re-convert sources missing output. */
@@ -114,6 +149,8 @@ export class DocumentMarkdownWatcher implements vscode.Disposable {
 	private mdDeleteScanTimer?: NodeJS.Timeout
 	/** Set while converting; cleared in `runQueue` finally, then one deferred scan runs if needed. */
 	private pendingScanAfterMdDelete = false
+	/** One automatic `findFiles` scan per enable cycle; reset in {@link disposeWatcherOnly} (mirrors codebase index startup). */
+	private startupWorkspaceScanDone = false
 
 	private ignoreController: RooIgnoreController
 	private batchTimer?: NodeJS.Timeout
@@ -139,6 +176,7 @@ export class DocumentMarkdownWatcher implements vscode.Disposable {
 		workspacePath?: string,
 		getGatewayConfig?: () => Promise<GatewayConfig | null>,
 		getFeatureEnabled?: () => boolean,
+		getTypeFilters?: () => DocumentMarkdownTypeFilters,
 	): DocumentMarkdownWatcher | undefined {
 		let folder: vscode.WorkspaceFolder | undefined
 
@@ -177,6 +215,7 @@ export class DocumentMarkdownWatcher implements vscode.Disposable {
 					context,
 					getGatewayConfig ?? (async () => null),
 					getFeatureEnabled ?? (() => true),
+					getTypeFilters ?? (() => DEFAULT_TYPE_FILTERS),
 				),
 			)
 		}
@@ -196,13 +235,22 @@ export class DocumentMarkdownWatcher implements vscode.Disposable {
 		context: vscode.ExtensionContext,
 		getGatewayConfig: () => Promise<GatewayConfig | null>,
 		getFeatureEnabled: () => boolean,
+		getTypeFilters: () => DocumentMarkdownTypeFilters,
 	) {
 		this.workspacePath = workspacePath
 		this._folderUri = folderUri
 		this.context = context
 		this.getGatewayConfig = getGatewayConfig
 		this.getFeatureEnabled = getFeatureEnabled
+		this.getTypeFilters = getTypeFilters
 		this.ignoreController = new RooIgnoreController(workspacePath)
+	}
+
+	private shouldConvertExtension(ext: string): boolean {
+		if (!ALL_SUPPORTED_EXTENSIONS.has(ext)) {
+			return false
+		}
+		return isExtensionAllowedByTypeFilters(ext, this.getTypeFilters())
 	}
 
 	private workspaceEnabledKey(): string {
@@ -221,13 +269,20 @@ export class DocumentMarkdownWatcher implements vscode.Disposable {
 		context: vscode.ExtensionContext,
 		getGatewayConfig: () => Promise<GatewayConfig | null>,
 		getFeatureEnabled?: () => boolean,
+		getTypeFilters?: () => DocumentMarkdownTypeFilters,
 	): Promise<void> {
 		const folders = vscode.workspace.workspaceFolders
 		if (!folders?.length) {
 			return
 		}
 		for (const folder of folders) {
-			const w = DocumentMarkdownWatcher.getInstance(context, folder.uri.fsPath, getGatewayConfig, getFeatureEnabled)
+			const w = DocumentMarkdownWatcher.getInstance(
+				context,
+				folder.uri.fsPath,
+				getGatewayConfig,
+				getFeatureEnabled,
+				getTypeFilters,
+			)
 			if (!w) {
 				continue
 			}
@@ -346,8 +401,8 @@ export class DocumentMarkdownWatcher implements vscode.Disposable {
 		if (!this.fileWatcher) {
 			const pattern = new vscode.RelativePattern(this.workspacePath, SUPPORTED_DOCS_RELATIVE_PATTERN)
 			this.fileWatcher = vscode.workspace.createFileSystemWatcher(pattern)
-			this.fileWatcher.onDidCreate((uri) => this.enqueue(uri.fsPath))
-			this.fileWatcher.onDidChange((uri) => this.enqueue(uri.fsPath))
+			this.fileWatcher.onDidCreate((uri) => void this.maybeEnqueue(uri.fsPath))
+			this.fileWatcher.onDidChange((uri) => void this.maybeEnqueue(uri.fsPath))
 		}
 		if (!this.mdDeleteWatcher) {
 			const mdPattern = new vscode.RelativePattern(this.workspacePath, "**/*.md")
@@ -355,6 +410,15 @@ export class DocumentMarkdownWatcher implements vscode.Disposable {
 			this.mdDeleteWatcher.onDidDelete((uri) => this.onMarkdownFileDeleted(uri.fsPath))
 		}
 		this.status.systemStatus = "Idle"
+		if (!this.startupWorkspaceScanDone) {
+			this.startupWorkspaceScanDone = true
+			void this.scanWorkspaceDocuments().catch((error) => {
+				console.error(
+					`[DocumentMarkdownWatcher] Startup workspace scan failed (${this.workspacePath}):`,
+					error instanceof Error ? error.message : error,
+				)
+			})
+		}
 	}
 
 	private disposeWatcherOnly(): void {
@@ -371,6 +435,7 @@ export class DocumentMarkdownWatcher implements vscode.Disposable {
 			this.mdDeleteScanTimer = undefined
 		}
 		this.pendingScanAfterMdDelete = false
+		this.startupWorkspaceScanDone = false
 		this.pendingPaths.clear()
 		this.processingQueue = []
 		this.isProcessing = false
@@ -418,7 +483,7 @@ export class DocumentMarkdownWatcher implements vscode.Disposable {
 	}
 
 	/**
-	 * Finds supported documents under the workspace and enqueues them for conversion (manual "scan" from UI).
+	 * Finds supported documents under the workspace and enqueues them for conversion (UI "scan", startup sync, or md-delete recovery).
 	 */
 	async scanWorkspaceDocuments(): Promise<void> {
 		if (!this.isEffectiveEnabled) {
@@ -443,7 +508,7 @@ export class DocumentMarkdownWatcher implements vscode.Disposable {
 		for (const uri of uris) {
 			const fsPath = uri.fsPath
 			const ext = path.extname(fsPath).toLowerCase()
-			if (!DOCUMENT_EXTENSIONS.has(ext)) {
+			if (!this.shouldConvertExtension(ext)) {
 				continue
 			}
 			const relativeFilePath = generateRelativeFilePath(fsPath, this.workspacePath)
@@ -453,17 +518,58 @@ export class DocumentMarkdownWatcher implements vscode.Disposable {
 			if (!this.ignoreController.validateAccess(fsPath)) {
 				continue
 			}
-			this.enqueue(fsPath)
+			await this.maybeEnqueue(fsPath)
 		}
 		this.emitStatus()
+	}
+
+	/**
+	 * Enqueue only if the file still needs conversion (same pre-checks as {@link convertOne} for skip cases),
+	 * so progress `total` reflects pending work rather than every matched document.
+	 */
+	private async maybeEnqueue(fsPath: string): Promise<void> {
+		if (!this.isEffectiveEnabled) {
+			return
+		}
+		if (isOfficeLockFile(fsPath)) {
+			return
+		}
+		const ext = path.extname(fsPath).toLowerCase()
+		if (!this.shouldConvertExtension(ext)) {
+			return
+		}
+		const relativeFilePath = generateRelativeFilePath(fsPath, this.workspacePath)
+		if (isPathInIgnoredDirectory(relativeFilePath)) {
+			return
+		}
+		if (!this.ignoreController.validateAccess(fsPath)) {
+			return
+		}
+		let sourceMtimeMs: number
+		try {
+			const s = await fs.stat(fsPath)
+			if (s.size > MAX_DOCUMENT_BYTES) {
+				return
+			}
+			sourceMtimeMs = s.mtimeMs
+		} catch {
+			return
+		}
+		if (await this.shouldSkipConversion(fsPath, sourceMtimeMs)) {
+			return
+		}
+		this.enqueue(fsPath)
 	}
 
 	private enqueue(fsPath: string): void {
 		if (!this.isEffectiveEnabled) {
 			return
 		}
+		if (isOfficeLockFile(fsPath)) {
+			return
+		}
 		const ext = path.extname(fsPath).toLowerCase()
-		if (!DOCUMENT_EXTENSIONS.has(ext)) {
+		if (!this.shouldConvertExtension(ext)) {
 			return
 		}
 		this.pendingPaths.add(fsPath)
@@ -542,6 +648,13 @@ export class DocumentMarkdownWatcher implements vscode.Disposable {
 
 	private async convertOne(filePath: string): Promise<void> {
 		try {
+			if (isOfficeLockFile(filePath)) {
+				return
+			}
+			const ext = path.extname(filePath).toLowerCase()
+			if (!this.shouldConvertExtension(ext)) {
+				return
+			}
 			const relativeFilePath = generateRelativeFilePath(filePath, this.workspacePath)
 			if (isPathInIgnoredDirectory(relativeFilePath)) {
 				return
@@ -550,20 +663,19 @@ export class DocumentMarkdownWatcher implements vscode.Disposable {
 				return
 			}
 
-			let stat: { size: number }
+			let sourceMtimeMs: number
 			try {
 				const s = await fs.stat(filePath)
-				stat = { size: s.size }
+				if (s.size > MAX_DOCUMENT_BYTES) {
+					this.pushError(`${path.basename(filePath)}: file too large`)
+					return
+				}
+				sourceMtimeMs = s.mtimeMs
 			} catch {
 				return
 			}
 
-			if (stat.size > MAX_DOCUMENT_BYTES) {
-				this.pushError(`${path.basename(filePath)}: file too large`)
-				return
-			}
-
-			if (await this.outputMarkdownExists(filePath)) {
+			if (await this.shouldSkipConversion(filePath, sourceMtimeMs)) {
 				return
 			}
 
@@ -585,13 +697,21 @@ export class DocumentMarkdownWatcher implements vscode.Disposable {
 		}
 	}
 
-	/** Same directory, same basename with `.md` — if present, skip conversion (no overwrite). */
-	private async outputMarkdownExists(sourcePath: string): Promise<boolean> {
-		const base = path.basename(sourcePath, path.extname(sourcePath))
-		const mdPath = path.join(path.dirname(sourcePath), `${base}.md`)
+	/** Same directory as source: `{sourceBaseName}.md` (e.g. `abc.pdf` → `abc.pdf.md`). */
+	private getOutputMarkdownPath(sourcePath: string): string {
+		const name = path.basename(sourcePath)
+		return path.join(path.dirname(sourcePath), `${name}.md`)
+	}
+
+	/**
+	 * Skip conversion when the sidecar markdown exists and is at least as new as the source
+	 * (same mtime or newer). If the source was edited after the `.md` was generated, re-convert.
+	 */
+	private async shouldSkipConversion(sourcePath: string, sourceMtimeMs: number): Promise<boolean> {
+		const mdPath = this.getOutputMarkdownPath(sourcePath)
 		try {
-			await fs.access(mdPath)
-			return true
+			const mdStat = await fs.stat(mdPath)
+			return mdStat.mtimeMs >= sourceMtimeMs
 		} catch {
 			return false
 		}

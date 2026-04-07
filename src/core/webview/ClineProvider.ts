@@ -37,6 +37,9 @@ import {
 	type ExtensionMessage,
 	type ExtensionState,
 	type MarketplaceInstalledMetadata,
+	type DocumentMarkdownConfig,
+	type DocumentMarkdownTypeFilters,
+	resolveDocumentMarkdownTypeOptions,
 	RooCodeEventName,
 	requestyDefaultModelId,
 	openRouterDefaultModelId,
@@ -1616,6 +1619,7 @@ export class ClineProvider
 			this.context,
 			() => this.getMcpGatewayFileCoolConfig(),
 			() => this.isDocumentMarkdownFeatureEnabled(),
+			() => this.getDocumentMarkdownTypeFilters(),
 		)
 		this.updateDocumentMarkdownStatusSubscription()
 		this.postCurrentDocumentMarkdownStatusToWebview()
@@ -1628,6 +1632,7 @@ export class ClineProvider
 			this.context,
 			() => this.getMcpGatewayFileCoolConfig(),
 			() => this.isDocumentMarkdownFeatureEnabled(),
+			() => this.getDocumentMarkdownTypeFilters(),
 		)
 		this.updateDocumentMarkdownStatusSubscription()
 		this.postCurrentDocumentMarkdownStatusToWebview()
@@ -2529,6 +2534,9 @@ export class ClineProvider
 			},
 			documentMarkdownConfig: {
 				documentMarkdownEnabled: documentMarkdownConfig?.documentMarkdownEnabled ?? true,
+				documentMarkdownConvertOffice: documentMarkdownConfig?.documentMarkdownConvertOffice,
+				documentMarkdownConvertPdf: documentMarkdownConfig?.documentMarkdownConvertPdf,
+				documentMarkdownConvertImages: documentMarkdownConfig?.documentMarkdownConvertImages,
 			},
 			// Only set mdmCompliant if there's an actual MDM policy
 			// undefined means no MDM policy, true means compliant, false means non-compliant
@@ -2775,6 +2783,9 @@ export class ClineProvider
 			},
 			documentMarkdownConfig: {
 				documentMarkdownEnabled: stateValues.documentMarkdownConfig?.documentMarkdownEnabled ?? true,
+				documentMarkdownConvertOffice: stateValues.documentMarkdownConfig?.documentMarkdownConvertOffice,
+				documentMarkdownConvertPdf: stateValues.documentMarkdownConfig?.documentMarkdownConvertPdf,
+				documentMarkdownConvertImages: stateValues.documentMarkdownConfig?.documentMarkdownConvertImages,
 			},
 			profileThresholds: stateValues.profileThresholds ?? {},
 			lockApiConfigAcrossModes: this.context.workspaceState.get("lockApiConfigAcrossModes", false),
@@ -3019,9 +3030,16 @@ export class ClineProvider
 			this.context,
 			() => this.getMcpGatewayFileCoolConfig(),
 			() => this.isDocumentMarkdownFeatureEnabled(),
+			() => this.getDocumentMarkdownTypeFilters(),
 		)
 		this.updateDocumentMarkdownStatusSubscription()
 		this.postCurrentDocumentMarkdownStatusToWebview()
+	}
+
+	/** Per-type conversion toggles from global `documentMarkdownConfig` (Office/PDF default on; images default off). */
+	public getDocumentMarkdownTypeFilters(): DocumentMarkdownTypeFilters {
+		const cfg = this.getGlobalState("documentMarkdownConfig") as DocumentMarkdownConfig | undefined
+		return resolveDocumentMarkdownTypeOptions(cfg)
 	}
 
 	public getCurrentWorkspaceDocumentMarkdownWatcher(): DocumentMarkdownWatcher | undefined {
@@ -3030,6 +3048,7 @@ export class ClineProvider
 			this.cwd,
 			() => this.getMcpGatewayFileCoolConfig(),
 			() => this.isDocumentMarkdownFeatureEnabled(),
+			() => this.getDocumentMarkdownTypeFilters(),
 		)
 	}
 

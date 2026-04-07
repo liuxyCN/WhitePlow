@@ -203,6 +203,7 @@ export async function activate(context: vscode.ExtensionContext) {
 				folder.uri.fsPath,
 				() => provider.getMcpGatewayFileCoolConfig(),
 				() => provider.isDocumentMarkdownFeatureEnabled(),
+				() => provider.getDocumentMarkdownTypeFilters(),
 			)
 			if (dm) {
 				context.subscriptions.push(dm)
