@@ -138,6 +138,9 @@ export class DocumentMarkdownWatcher implements vscode.Disposable {
 	private readonly getTypeFilters: () => DocumentMarkdownTypeFilters
 
 	private fileWatcher?: vscode.FileSystemWatcher
+	/** Debounce batched source-document deletes before prompting to remove sidecar `.md` files. */
+	private sourceDeleteDebounceTimer?: NodeJS.Timeout
+	private readonly pendingDeletedSourcePaths = new Set<string>()
 	/** When a workspace `.md` is deleted, debounce and run a scan to re-convert sources missing output. */
 	private mdDeleteWatcher?: vscode.FileSystemWatcher
 	private mdDeleteScanTimer?: NodeJS.Timeout
@@ -397,6 +400,7 @@ export class DocumentMarkdownWatcher implements vscode.Disposable {
 			this.fileWatcher = vscode.workspace.createFileSystemWatcher(pattern)
 			this.fileWatcher.onDidCreate((uri) => void this.maybeEnqueue(uri.fsPath))
 			this.fileWatcher.onDidChange((uri) => void this.maybeEnqueue(uri.fsPath))
+			this.fileWatcher.onDidDelete((uri) => this.onSourceDocumentDeleted(uri.fsPath))
 		}
 		if (!this.mdDeleteWatcher) {
 			const mdPattern = new vscode.RelativePattern(this.workspacePath, "**/*.md")
@@ -428,11 +432,117 @@ export class DocumentMarkdownWatcher implements vscode.Disposable {
 			clearTimeout(this.mdDeleteScanTimer)
 			this.mdDeleteScanTimer = undefined
 		}
+		if (this.sourceDeleteDebounceTimer) {
+			clearTimeout(this.sourceDeleteDebounceTimer)
+			this.sourceDeleteDebounceTimer = undefined
+		}
+		this.pendingDeletedSourcePaths.clear()
 		this.pendingScanAfterMdDelete = false
 		this.startupWorkspaceScanDone = false
 		this.pendingPaths.clear()
 		this.processingQueue = []
 		this.isProcessing = false
+	}
+
+	private onSourceDocumentDeleted(deletedFsPath: string): void {
+		if (!this.isEffectiveEnabled) {
+			return
+		}
+		if (isOfficeLockFile(deletedFsPath)) {
+			return
+		}
+		const ext = path.extname(deletedFsPath).toLowerCase()
+		if (!ALL_SUPPORTED_EXTENSIONS.has(ext)) {
+			return
+		}
+		const relative = generateRelativeFilePath(deletedFsPath, this.workspacePath)
+		if (isPathInIgnoredDirectory(relative)) {
+			return
+		}
+		if (!this.ignoreController.validateAccess(deletedFsPath)) {
+			return
+		}
+		this.pendingDeletedSourcePaths.add(deletedFsPath)
+		if (this.sourceDeleteDebounceTimer) {
+			clearTimeout(this.sourceDeleteDebounceTimer)
+		}
+		this.sourceDeleteDebounceTimer = setTimeout(() => {
+			this.sourceDeleteDebounceTimer = undefined
+			void this.flushPendingDeletedSourceSidecars()
+		}, DEBOUNCE_MS)
+	}
+
+	/**
+	 * After supported source files are removed, if the sidecar `{name}.md` still exists, ask whether to delete it.
+	 */
+	private async flushPendingDeletedSourceSidecars(): Promise<void> {
+		const sourcePaths = [...this.pendingDeletedSourcePaths]
+		this.pendingDeletedSourcePaths.clear()
+		if (!this.isEffectiveEnabled || sourcePaths.length === 0) {
+			return
+		}
+
+		const candidates: { mdUri: vscode.Uri; sourceBase: string }[] = []
+		const seenMd = new Set<string>()
+		for (const sourcePath of sourcePaths) {
+			const mdPath = this.getOutputMarkdownPath(sourcePath)
+			if (seenMd.has(mdPath)) {
+				continue
+			}
+			try {
+				await fs.stat(mdPath)
+			} catch {
+				continue
+			}
+			seenMd.add(mdPath)
+			candidates.push({
+				mdUri: vscode.Uri.file(mdPath),
+				sourceBase: path.basename(sourcePath),
+			})
+		}
+		if (candidates.length === 0) {
+			return
+		}
+
+		const deleteLabel = t("embeddings:documentMarkdown.deleteSidecarConfirmDelete")
+		const keepLabel = t("embeddings:documentMarkdown.deleteSidecarConfirmKeep")
+
+		let choice: string | undefined
+		if (candidates.length === 1) {
+			const one = candidates[0]!
+			choice = await vscode.window.showWarningMessage(
+				t("embeddings:documentMarkdown.deleteSidecarConfirmSingle", {
+					fileName: one.sourceBase,
+					mdName: path.basename(one.mdUri.fsPath),
+				}),
+				{ modal: true },
+				keepLabel,
+				deleteLabel,
+			)
+		} else {
+			choice = await vscode.window.showWarningMessage(
+				t("embeddings:documentMarkdown.deleteSidecarConfirmMultiple", {
+					count: candidates.length,
+				}),
+				{ modal: true },
+				keepLabel,
+				deleteLabel,
+			)
+		}
+
+		if (choice !== deleteLabel) {
+			return
+		}
+
+		for (const { mdUri } of candidates) {
+			try {
+				await vscode.workspace.fs.delete(mdUri, { useTrash: true })
+			} catch (e) {
+				const msg = e instanceof Error ? e.message : String(e)
+				this.pushError(`${path.basename(mdUri.fsPath)}: ${msg}`)
+				this.emitStatus()
+			}
+		}
 	}
 
 	private onMarkdownFileDeleted(deletedFsPath: string): void {

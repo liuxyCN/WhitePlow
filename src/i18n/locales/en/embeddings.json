@@ -77,6 +77,10 @@
 	},
 	"documentMarkdown": {
 		"queueProgress": "Processing {{processed}} / {{total}} files. Current: {{current}}",
-		"queueFinished": "Finished processing {{total}} files from queue."
+		"queueFinished": "Finished processing {{total}} files from queue.",
+		"deleteSidecarConfirmSingle": "The document \"{{fileName}}\" was removed. Delete the converted Markdown file \"{{mdName}}\"?",
+		"deleteSidecarConfirmMultiple": "{{count}} documents were removed. Delete their converted Markdown files?",
+		"deleteSidecarConfirmDelete": "Delete Markdown",
+		"deleteSidecarConfirmKeep": "Keep"
 	}
 }

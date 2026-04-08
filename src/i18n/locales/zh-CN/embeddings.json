@@ -77,6 +77,10 @@
 	},
 	"documentMarkdown": {
 		"queueProgress": "正在处理 {{processed}} / {{total}} 个文件。当前：{{current}}",
-		"queueFinished": "已完成队列中的 {{total}} 个文件。"
+		"queueFinished": "已完成队列中的 {{total}} 个文件。",
+		"deleteSidecarConfirmSingle": "源文件「{{fileName}}」已删除。是否同时删除已转换的 Markdown 文件「{{mdName}}」？",
+		"deleteSidecarConfirmMultiple": "已删除 {{count}} 个文档。是否同时删除对应的已转换 Markdown 文件？",
+		"deleteSidecarConfirmDelete": "删除 Markdown",
+		"deleteSidecarConfirmKeep": "保留"
 	}
 }
