@@ -459,6 +459,7 @@
 		"idle": "长期记忆就绪",
 		"processing": "长期记忆处理中",
 		"ingesting": "长期记忆抽取 {{percentage}}%",
+		"optimizing": "长期记忆优化中",
 		"error": "长期记忆出错",
 		"status": "长期记忆状态"
 	},

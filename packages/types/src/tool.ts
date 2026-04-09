@@ -45,6 +45,8 @@ export const toolNames = [
 	"run_slash_command",
 	"skill",
 	"generate_image",
+	"delete_long_term_memory",
+	"optimize_long_term_memory",
 	"custom_tool",
 ] as const
 

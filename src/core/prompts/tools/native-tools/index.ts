@@ -5,11 +5,13 @@ import applyPatch from "./apply_patch"
 import askFollowupQuestion from "./ask_followup_question"
 import attemptCompletion from "./attempt_completion"
 import codebaseSearch from "./codebase_search"
+import deleteLongTermMemory from "./delete_long_term_memory"
 import editTool from "./edit"
 import executeCommand from "./execute_command"
 import generateImage from "./generate_image"
 import listFiles from "./list_files"
 import newTask from "./new_task"
+import optimizeLongTermMemory from "./optimize_long_term_memory"
 import readCommandOutput from "./read_command_output"
 import { createReadFileTool, type ReadFileToolOptions } from "./read_file"
 import runSlashCommand from "./run_slash_command"
@@ -53,10 +55,12 @@ export function getNativeTools(options: NativeToolsOptions = {}): OpenAI.Chat.Ch
 		askFollowupQuestion,
 		attemptCompletion,
 		codebaseSearch,
+		deleteLongTermMemory,
 		executeCommand,
 		generateImage,
 		listFiles,
 		newTask,
+		optimizeLongTermMemory,
 		readCommandOutput,
 		createReadFileTool(readFileOptions),
 		runSlashCommand,

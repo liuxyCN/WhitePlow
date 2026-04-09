@@ -22,6 +22,7 @@ import { LongTermMemoryPreferencesStore } from "./preferences-store"
 import { LongTermMemorySyncStateStore } from "./sync-state-store"
 import { buildExtractionUserContent } from "./extraction-prompt"
 import { buildMemorySelectionUserContent } from "./memory-inject-selection-prompt"
+import { buildOptimizationUserContent } from "./optimization-prompt"
 
 const RECENT_ERRORS_MAX = 30
 const DEFAULT_INGEST_MAX_TASKS = 12
@@ -33,6 +34,8 @@ const STRUCTURED_INJECT_MAX_CHARS = 5000
 const ROUTING_USER_TEXT_MAX = 8_192
 /** Max chars of JSON(memory) in the routing prompt (avoid huge prompts). */
 const ROUTING_MEMORY_JSON_MAX = 512_000
+/** Max items accepted from optimize-memory LLM output (after validation). */
+const OPTIMIZE_MAX_ITEMS = 500
 
 type ExtractedItem = { key: string; value: string | number | boolean }
 
@@ -356,7 +359,7 @@ export class LongTermMemoryManager {
 		return out.slice(0, TRANSCRIPT_MAX_CHARS)
 	}
 
-	private parseExtractionJson(raw: string): ExtractedItem[] {
+	private parseStructuredItemsFromLlm(raw: string, maxItems: number): ExtractedItem[] {
 		let s = raw.trim()
 		const fence = /^```(?:json)?\s*([\s\S]*?)```$/m.exec(s)
 		if (fence) {
@@ -382,10 +385,14 @@ export class LongTermMemoryManager {
 					}
 				}
 			}
-			return out.slice(0, 15)
+			return out.slice(0, maxItems)
 		} catch {
 			return []
 		}
+	}
+
+	private parseExtractionJson(raw: string): ExtractedItem[] {
+		return this.parseStructuredItemsFromLlm(raw, 15)
 	}
 
 	private looksLikeSecret(s: string): boolean {
@@ -499,6 +506,83 @@ export class LongTermMemoryManager {
 		await this.prefs.clear()
 		await this.broadcastStatus()
 		await this.broadcastContentsSnapshot()
+	}
+
+	/**
+	 * Remove one structured memory key. Key must match stored keys (`[a-zA-Z0-9_.]+`).
+	 */
+	async deleteStructuredKey(key: string): Promise<{ ok: true } | { ok: false; error: string }> {
+		const k = key.trim()
+		if (!this.isFeatureEnabled()) {
+			return { ok: false, error: "长期记忆已关闭。" }
+		}
+		if (!/^[a-zA-Z0-9_.]+$/.test(k)) {
+			return { ok: false, error: "无效的记忆键。" }
+		}
+		const entries = await this.prefs.getAll()
+		if (!(k in entries)) {
+			return { ok: false, error: `不存在键：${k}` }
+		}
+		await this.prefs.removeKey(k)
+		await this.broadcastStatus()
+		await this.broadcastContentsSnapshot()
+		return { ok: true }
+	}
+
+	/**
+	 * Send all structured memories to the model to dedupe and rewrite, then replace the store.
+	 */
+	async optimizeStructuredMemory(
+		userFocus?: string,
+	): Promise<{ ok: true; beforeCount: number; afterCount: number } | { ok: false; error: string }> {
+		if (!this.isFeatureEnabled()) {
+			return { ok: false, error: "长期记忆已关闭。" }
+		}
+		const entries = await this.prefs.getAll()
+		const beforeCount = Object.keys(entries).length
+		if (beforeCount === 0) {
+			return { ok: false, error: "没有可优化的结构化记忆。" }
+		}
+
+		const prevStatus = this.status
+		this.status = "Optimizing"
+		await this.broadcastStatus()
+
+		try {
+			let api: ProviderSettings
+			try {
+				api = await this.deps.getApiConfiguration()
+			} catch (e) {
+				return { ok: false, error: `无法读取 API 配置：${e instanceof Error ? e.message : String(e)}` }
+			}
+
+			const memoriesJson = this.truncateEntriesJsonForRouting(entries)
+			const focus =
+				userFocus && userFocus.trim().length > 0 ? userFocus.trim() : undefined
+			const prompt = buildOptimizationUserContent(memoriesJson, focus)
+			const raw = await singleCompletionHandler(api, prompt)
+			const extracted = this.parseStructuredItemsFromLlm(raw, OPTIMIZE_MAX_ITEMS)
+			const structured: Record<string, string | number | boolean> = {}
+			for (const it of extracted) {
+				structured[it.key] = it.value
+			}
+			if (Object.keys(structured).length === 0) {
+				return { ok: false, error: "优化未产生有效条目，请稍后重试。" }
+			}
+			await this.prefs.clear()
+			await this.prefs.upsertEntries(structured)
+			const afterCount = Object.keys(structured).length
+			return { ok: true, beforeCount, afterCount }
+		} catch (e) {
+			const msg = e instanceof Error ? e.message : String(e)
+			this.pushError(`优化记忆失败：${msg}`)
+			return { ok: false, error: msg }
+		} finally {
+			this.status = prevStatus
+			await this.broadcastStatus()
+			// Always push contents so webview can clear loading state (requestLongTermMemoryContents flow).
+			await this.broadcastContentsSnapshot()
+		}
 	}
 
 	/** Clear incremental sync markers and run ingest immediately (not debounced). */

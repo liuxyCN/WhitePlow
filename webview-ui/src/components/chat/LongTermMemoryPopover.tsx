@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react"
-import { Brain } from "lucide-react"
+import { Brain, Sparkles, Trash2 } from "lucide-react"
 import { VSCodeCheckbox } from "@vscode/webview-ui-toolkit/react"
 
 import type { LongTermMemoryContentsSnapshot, LongTermMemoryStatus } from "@roo-code/types"
@@ -104,13 +104,17 @@ const LongTermMemoryPopover: React.FC<LongTermMemoryPopoverProps> = ({ children,
 		| "idle"
 		| "processing"
 		| "ingesting"
+		| "optimizing"
 		| "error"
+
+	const longTermMemoryBusy =
+		internalStatus.systemStatus === "Ingesting" || internalStatus.systemStatus === "Optimizing"
 
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
 			{children}
 			<PopoverContent
-				className="w-[min(100vw-2rem,28rem)] max-h-[min(86vh,32rem)] overflow-y-auto p-4"
+				className="w-[min(100vw-2rem,28rem)] max-h-[min(96vh,42rem)] overflow-y-auto p-4"
 				align="end"
 				container={portalContainer}>
 				<div className="flex flex-col gap-3 text-sm text-vscode-foreground">
@@ -162,7 +166,7 @@ const LongTermMemoryPopover: React.FC<LongTermMemoryPopoverProps> = ({ children,
 								internalStatus.systemStatus === "Ingesting" &&
 								` (${progressPercentage}%)`}
 						</p>
-						{internalStatus.totalItems > 0 && (
+						{internalStatus.totalItems > 0 && internalStatus.systemStatus === "Ingesting" && (
 							<ProgressPrimitive.Root
 								className="relative h-1.5 w-full overflow-hidden rounded-full bg-vscode-input-background mt-2"
 								value={progressPercentage}>
@@ -200,7 +204,7 @@ const LongTermMemoryPopover: React.FC<LongTermMemoryPopoverProps> = ({ children,
 								<summary className="cursor-pointer text-xs font-medium px-2 py-1.5 select-none">
 									{t("settings:longTermMemory.browseStructuredTitle")}
 								</summary>
-								<div className="px-2 pb-2 max-h-44 overflow-y-auto border-t border-vscode-widget-border">
+								<div className="px-2 pb-2 max-h-60 overflow-y-auto border-t border-vscode-widget-border">
 									{structuredKeys.length === 0 ? (
 										<p className="m-0 mt-2 text-xs text-vscode-descriptionForeground">
 											{t("settings:longTermMemory.browseEmptyStructured")}
@@ -208,13 +212,28 @@ const LongTermMemoryPopover: React.FC<LongTermMemoryPopoverProps> = ({ children,
 									) : (
 										<dl className="m-0 mt-2 space-y-2">
 											{structuredKeys.map((key) => (
-												<div key={key}>
-													<dt className="text-[10px] uppercase tracking-wide text-vscode-descriptionForeground font-mono break-all">
-														{key}
-													</dt>
-													<dd className="m-0 mt-0.5 text-xs whitespace-pre-wrap break-words pl-0">
-														{formatStructuredValue(contentsSnapshot.structured[key])}
-													</dd>
+												<div key={key} className="flex gap-1.5 items-start justify-between">
+													<div className="min-w-0 flex-1">
+														<dt className="text-[10px] uppercase tracking-wide text-vscode-descriptionForeground font-mono break-all">
+															{key}
+														</dt>
+														<dd className="m-0 mt-0.5 text-xs whitespace-pre-wrap break-words pl-0">
+															{formatStructuredValue(contentsSnapshot.structured[key])}
+														</dd>
+													</div>
+													<StandardTooltip content={t("settings:longTermMemory.browseDeleteKeyTooltip")}>
+														<Button
+															variant="ghost"
+															className="h-7 w-7 p-0 shrink-0 text-vscode-descriptionForeground hover:text-vscode-errorForeground"
+															disabled={!featureOn || longTermMemoryBusy}
+															onClick={() => {
+																requestContentsRefreshAfterAction()
+																vscode.postMessage({ type: "longTermMemoryDeleteKey", memoryKey: key })
+															}}
+															aria-label={t("settings:longTermMemory.browseDeleteKeyAria")}>
+															<Trash2 className="h-3.5 w-3.5" />
+														</Button>
+													</StandardTooltip>
 												</div>
 											))}
 										</dl>
@@ -246,7 +265,16 @@ const LongTermMemoryPopover: React.FC<LongTermMemoryPopoverProps> = ({ children,
 					<div className="flex flex-wrap gap-2 pt-2 border-t">
 						<Button
 							variant="secondary"
-							disabled={!featureOn || internalStatus.systemStatus === "Ingesting"}
+							disabled={!featureOn || longTermMemoryBusy}
+							onClick={() => {
+								vscode.postMessage({ type: "longTermMemoryOptimizeStructured" })
+							}}>
+							<Sparkles className="h-3.5 w-3.5 mr-1 inline-block align-middle" />
+							{t("settings:longTermMemory.optimizeButton")}
+						</Button>
+						<Button
+							variant="secondary"
+							disabled={!featureOn || longTermMemoryBusy}
 							onClick={() => {
 								requestContentsRefreshAfterAction()
 								vscode.postMessage({ type: "longTermMemoryRescanAll" })
@@ -313,6 +341,8 @@ export const LongTermMemoryStatusBadge: React.FC<LongTermMemoryStatusBadgeProps>
 				return t("chat:longTermMemoryStatus.processing")
 			case "Ingesting":
 				return t("chat:longTermMemoryStatus.ingesting", { percentage: progressPercentage })
+			case "Optimizing":
+				return t("chat:longTermMemoryStatus.optimizing")
 			case "Error":
 				return t("chat:longTermMemoryStatus.error")
 			default:
@@ -326,6 +356,7 @@ export const LongTermMemoryStatusBadge: React.FC<LongTermMemoryStatusBadgeProps>
 			Idle: "bg-green-500",
 			Processing: "bg-yellow-500 animate-pulse",
 			Ingesting: "bg-yellow-500 animate-pulse",
+			Optimizing: "bg-yellow-500 animate-pulse",
 			Error: "bg-red-500",
 		}
 		return colors[status.systemStatus]

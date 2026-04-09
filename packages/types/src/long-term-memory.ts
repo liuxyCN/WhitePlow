@@ -21,6 +21,7 @@ export type LongTermMemorySystemStatus =
 	| "Idle"
 	| "Processing"
 	| "Ingesting"
+	| "Optimizing"
 	| "Error"
 
 export interface LongTermMemoryStatus {

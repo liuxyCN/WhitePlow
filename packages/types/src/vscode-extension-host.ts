@@ -546,6 +546,8 @@ export interface WebviewMessage {
 		| "longTermMemoryClearErrors"
 		| "longTermMemoryClearStructuredMemory"
 		| "longTermMemoryRescanAll"
+		| "longTermMemoryDeleteKey"
+		| "longTermMemoryOptimizeStructured"
 		| "startIndexing"
 		| "stopIndexing"
 		| "clearIndexData"
@@ -670,6 +672,8 @@ export interface WebviewMessage {
 	/** @deprecated Use newSkillModeSlugs instead */
 	newSkillMode?: string // For moveSkill (target mode)
 	skillDescription?: string // For createSkill (skill description)
+	/** Exact structured memory key for longTermMemoryDeleteKey */
+	memoryKey?: string
 	/** Mode slugs for skill operations. undefined/empty = any mode */
 	skillModeSlugs?: string[] // For skill operations (mode restrictions)
 	/** Target mode slugs for updateSkillModes */
@@ -874,6 +878,8 @@ export interface ClineSayTool {
 		| "runSlashCommand"
 		| "updateTodoList"
 		| "skill"
+		| "deleteLongTermMemory"
+		| "optimizeLongTermMemory"
 	path?: string
 	// For readCommandOutput
 	readStart?: number
@@ -931,6 +937,10 @@ export interface ClineSayTool {
 	description?: string
 	// Properties for skill tool
 	skill?: string
+	/** deleteLongTermMemory */
+	memoryKey?: string
+	/** optimizeLongTermMemory */
+	focus?: string
 }
 
 export interface ClineAskUseMcpServer {

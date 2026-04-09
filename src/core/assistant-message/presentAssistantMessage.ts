@@ -31,6 +31,8 @@ import { switchModeTool } from "../tools/SwitchModeTool"
 import { attemptCompletionTool, AttemptCompletionCallbacks } from "../tools/AttemptCompletionTool"
 import { newTaskTool } from "../tools/NewTaskTool"
 import { updateTodoListTool } from "../tools/UpdateTodoListTool"
+import { deleteLongTermMemoryTool } from "../tools/DeleteLongTermMemoryTool"
+import { optimizeLongTermMemoryTool } from "../tools/OptimizeLongTermMemoryTool"
 import { runSlashCommandTool } from "../tools/RunSlashCommandTool"
 import { skillTool } from "../tools/SkillTool"
 import { generateImageTool } from "../tools/GenerateImageTool"
@@ -371,6 +373,10 @@ export async function presentAssistantMessage(cline: Task) {
 						return `[${block.name} for '${block.params.artifact_id}']`
 					case "update_todo_list":
 						return `[${block.name}]`
+					case "delete_long_term_memory":
+						return `[${block.name} key '${block.params.memory_key ?? ""}']`
+					case "optimize_long_term_memory":
+						return `[${block.name}${block.params.focus ? ` focus '${block.params.focus}'` : ""}]`
 					case "new_task": {
 						const mode = block.params.mode ?? defaultModeSlug
 						const message = block.params.message ?? "(no message)"
@@ -686,6 +692,20 @@ export async function presentAssistantMessage(cline: Task) {
 					break
 				case "update_todo_list":
 					await updateTodoListTool.handle(cline, block as ToolUse<"update_todo_list">, {
+						askApproval,
+						handleError,
+						pushToolResult,
+					})
+					break
+				case "delete_long_term_memory":
+					await deleteLongTermMemoryTool.handle(cline, block as ToolUse<"delete_long_term_memory">, {
+						askApproval,
+						handleError,
+						pushToolResult,
+					})
+					break
+				case "optimize_long_term_memory":
+					await optimizeLongTermMemoryTool.handle(cline, block as ToolUse<"optimize_long_term_memory">, {
 						askApproval,
 						handleError,
 						pushToolResult,

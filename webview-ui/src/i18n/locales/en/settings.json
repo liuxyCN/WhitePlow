@@ -328,6 +328,7 @@
 			"idle": "Ready",
 			"processing": "Working",
 			"ingesting": "Ingesting history",
+			"optimizing": "Optimizing memory",
 			"error": "Error"
 		},
 		"structuredCount": "Structured keys: {{count}}",
@@ -340,7 +341,10 @@
 		"browseRefreshButton": "Refresh list",
 		"browseLoading": "Loading…",
 		"browseStructuredTitle": "Structured (key / value)",
-		"browseEmptyStructured": "No entries"
+		"browseEmptyStructured": "No entries",
+		"browseDeleteKeyTooltip": "Delete this memory entry",
+		"browseDeleteKeyAria": "Delete this memory entry",
+		"optimizeButton": "Optimize memory"
 	},
 	"autoApprove": {
 		"description": "Run these actions without asking for permission. Only enable for actions you fully trust and if you understand the security risks.",

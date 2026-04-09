@@ -265,6 +265,7 @@
 			"idle": "就绪",
 			"processing": "处理中",
 			"ingesting": "正在抽取历史",
+			"optimizing": "正在优化记忆",
 			"error": "错误"
 		},
 		"structuredCount": "结构化键：{{count}}",
@@ -277,7 +278,10 @@
 		"browseRefreshButton": "刷新列表",
 		"browseLoading": "加载中…",
 		"browseStructuredTitle": "结构化（键 / 值）",
-		"browseEmptyStructured": "暂无记忆内容"
+		"browseEmptyStructured": "暂无记忆内容",
+		"browseDeleteKeyTooltip": "删除此条记忆",
+		"browseDeleteKeyAria": "删除此条记忆",
+		"optimizeButton": "优化记忆"
 	},
 	"autoApprove": {
 		"toggleShortcut": "您可以<SettingsLink>在 IDE 首选项中</SettingsLink>为此设置配置全局快捷方式。",

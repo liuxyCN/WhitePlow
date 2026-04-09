@@ -3317,6 +3317,39 @@ export const webviewMessageHandler = async (
 			void provider.getLongTermMemoryManager().rescanAllHistory()
 			break
 		}
+		case "longTermMemoryDeleteKey": {
+			const key = typeof message.memoryKey === "string" ? message.memoryKey.trim() : ""
+			if (!key) {
+				break
+			}
+			void (async () => {
+				try {
+					await provider.getLongTermMemoryManager().deleteStructuredKey(key)
+				} catch (error) {
+					provider.log(
+						`[LongTermMemory] deleteStructuredKey failed: ${error instanceof Error ? error.message : String(error)}`,
+					)
+				}
+			})()
+			break
+		}
+		case "longTermMemoryOptimizeStructured": {
+			try {
+				const result = await provider.getLongTermMemoryManager().optimizeStructuredMemory()
+				if (result.ok) {
+					provider.log(
+						`[LongTermMemory] optimizeStructuredMemory done: ${result.beforeCount} → ${result.afterCount} keys`,
+					)
+				} else {
+					provider.log(`[LongTermMemory] optimizeStructuredMemory: ${result.error}`)
+				}
+			} catch (error) {
+				provider.log(
+					`[LongTermMemory] optimizeStructuredMemory failed: ${error instanceof Error ? error.message : String(error)}`,
+				)
+			}
+			break
+		}
 		case "setDocumentMarkdownAutoEnableDefault": {
 			try {
 				await provider.setDocumentMarkdownAutoEnableDefault(message.bool ?? true)

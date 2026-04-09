@@ -450,6 +450,7 @@
 		"idle": "Long-term memory ready",
 		"processing": "Long-term memory",
 		"ingesting": "Long-term memory ingest {{percentage}}%",
+		"optimizing": "Long-term memory optimizing",
 		"error": "Long-term memory error",
 		"status": "Long-term memory status"
 	},
