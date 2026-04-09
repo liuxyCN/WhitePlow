@@ -281,9 +281,14 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 			codebaseIndexEmbedderModelId: "",
 			codebaseIndexSearchMaxResults: undefined,
 			codebaseIndexSearchMinScore: undefined,
+			codebaseIndexAutoInjectOnFirstTurn: true,
 		},
 		documentMarkdownConfig: {
 			documentMarkdownEnabled: true,
+		},
+		longTermMemoryConfig: {
+			longTermMemoryEnabled: true,
+			longTermMemorySmartInject: true,
 		},
 		codebaseIndexModels: { ollama: {}, openai: {} },
 		includeDiagnosticMessages: true,

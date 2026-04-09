@@ -69,6 +69,10 @@ export function useMessageHandlers({ nonInteractive }: UseMessageHandlersOptions
 				return
 			}
 
+			if (say === "context_injection_notice") {
+				return
+			}
+
 			if (say === "user_feedback") {
 				seenMessageIds.current.add(messageId)
 				return

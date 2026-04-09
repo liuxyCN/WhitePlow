@@ -35,6 +35,7 @@ import {
 	type ModelInfo,
 	type ClineApiReqCancelReason,
 	type ClineApiReqInfo,
+	type LongTermMemoryInjectionResult,
 	RooCodeEventName,
 	TelemetryEventName,
 	TaskStatus,
@@ -137,6 +138,21 @@ const MAX_EXPONENTIAL_BACKOFF_SECONDS = 600 // 10 minutes
 const DEFAULT_USAGE_COLLECTION_TIMEOUT_MS = 5000 // 5 seconds
 const FORCED_CONTEXT_REDUCTION_PERCENT = 75 // Keep 75% of context (remove 25%) on context window errors
 const MAX_CONTEXT_WINDOW_RETRIES = 3 // Maximum retries for context window errors
+const LONG_TERM_MEMORY_USER_TEXT_MAX = 8000
+
+function extractUserTextForLongTermMemory(content: Anthropic.Messages.ContentBlockParam[]): string {
+	const parts: string[] = []
+	for (const block of content) {
+		if (block.type === "text" && typeof (block as { text?: string }).text === "string") {
+			parts.push((block as { text: string }).text)
+		}
+	}
+	const joined = parts.join("\n\n").trim()
+	if (joined.length <= LONG_TERM_MEMORY_USER_TEXT_MAX) {
+		return joined
+	}
+	return joined.slice(0, LONG_TERM_MEMORY_USER_TEXT_MAX)
+}
 
 export interface TaskOptions extends CreateTaskOptions {
 	provider: ClineProvider
@@ -2624,6 +2640,14 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 				}
 			}
 
+			let memoryInjection: LongTermMemoryInjectionResult = { text: "", keysInjected: 0 }
+			let codebaseInjection = { text: "", snippetCount: 0 }
+			if (currentIncludeFileDetails && provider) {
+				const userTextForMemory = extractUserTextForLongTermMemory(parsedUserContent)
+				memoryInjection = await provider.getLongTermMemoryInjectionBlock(userTextForMemory)
+				codebaseInjection = await provider.getCodebaseAutoInjectBlock(userTextForMemory, this.cwd)
+			}
+
 			const environmentDetails = await getEnvironmentDetails(this, currentIncludeFileDetails)
 
 			// Remove any existing environment_details blocks before adding fresh ones.
@@ -2645,7 +2669,27 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 
 			// Add environment details as its own text block, separate from tool
 			// results.
-			let finalUserContent = [...contentWithoutEnvDetails, { type: "text" as const, text: environmentDetails }]
+			let finalUserContent = [
+				...contentWithoutEnvDetails,
+				...(memoryInjection.text ? [{ type: "text" as const, text: memoryInjection.text }] : []),
+				...(codebaseInjection.text ? [{ type: "text" as const, text: codebaseInjection.text }] : []),
+				{ type: "text" as const, text: environmentDetails },
+			]
+
+			if (
+				currentIncludeFileDetails &&
+				provider &&
+				(memoryInjection.keysInjected > 0 || codebaseInjection.snippetCount > 0)
+			) {
+				await this.say(
+					"context_injection_notice",
+					JSON.stringify({
+						longTermMemoryKeys: memoryInjection.keysInjected,
+						codebaseSnippets: codebaseInjection.snippetCount,
+					}),
+				)
+			}
+
 			// Only add user message to conversation history if:
 			// 1. This is the first attempt (retryAttempt === 0), AND
 			// 2. The original userContent was not empty (empty signals delegation resume where

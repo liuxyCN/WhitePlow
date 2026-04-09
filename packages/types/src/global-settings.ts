@@ -10,6 +10,7 @@ import {
 import { historyItemSchema } from "./history.js"
 import { codebaseIndexModelsSchema, codebaseIndexConfigSchema } from "./codebase-index.js"
 import { documentMarkdownConfigSchema } from "./document-markdown-config.js"
+import { longTermMemoryConfigSchema } from "./long-term-memory.js"
 import { experimentsSchema } from "./experiment.js"
 import { telemetrySettingsSchema } from "./telemetry.js"
 import { modeConfigSchema } from "./mode.js"
@@ -187,6 +188,7 @@ export const globalSettingsSchema = z.object({
 	codebaseIndexModels: codebaseIndexModelsSchema.optional(),
 	codebaseIndexConfig: codebaseIndexConfigSchema.optional(),
 	documentMarkdownConfig: documentMarkdownConfigSchema.optional(),
+	longTermMemoryConfig: longTermMemoryConfigSchema.optional(),
 
 	language: languagesSchema.optional(),
 

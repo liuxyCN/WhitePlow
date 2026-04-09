@@ -166,6 +166,11 @@
 	"edit": "Edit...",
 	"forNextMode": "for next mode",
 	"forPreviousMode": "for previous mode",
+	"contextInjection": {
+		"title": "Context injection",
+		"memoryLine": "{{count}} long-term memory",
+		"codebaseLine": "{{count}} indexed document"
+	},
 	"apiRequest": {
 		"title": "API Request",
 		"failed": "API Request Failed",
@@ -439,6 +444,14 @@
 		"processing": "Converting {{percentage}}%",
 		"error": "Document conversion error",
 		"status": "Document conversion status"
+	},
+	"longTermMemoryStatus": {
+		"standby": "Long-term memory",
+		"idle": "Long-term memory ready",
+		"processing": "Long-term memory",
+		"ingesting": "Long-term memory ingest {{percentage}}%",
+		"error": "Long-term memory error",
+		"status": "Long-term memory status"
 	},
 	"versionIndicator": {
 		"ariaLabel": "Version {{version}} - Click to view release notes"

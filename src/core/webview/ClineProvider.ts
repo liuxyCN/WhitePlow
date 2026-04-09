@@ -39,6 +39,7 @@ import {
 	type MarketplaceInstalledMetadata,
 	type DocumentMarkdownConfig,
 	type DocumentMarkdownTypeFilters,
+	type LongTermMemoryInjectionResult,
 	resolveDocumentMarkdownTypeOptions,
 	RooCodeEventName,
 	requestyDefaultModelId,
@@ -114,6 +115,7 @@ import {
 } from "../../services/document-markdown/document-markdown-watcher"
 import { MdmService } from "../../services/mdm/MdmService"
 import { SkillsManager } from "../../services/skills/SkillsManager"
+import { LongTermMemoryManager } from "../../services/long-term-memory"
 
 import { fileExistsAtPath } from "../../utils/fs"
 import { setTtsEnabled, setTtsSpeed } from "../../utils/tts"
@@ -179,6 +181,7 @@ export class ClineProvider
 	private codeIndexManager?: CodeIndexManager
 	private documentMarkdownStatusSubscription?: vscode.Disposable
 	private documentMarkdownWatcher?: DocumentMarkdownWatcher
+	private longTermMemoryManager?: LongTermMemoryManager
 	private _workspaceTracker?: WorkspaceTracker // workSpaceTracker read-only for access outside this class
 	protected mcpHub?: McpHub // Change from private to protected
 	protected skillsManager?: SkillsManager
@@ -944,6 +947,7 @@ export class ClineProvider
 		// Initialize code index status subscription for the current workspace.
 		this.updateCodeIndexStatusSubscription()
 		this.updateDocumentMarkdownStatusSubscription()
+		void this.getLongTermMemoryManager().postStatusToWebview()
 
 		// Listen for active editor changes to update code index status for the
 		// current workspace.
@@ -1242,6 +1246,102 @@ export class ClineProvider
 			await this.view?.webview.postMessage(message)
 		} catch {
 			// View disposed, drop message silently
+		}
+	}
+
+	public getLongTermMemoryManager(): LongTermMemoryManager {
+		if (!this.longTermMemoryManager) {
+			this.longTermMemoryManager = new LongTermMemoryManager({
+				context: this.context,
+				globalStoragePath: this.context.globalStorageUri.fsPath,
+				getWorkspacePath: () => this.cwd,
+				getTaskHistoryStore: () => this.taskHistoryStore,
+				getApiConfiguration: async () => (await this.getState()).apiConfiguration,
+				getGlobalState: (key) => this.contextProxy.getValue(key),
+				updateGlobalState: async (partial) => {
+					if (partial.longTermMemoryConfig) {
+						const cur = this.contextProxy.getValue("longTermMemoryConfig") ?? {}
+						await this.contextProxy.setValue("longTermMemoryConfig", {
+							...cur,
+							...partial.longTermMemoryConfig,
+						})
+					}
+				},
+				postMessage: (msg) => {
+					void this.postMessageToWebview(msg)
+				},
+				log: (m) => this.log(m),
+			})
+		}
+		return this.longTermMemoryManager
+	}
+
+	public async getLongTermMemoryInjectionBlock(userMessageText?: string): Promise<LongTermMemoryInjectionResult> {
+		try {
+			return await this.getLongTermMemoryManager().buildInjectionBlock(userMessageText)
+		} catch (e) {
+			this.log(`[LongTermMemory] injection failed: ${e instanceof Error ? e.message : String(e)}`)
+			return { text: "", keysInjected: 0 }
+		}
+	}
+
+	/**
+	 * Optional vector-search snippets to prepend on the first turn when enabled in settings and index is ready.
+	 * Result count is limited only by Code Index search settings (`codebaseIndexSearchMaxResults` / min score); no extra character budget on the injected block.
+	 */
+	public async getCodebaseAutoInjectBlock(
+		userQuery: string,
+		workspacePath: string | undefined,
+	): Promise<{ text: string; snippetCount: number }> {
+		const none = { text: "", snippetCount: 0 }
+		const state = await this.getState()
+		if (state.codebaseIndexConfig?.codebaseIndexAutoInjectOnFirstTurn === false) {
+			return none
+		}
+		// Match `CodebaseSearchTool`: pass query through to `searchIndex` with no extra truncation (only falsy check).
+		const q = userQuery
+		if (!q) {
+			return none
+		}
+		try {
+			const mgr = CodeIndexManager.getInstance(this.context, workspacePath)
+			if (!mgr?.isFeatureEnabled || !mgr.isFeatureConfigured) {
+				return none
+			}
+			const sys = mgr.getCurrentStatus().systemStatus
+			if (sys !== "Indexed" && sys !== "Indexing") {
+				return none
+			}
+			const results = await mgr.searchIndex(q)
+			if (!results?.length) {
+				return none
+			}
+			const header = `<codebase_context>\n`
+			const footer = `</codebase_context>\n\n`
+			let body = "# 相关内容（索引文档检索）\n"
+			let included = 0
+			for (const result of results) {
+				if (!result.payload || !("filePath" in result.payload)) {
+					continue
+				}
+				const p = result.payload as {
+					filePath: string
+					startLine: number
+					endLine: number
+					codeChunk: string
+				}
+				const rel = vscode.workspace.asRelativePath(p.filePath, false)
+				const chunk = `### ${rel} (${p.startLine}-${p.endLine})\n\`\`\`\n${p.codeChunk.trim()}\n\`\`\`\n\n`
+				body += chunk
+				included++
+			}
+			if (included === 0) {
+				return none
+			}
+			return { text: `${header}${body.trimEnd()}\n${footer}`, snippetCount: included }
+		} catch (e) {
+			this.log(`[CodeIndex] auto inject: ${e instanceof Error ? e.message : String(e)}`)
+			return none
 		}
 	}
 
@@ -2373,6 +2473,7 @@ export class ClineProvider
 			customCondensingPrompt,
 			codebaseIndexConfig,
 			documentMarkdownConfig,
+			longTermMemoryConfig,
 			codebaseIndexModels,
 			profileThresholds,
 			alwaysAllowFollowupQuestions,
@@ -2531,12 +2632,18 @@ export class ClineProvider
 				codebaseIndexBedrockRegion: codebaseIndexConfig?.codebaseIndexBedrockRegion,
 				codebaseIndexBedrockProfile: codebaseIndexConfig?.codebaseIndexBedrockProfile,
 				codebaseIndexOpenRouterSpecificProvider: codebaseIndexConfig?.codebaseIndexOpenRouterSpecificProvider,
+				codebaseIndexAutoInjectOnFirstTurn: codebaseIndexConfig?.codebaseIndexAutoInjectOnFirstTurn !== false,
 			},
 			documentMarkdownConfig: {
 				documentMarkdownEnabled: documentMarkdownConfig?.documentMarkdownEnabled ?? true,
 				documentMarkdownConvertOffice: documentMarkdownConfig?.documentMarkdownConvertOffice,
 				documentMarkdownConvertPdf: documentMarkdownConfig?.documentMarkdownConvertPdf,
 				documentMarkdownConvertImages: documentMarkdownConfig?.documentMarkdownConvertImages,
+			},
+			longTermMemoryConfig: {
+				...longTermMemoryConfig,
+				longTermMemoryEnabled: longTermMemoryConfig?.longTermMemoryEnabled !== false,
+				longTermMemorySmartInject: longTermMemoryConfig?.longTermMemorySmartInject !== false,
 			},
 			// Only set mdmCompliant if there's an actual MDM policy
 			// undefined means no MDM policy, true means compliant, false means non-compliant
@@ -2780,12 +2887,19 @@ export class ClineProvider
 				codebaseIndexBedrockProfile: stateValues.codebaseIndexConfig?.codebaseIndexBedrockProfile,
 				codebaseIndexOpenRouterSpecificProvider:
 					stateValues.codebaseIndexConfig?.codebaseIndexOpenRouterSpecificProvider,
+				codebaseIndexAutoInjectOnFirstTurn:
+					stateValues.codebaseIndexConfig?.codebaseIndexAutoInjectOnFirstTurn !== false,
 			},
 			documentMarkdownConfig: {
 				documentMarkdownEnabled: stateValues.documentMarkdownConfig?.documentMarkdownEnabled ?? true,
 				documentMarkdownConvertOffice: stateValues.documentMarkdownConfig?.documentMarkdownConvertOffice,
 				documentMarkdownConvertPdf: stateValues.documentMarkdownConfig?.documentMarkdownConvertPdf,
 				documentMarkdownConvertImages: stateValues.documentMarkdownConfig?.documentMarkdownConvertImages,
+			},
+			longTermMemoryConfig: {
+				...stateValues.longTermMemoryConfig,
+				longTermMemoryEnabled: stateValues.longTermMemoryConfig?.longTermMemoryEnabled !== false,
+				longTermMemorySmartInject: stateValues.longTermMemoryConfig?.longTermMemorySmartInject !== false,
 			},
 			profileThresholds: stateValues.profileThresholds ?? {},
 			lockApiConfigAcrossModes: this.context.workspaceState.get("lockApiConfigAcrossModes", false),
@@ -3335,6 +3449,7 @@ export class ClineProvider
 
 		await this.addClineToStack(task)
 		task.start()
+		this.getLongTermMemoryManager().scheduleIngestAfterNewTask()
 
 		this.log(
 			`[createTask] ${task.parentTask ? "child" : "parent"} task ${task.taskId}.${task.instanceId} instantiated`,

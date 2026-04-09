@@ -72,6 +72,8 @@ interface LocalCodeIndexSettings {
 	codebaseIndexEmbedderModelDimension?: number // Generic dimension for all providers
 	codebaseIndexSearchMaxResults?: number
 	codebaseIndexSearchMinScore?: number
+	/** Proactively inject vector search snippets on the first message of a chat task */
+	codebaseIndexAutoInjectOnFirstTurn: boolean
 
 	// Bedrock-specific settings
 	codebaseIndexBedrockRegion?: string
@@ -239,6 +241,7 @@ export const CodeIndexPopover: React.FC<CodeIndexPopoverProps> = ({
 		codebaseIndexEmbedderModelDimension: undefined,
 		codebaseIndexSearchMaxResults: CODEBASE_INDEX_DEFAULTS.DEFAULT_SEARCH_RESULTS,
 		codebaseIndexSearchMinScore: CODEBASE_INDEX_DEFAULTS.DEFAULT_SEARCH_MIN_SCORE,
+		codebaseIndexAutoInjectOnFirstTurn: true,
 		codebaseIndexBedrockRegion: "",
 		codebaseIndexBedrockProfile: "",
 		codeIndexOpenAiKey: "",
@@ -281,6 +284,8 @@ export const CodeIndexPopover: React.FC<CodeIndexPopoverProps> = ({
 					codebaseIndexConfig.codebaseIndexSearchMaxResults ?? CODEBASE_INDEX_DEFAULTS.DEFAULT_SEARCH_RESULTS,
 				codebaseIndexSearchMinScore:
 					codebaseIndexConfig.codebaseIndexSearchMinScore ?? CODEBASE_INDEX_DEFAULTS.DEFAULT_SEARCH_MIN_SCORE,
+				codebaseIndexAutoInjectOnFirstTurn:
+					codebaseIndexConfig.codebaseIndexAutoInjectOnFirstTurn !== false,
 				codebaseIndexBedrockRegion: codebaseIndexConfig.codebaseIndexBedrockRegion || "",
 				codebaseIndexBedrockProfile: codebaseIndexConfig.codebaseIndexBedrockProfile || "",
 				codeIndexOpenAiKey: "",
@@ -683,6 +688,23 @@ export const CodeIndexPopover: React.FC<CodeIndexPopoverProps> = ({
 								</StandardTooltip>
 							</div>
 						</div>
+
+						{currentSettings.codebaseIndexEnabled && (
+							<div className="mb-4">
+								<div className="flex items-center gap-2">
+									<VSCodeCheckbox
+										checked={currentSettings.codebaseIndexAutoInjectOnFirstTurn}
+										onChange={(e: any) =>
+											updateSetting("codebaseIndexAutoInjectOnFirstTurn", e.target.checked)
+										}>
+										<span className="text-sm">{t("settings:codeIndex.autoInjectFirstTurnLabel")}</span>
+									</VSCodeCheckbox>
+									<StandardTooltip content={t("settings:codeIndex.autoInjectFirstTurnDescription")}>
+										<span className="codicon codicon-info text-xs text-vscode-descriptionForeground cursor-help" />
+									</StandardTooltip>
+								</div>
+							</div>
+						)}
 
 						{/* Status Section */}
 						<div className="space-y-2">

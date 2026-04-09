@@ -12,6 +12,7 @@ import { PopoverTrigger, StandardTooltip, Button } from "@src/components/ui"
 
 import { CodeIndexPopover } from "./CodeIndexPopover"
 import { DocumentMarkdownStatusBadge } from "./DocumentMarkdownPopover"
+import { LongTermMemoryStatusBadge } from "./LongTermMemoryPopover"
 
 interface IndexingStatusBadgeProps {
 	className?: string
@@ -88,6 +89,7 @@ export const IndexingStatusBadge: React.FC<IndexingStatusBadgeProps> = ({ classN
 
 	return (
 		<div className={cn("flex items-center gap-0.5", className)}>
+			<LongTermMemoryStatusBadge />
 			<DocumentMarkdownStatusBadge />
 			<CodeIndexPopover indexingStatus={indexingStatus}>
 				<StandardTooltip content={tooltipText}>

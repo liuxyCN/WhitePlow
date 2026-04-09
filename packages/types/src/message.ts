@@ -139,6 +139,7 @@ export function isNonBlockingAsk(ask: ClineAsk): ask is NonBlockingAsk {
  * - `condense_context`: Context condensation/summarization has started
  * - `condense_context_error`: Error occurred during context condensation
  * - `codebase_search_result`: Results from searching the codebase
+ * - `context_injection_notice`: UI-only line that long-term memory and/or codebase snippets were prepended to the request
  * - `too_many_tools_warning`: Warning that too many MCP tools are enabled, which may confuse the LLM
  */
 export const clineSays = [
@@ -167,6 +168,7 @@ export const clineSays = [
 	"condense_context_error",
 	"sliding_window_truncation",
 	"codebase_search_result",
+	"context_injection_notice",
 	"user_edit_todos",
 	"too_many_tools_warning",
 	"tool",

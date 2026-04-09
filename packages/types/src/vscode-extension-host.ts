@@ -22,6 +22,7 @@ import type { ModelRecord, RouterModels } from "./model.js"
 import type { OpenAiCodexRateLimitInfo } from "./providers/openai-codex-rate-limits.js"
 import type { SkillMetadata } from "./skills.js"
 import type { WorktreeIncludeStatus } from "./worktree.js"
+import type { LongTermMemoryContentsSnapshot, LongTermMemoryStatus } from "./long-term-memory.js"
 
 /**
  * ExtensionMessage
@@ -75,6 +76,8 @@ export interface ExtensionMessage {
 		| "rooCreditBalance"
 		| "indexingStatusUpdate"
 		| "documentMarkdownStatusUpdate"
+		| "longTermMemoryStatusUpdate"
+		| "longTermMemoryContents"
 		| "indexCleared"
 		| "codebaseIndexConfig"
 		| "marketplaceInstallResult"
@@ -308,6 +311,7 @@ export type ExtensionState = Pick<
 	| "customCondensingPrompt"
 	| "codebaseIndexConfig"
 	| "documentMarkdownConfig"
+	| "longTermMemoryConfig"
 	| "codebaseIndexModels"
 	| "profileThresholds"
 	| "includeDiagnosticMessages"
@@ -536,6 +540,12 @@ export interface WebviewMessage {
 		| "documentMarkdownScanWorkspace"
 		| "documentMarkdownClearErrors"
 		| "setDocumentMarkdownAutoEnableDefault"
+		| "requestLongTermMemoryStatus"
+		| "requestLongTermMemoryContents"
+		| "longTermMemoryOpenPreferencesFile"
+		| "longTermMemoryClearErrors"
+		| "longTermMemoryClearStructuredMemory"
+		| "longTermMemoryRescanAll"
 		| "startIndexing"
 		| "stopIndexing"
 		| "clearIndexData"
@@ -710,6 +720,7 @@ export interface WebviewMessage {
 		codebaseIndexSearchMaxResults?: number
 		codebaseIndexSearchMinScore?: number
 		codebaseIndexOpenRouterSpecificProvider?: string // OpenRouter provider routing
+		codebaseIndexAutoInjectOnFirstTurn?: boolean
 
 		// Secret settings
 		codeIndexOpenAiKey?: string
@@ -825,6 +836,16 @@ export interface DocumentMarkdownStatus {
 export interface DocumentMarkdownStatusUpdateMessage {
 	type: "documentMarkdownStatusUpdate"
 	values: DocumentMarkdownStatus
+}
+
+export interface LongTermMemoryStatusUpdateMessage {
+	type: "longTermMemoryStatusUpdate"
+	values: LongTermMemoryStatus
+}
+
+export interface LongTermMemoryContentsMessage {
+	type: "longTermMemoryContents"
+	values: LongTermMemoryContentsSnapshot
 }
 
 export interface LanguageModelChatSelector {

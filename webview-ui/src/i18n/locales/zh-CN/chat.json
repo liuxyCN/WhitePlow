@@ -144,6 +144,11 @@
 		"title": "编辑失败"
 	},
 	"troubleMessage": "NeonTractor遇到问题...",
+	"contextInjection": {
+		"title": "上下文注入",
+		"memoryLine": "{{count}} 条长期记忆",
+		"codebaseLine": "{{count}} 段索引文档"
+	},
 	"apiRequest": {
 		"title": "API请求",
 		"failed": "API请求失败",
@@ -448,6 +453,14 @@
 		"processing": "转换中 {{percentage}}%",
 		"error": "文档转换出错",
 		"status": "文档转换状态"
+	},
+	"longTermMemoryStatus": {
+		"standby": "长期记忆",
+		"idle": "长期记忆就绪",
+		"processing": "长期记忆处理中",
+		"ingesting": "长期记忆抽取 {{percentage}}%",
+		"error": "长期记忆出错",
+		"status": "长期记忆状态"
 	},
 	"versionIndicator": {
 		"ariaLabel": "版本 {{version}} - 点击查看发布说明"

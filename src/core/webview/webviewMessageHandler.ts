@@ -948,6 +948,14 @@ export const webviewMessageHandler = async (
 							...(getGlobalState("documentMarkdownConfig") ?? {}),
 							...(value as Record<string, unknown>),
 						}
+					} else if (key === "longTermMemoryConfig") {
+						if (value === undefined) {
+							continue
+						}
+						newValue = {
+							...(getGlobalState("longTermMemoryConfig") ?? {}),
+							...(value as Record<string, unknown>),
+						}
 					} else if (key === "customSupportPrompts") {
 						if (!value) {
 							continue
@@ -3018,6 +3026,7 @@ export const webviewMessageHandler = async (
 					codebaseIndexSearchMaxResults: settings.codebaseIndexSearchMaxResults,
 					codebaseIndexSearchMinScore: settings.codebaseIndexSearchMinScore,
 					codebaseIndexOpenRouterSpecificProvider: settings.codebaseIndexOpenRouterSpecificProvider,
+					codebaseIndexAutoInjectOnFirstTurn: settings.codebaseIndexAutoInjectOnFirstTurn !== false,
 				}
 
 				// Save global state first
@@ -3258,6 +3267,54 @@ export const webviewMessageHandler = async (
 				type: "documentMarkdownStatusUpdate",
 				values: watcher.getCurrentStatus(),
 			})
+			break
+		}
+		case "requestLongTermMemoryStatus": {
+			void (async () => {
+				const values = await provider.getLongTermMemoryManager().getStatus()
+				await provider.postMessageToWebview({ type: "longTermMemoryStatusUpdate", values })
+			})()
+			break
+		}
+		case "requestLongTermMemoryContents": {
+			void (async () => {
+				try {
+					const values = await provider.getLongTermMemoryManager().getContentsSnapshot()
+					await provider.postMessageToWebview({ type: "longTermMemoryContents", values })
+				} catch (error) {
+					provider.log(
+						`[LongTermMemory] getContentsSnapshot failed: ${error instanceof Error ? error.message : String(error)}`,
+					)
+					await provider.postMessageToWebview({
+						type: "longTermMemoryContents",
+						values: { structured: {} },
+					})
+				}
+			})()
+			break
+		}
+		case "longTermMemoryOpenPreferencesFile": {
+			void (async () => {
+				try {
+					await provider.getLongTermMemoryManager().openPreferencesFileInEditor()
+				} catch (error) {
+					provider.log(
+						`[LongTermMemory] openPreferencesFileInEditor failed: ${error instanceof Error ? error.message : String(error)}`,
+					)
+				}
+			})()
+			break
+		}
+		case "longTermMemoryClearErrors": {
+			void provider.getLongTermMemoryManager().clearRecentErrors()
+			break
+		}
+		case "longTermMemoryClearStructuredMemory": {
+			void provider.getLongTermMemoryManager().clearStructuredMemory()
+			break
+		}
+		case "longTermMemoryRescanAll": {
+			void provider.getLongTermMemoryManager().rescanAllHistory()
 			break
 		}
 		case "setDocumentMarkdownAutoEnableDefault": {
