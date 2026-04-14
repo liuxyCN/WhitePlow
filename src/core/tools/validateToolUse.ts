@@ -229,6 +229,24 @@ export function isToolAllowedForMode(
 				}
 			}
 
+			// download_file: workspace-root filename only; validate basename against fileRegex when URL is present
+			if (
+				tool === "download_file" &&
+				typeof toolParams?.filename === "string" &&
+				toolParams?.url !== undefined &&
+				toolParams?.url !== null &&
+				String(toolParams.url).length > 0 &&
+				!doesFileMatchRegex(toolParams.filename, options.fileRegex)
+			) {
+				throw new FileRestrictionError(
+					mode.name,
+					options.fileRegex,
+					options.description,
+					toolParams.filename,
+					tool,
+				)
+			}
+
 			// Native-only: multi-file edits provide structured params; no legacy XML args parsing.
 		}
 

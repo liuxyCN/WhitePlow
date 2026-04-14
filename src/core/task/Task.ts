@@ -1814,6 +1814,7 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 						text,
 						images,
 						partial,
+						progressStatus,
 						contextCondense,
 						contextTruncation,
 					})

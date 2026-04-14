@@ -222,7 +222,11 @@
 		"wantsToGenerateImage": "需要生成图片",
 		"wantsToGenerateImageOutsideWorkspace": "需要在工作区外生成图片",
 		"wantsToGenerateImageProtected": "需要在受保护位置生成图片",
-		"didGenerateImage": "已生成图片"
+		"didGenerateImage": "已生成图片",
+		"wantsToDownloadFile": "需要将文件下载到工作区根目录",
+		"wantsToDownloadFileOutsideWorkspace": "需要在工作区外下载文件",
+		"wantsToDownloadFileProtected": "需要将文件下载到受保护位置",
+		"didDownloadFile": "已下载文件"
 	},
 	"directoryOperations": {
 		"wantsToViewTopLevel": "需要查看目录文件列表",

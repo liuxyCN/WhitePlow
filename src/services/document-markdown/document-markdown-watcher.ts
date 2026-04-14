@@ -42,7 +42,7 @@ function isExtensionAllowedByTypeFilters(
 	return false
 }
 
-const MAX_DOCUMENT_BYTES = 50 * 1024 * 1024
+const MAX_DOCUMENT_BYTES = 200 * 1024 * 1024
 const DEBOUNCE_MS = 500
 const MAX_RECENT_ERRORS = 12
 
@@ -608,7 +608,7 @@ export class DocumentMarkdownWatcher implements vscode.Disposable {
 		}
 
 		const pattern = new vscode.RelativePattern(this.workspacePath, SUPPORTED_DOCS_RELATIVE_PATTERN)
-		const uris = await vscode.workspace.findFiles(pattern, "**/{node_modules,.git}/**", 5000)
+		const uris = await vscode.workspace.findFiles(pattern, "**/{node_modules,.git,.roo}/**", 5000)
 		for (const uri of uris) {
 			const fsPath = uri.fsPath
 			const ext = path.extname(fsPath).toLowerCase()

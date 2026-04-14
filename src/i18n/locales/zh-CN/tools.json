@@ -27,5 +27,13 @@
 		"roo": {
 			"authRequired": "图像生成需要 Roo Code Cloud 认证。请登录 Roo Code Cloud。"
 		}
+	},
+	"downloadFile": {
+		"progressConnecting": "正在连接…",
+		"progressDownloading": "已下载 {{received}}",
+		"progressDownloadingOf": "已下载 {{received}} / {{total}}（{{percent}}%）",
+		"progressWriting": "正在写入磁盘…",
+		"progressDone": "下载完成",
+		"progressFailed": "下载失败"
 	}
 }

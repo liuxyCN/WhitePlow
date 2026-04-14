@@ -508,7 +508,7 @@ async function listFilteredDirectories(
 /**
  * Critical directories that should always be ignored, even inside explicitly targeted hidden directories
  */
-const CRITICAL_IGNORE_PATTERNS = new Set(["node_modules", ".git", "__pycache__", "venv", "env"])
+const CRITICAL_IGNORE_PATTERNS = new Set(["node_modules", ".git", ".roo", "__pycache__", "venv", "env"])
 
 /**
  * Check if a directory matches any of the given patterns

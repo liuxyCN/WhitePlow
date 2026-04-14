@@ -137,6 +137,12 @@ export function formatToolOutput(toolInfo: Record<string, unknown>): string {
 			return `📝 ${writePath || "(no path)"}`
 		}
 
+		case "downloadFile": {
+			const dlPath = toolInfo.path as string
+			const dlUrl = toolInfo.url as string
+			return `⬇ ${dlUrl || "(no url)"}\n  → ${dlPath || "(no path)"}`
+		}
+
 		case "apply_diff": {
 			const diffPath = toolInfo.path as string
 			return `✏️ ${diffPath || "(no path)"}`
@@ -224,6 +230,12 @@ export function formatToolAskMessage(toolInfo: Record<string, unknown>): string 
 		case "write_to_file": {
 			const writePath = toolInfo.path as string
 			return `Write to file: ${writePath || "(no path)"}`
+		}
+
+		case "downloadFile": {
+			const dlPath = toolInfo.path as string
+			const dlUrl = toolInfo.url as string
+			return `Download to workspace root?\n${dlUrl || "(no url)"}\n→ ${dlPath || "(no path)"}`
 		}
 
 		case "apply_diff": {

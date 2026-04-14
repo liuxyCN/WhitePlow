@@ -6,6 +6,7 @@ import askFollowupQuestion from "./ask_followup_question"
 import attemptCompletion from "./attempt_completion"
 import codebaseSearch from "./codebase_search"
 import deleteLongTermMemory from "./delete_long_term_memory"
+import downloadFile from "./download_file"
 import editTool from "./edit"
 import executeCommand from "./execute_command"
 import generateImage from "./generate_image"
@@ -56,6 +57,7 @@ export function getNativeTools(options: NativeToolsOptions = {}): OpenAI.Chat.Ch
 		attemptCompletion,
 		codebaseSearch,
 		deleteLongTermMemory,
+		downloadFile,
 		executeCommand,
 		generateImage,
 		listFiles,

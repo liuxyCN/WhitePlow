@@ -62,6 +62,8 @@ export function getToolDisplayName(toolName: string): string {
 		newFileCreated: "Create File",
 		write_to_file: "Write File",
 		writeToFile: "Write File",
+		download_file: "Download File",
+		downloadFile: "Download File",
 
 		// Search operations
 		searchFiles: "Search Files",
@@ -119,6 +121,8 @@ export function getToolIconName(toolName: string): IconName {
 		newFileCreated: "file-edit",
 		write_to_file: "file-edit",
 		writeToFile: "file-edit",
+		download_file: "browser",
+		downloadFile: "browser",
 
 		// Search operations
 		searchFiles: "search",

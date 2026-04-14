@@ -194,13 +194,6 @@ export const DocumentMarkdownPopover: React.FC<DocumentMarkdownPopoverProps> = (
 										}}
 									/>
 								</ProgressPrimitive.Root>
-								{internalStatus.currentFile && (
-									<p
-										className="text-xs mt-1 text-vscode-descriptionForeground truncate"
-										title={internalStatus.currentFile}>
-										{internalStatus.currentFile}
-									</p>
-								)}
 							</div>
 						)}
 					</div>

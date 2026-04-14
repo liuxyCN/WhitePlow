@@ -21,7 +21,9 @@ export function applyRouterToolPreferences(modelId: string, info: ModelInfo): Mo
 	if (modelId.includes("openai")) {
 		result = {
 			...result,
-			excludedTools: [...new Set([...(result.excludedTools || []), "apply_diff", "write_to_file"])],
+			excludedTools: [
+				...new Set([...(result.excludedTools || []), "apply_diff", "write_to_file", "download_file"]),
+			],
 			includedTools: [...new Set([...(result.includedTools || []), "apply_patch"])],
 		}
 	}

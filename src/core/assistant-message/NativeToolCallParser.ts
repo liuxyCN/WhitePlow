@@ -518,6 +518,15 @@ export class NativeToolCallParser {
 				}
 				break
 
+			case "download_file":
+				if (partialArgs.url !== undefined || partialArgs.filename !== undefined) {
+					nativeArgs = {
+						url: partialArgs.url,
+						filename: partialArgs.filename,
+					}
+				}
+				break
+
 			case "run_slash_command":
 				if (partialArgs.command !== undefined) {
 					nativeArgs = {
@@ -931,6 +940,15 @@ export class NativeToolCallParser {
 						nativeArgs = {
 							path: args.path,
 							content: args.content,
+						} as NativeArgsFor<TName>
+					}
+					break
+
+				case "download_file":
+					if (args.url !== undefined && args.filename !== undefined) {
+						nativeArgs = {
+							url: args.url,
+							filename: args.filename,
 						} as NativeArgsFor<TName>
 					}
 					break

@@ -170,6 +170,8 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 	)
 	const autoApproveTimeoutRef = useRef<NodeJS.Timeout | null>(null)
 	const userRespondedRef = useRef<boolean>(false)
+	/** After user approves/denies a tool ask, lastMessage may still be that ask until the extension continues; avoid re-enabling buttons when the effect re-runs. */
+	const answeredToolAskTsRef = useRef<number | null>(null)
 	const [currentFollowUpTs, setCurrentFollowUpTs] = useState<number | null>(null)
 	const [aggregatedCostsMap, setAggregatedCostsMap] = useState<
 		Map<
@@ -273,6 +275,11 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 		// if user finished a task, then start a new task with a new conversation history since in this moment that the extension is waiting for user response, the user could close the extension and the conversation history would be lost.
 		// basically as long as a task is active, the conversation history will be persisted
 		if (lastMessage) {
+			// Clear tool-ask answer tracking once we're no longer on a pending tool approval
+			if (lastMessage.type !== "ask" || lastMessage.ask !== "tool") {
+				answeredToolAskTsRef.current = null
+			}
+
 			switch (lastMessage.type) {
 				case "ask":
 					// Reset user response flag when a new ask arrives to allow auto-approval
@@ -307,6 +314,18 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 							setSecondaryButtonText(undefined)
 							break
 						case "tool":
+							// User already clicked Save/Reject but the ask row is still last until the task continues
+							if (
+								answeredToolAskTsRef.current !== null &&
+								answeredToolAskTsRef.current === lastMessage.ts
+							) {
+								setSendingDisabled(true)
+								setClineAsk(undefined)
+								setEnableButtons(false)
+								setPrimaryButtonText(undefined)
+								setSecondaryButtonText(undefined)
+								break
+							}
 							setSendingDisabled(isPartial)
 							setClineAsk("tool")
 							setEnableButtons(!isPartial)
@@ -324,6 +343,10 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 									}
 									break
 								case "generateImage":
+									setPrimaryButtonText(t("chat:save.title"))
+									setSecondaryButtonText(t("chat:reject.title"))
+									break
+								case "downloadFile":
 									setPrimaryButtonText(t("chat:save.title"))
 									setSecondaryButtonText(t("chat:reject.title"))
 									break
@@ -493,6 +516,7 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 			autoApproveTimeoutRef.current = null
 		}
 		userRespondedRef.current = false
+		answeredToolAskTsRef.current = null
 	}, [task?.ts])
 
 	const taskTs = task?.ts
@@ -729,6 +753,10 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 		(text?: string, images?: string[]) => {
 			// Mark that user has responded
 			userRespondedRef.current = true
+			if (clineAsk === "tool") {
+				const ts = messagesRef.current.at(-1)?.ts
+				answeredToolAskTsRef.current = ts ?? null
+			}
 
 			const trimmedInput = text?.trim()
 
@@ -812,6 +840,11 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 				return
 			}
 
+			if (clineAsk === "tool") {
+				const ts = messagesRef.current.at(-1)?.ts
+				answeredToolAskTsRef.current = ts ?? null
+			}
+
 			switch (clineAsk) {
 				case "api_req_failed":
 				case "mistake_limit_reached":
@@ -844,6 +877,8 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 			setSendingDisabled(true)
 			setClineAsk(undefined)
 			setEnableButtons(false)
+			setPrimaryButtonText(undefined)
+			setSecondaryButtonText(undefined)
 		},
 		[clineAsk, startNewTask, isStreaming, setDidClickCancel],
 	)

@@ -1383,15 +1383,15 @@ export class McpHub {
 			try {
 				response = await connection.client.request({ method: "tools/list" }, ListToolsResultSchema)
 			} catch (error) {
-				if (this.connectionUsesStreamableHttp(connection)) {
+				if (this.connectionUsesHttpReconnectableTransport(connection)) {
 					try {
 						console.warn(
-							`MCP streamable-http: reconnecting "${serverName}" after tools/list error:`,
+							`MCP remote HTTP transport: reconnecting "${serverName}" after tools/list error:`,
 							this.collectErrorText(error),
 						)
 						await this.enqueueSilentReconnect(serverName, actualSourceForReconnect)
 						await this.notifyWebviewOfServerChanges()
-						const conn2 = this.findConnection(serverName, source)
+						const conn2 = this.findConnection(serverName, actualSourceForReconnect)
 						if (!conn2 || conn2.type !== "connected" || conn2.server.disabled) {
 							throw error
 						}
@@ -1609,13 +1609,17 @@ export class McpHub {
 		return parts.join(" | ")
 	}
 
-	private connectionUsesStreamableHttp(connection: ConnectedMcpConnection): boolean {
-		try {
-			const cfg = ServerConfigSchema.parse(JSON.parse(connection.server.config))
-			return cfg.type === "streamable-http"
-		} catch {
+	/**
+	 * SSE 与 Streamable HTTP 均通过 HTTP POST 发送 JSON-RPC；服务端重启后会话/endpoint 会失效，
+	 * SDK 会抛出与 streamable-http 相同的 `Error POSTing to endpoint (HTTP …)`。
+	 * 仅按 config.type === "streamable-http" 判断会漏掉 type 为 `sse` 的远程连接，导致不重连。
+	 */
+	private connectionUsesHttpReconnectableTransport(connection: ConnectedMcpConnection): boolean {
+		const t = connection.transport
+		if (!t) {
 			return false
 		}
+		return t instanceof SSEClientTransport || t instanceof StreamableHTTPClientTransport
 	}
 
 	private async performSilentReconnect(
@@ -2603,15 +2607,15 @@ export class McpHub {
 				timeout,
 			})
 		} catch (error) {
-			if (this.connectionUsesStreamableHttp(connection)) {
+			if (this.connectionUsesHttpReconnectableTransport(connection)) {
 				try {
 					console.warn(
-						`MCP streamable-http: reconnecting "${serverName}" after error:`,
+						`MCP remote HTTP transport: reconnecting "${serverName}" after tools/call error:`,
 						this.collectErrorText(error),
 					)
 					await this.enqueueSilentReconnect(serverName, actualSource)
 					await this.notifyWebviewOfServerChanges()
-					const conn2 = this.findConnection(serverName, source)
+					const conn2 = this.findConnection(serverName, actualSource)
 					if (!conn2 || conn2.type !== "connected" || conn2.server.disabled) {
 						throw error
 					}

@@ -874,6 +874,8 @@ export interface ClineSayTool {
 		| "newTask"
 		| "finishTask"
 		| "generateImage"
+		| "downloadFile"
+		| "downloadFileProgress"
 		| "imageGenerated"
 		| "runSlashCommand"
 		| "updateTodoList"
@@ -881,10 +883,17 @@ export interface ClineSayTool {
 		| "deleteLongTermMemory"
 		| "optimizeLongTermMemory"
 	path?: string
+	/** Source URL for download_file approval UI */
+	url?: string
+	/** downloadFileProgress: bytes received so far */
+	bytesReceived?: number
+	/** downloadFileProgress: total from Content-Length when known */
+	totalBytes?: number
+	/** downloadFileProgress: connecting | downloading | writing | done */
+	phase?: string
 	// For readCommandOutput
 	readStart?: number
 	readEnd?: number
-	totalBytes?: number
 	searchPattern?: string
 	matchCount?: number
 	diff?: string

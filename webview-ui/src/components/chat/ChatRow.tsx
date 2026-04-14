@@ -1011,6 +1011,44 @@ export const ChatRowContent = ({
 						)}
 					</>
 				)
+			case "downloadFile":
+				return (
+					<>
+						<div style={headerStyle}>
+							{tool.isProtected ? (
+								<span
+									className="codicon codicon-lock"
+									style={{ color: "var(--vscode-editorWarning-foreground)", marginBottom: "-1.5px" }}
+								/>
+							) : (
+								toolIcon("cloud-download")
+							)}
+							<span style={{ fontWeight: "bold" }}>
+								{message.type === "ask"
+									? tool.isProtected
+										? t("chat:fileOperations.wantsToDownloadFileProtected")
+										: tool.isOutsideWorkspace
+											? t("chat:fileOperations.wantsToDownloadFileOutsideWorkspace")
+											: t("chat:fileOperations.wantsToDownloadFile")
+									: t("chat:fileOperations.didDownloadFile")}
+							</span>
+						</div>
+						{message.type === "ask" && (
+							<div className="pl-6">
+								<ToolUseBlock>
+									<div className="p-2">
+										{tool.url && (
+											<div className="mb-2 break-all text-xs text-vscode-descriptionForeground">{tool.url}</div>
+										)}
+										<div className="flex items-center gap-1 text-xs text-vscode-descriptionForeground">
+											{tool.path}
+										</div>
+									</div>
+								</ToolUseBlock>
+							</div>
+						)}
+					</>
+				)
 			default:
 				return null
 		}
@@ -1577,6 +1615,70 @@ export const ChatRowContent = ({
 											({infoText})
 										</span>
 									)}
+								</div>
+							)
+						}
+						case "downloadFileProgress": {
+							const prog = sayTool
+							const phase = prog.phase ?? ""
+							const isFailed = phase === "error"
+							const isDone = phase === "done"
+							const inProgress = message.partial === true && !isFailed && !isDone
+
+							const formatBytes = (bytes: number) => {
+								if (bytes < 1024) return `${bytes} B`
+								if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`
+								return `${(bytes / (1024 * 1024)).toFixed(2)} MB`
+							}
+
+							let byteLine: string | undefined
+							if (
+								prog.bytesReceived !== undefined &&
+								prog.totalBytes !== undefined &&
+								prog.totalBytes > 0
+							) {
+								byteLine = `${formatBytes(prog.bytesReceived)} / ${formatBytes(prog.totalBytes)}`
+							} else if (prog.bytesReceived !== undefined) {
+								byteLine = formatBytes(prog.bytesReceived)
+							}
+
+							return (
+								<div
+									style={{
+										...headerStyle,
+										alignItems: "flex-start",
+									}}>
+									<div style={{ marginTop: "2px", flexShrink: 0 }}>
+										{inProgress ? (
+											<ProgressIndicator />
+										) : isFailed ? (
+											<span
+												className="codicon codicon-error"
+												style={{ color: errorColor, marginBottom: "-1.5px" }}
+											/>
+										) : (
+											<span
+												className="codicon codicon-check"
+												style={{ color: successColor, marginBottom: "-1.5px" }}
+											/>
+										)}
+									</div>
+									<div className="min-w-0 flex-1 flex flex-col gap-1">
+										<span style={{ fontWeight: "bold" }}>
+											{message.progressStatus?.text ?? ""}
+										</span>
+										{prog.url && (
+											<div className="text-xs break-all text-vscode-descriptionForeground">
+												{prog.url}
+											</div>
+										)}
+										{prog.path && (
+											<div className="text-xs text-vscode-descriptionForeground">{prog.path}</div>
+										)}
+										{byteLine && (
+											<div className="text-xs text-vscode-descriptionForeground">{byteLine}</div>
+										)}
+									</div>
 								</div>
 							)
 						}

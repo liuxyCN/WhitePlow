@@ -36,6 +36,7 @@ import { optimizeLongTermMemoryTool } from "../tools/OptimizeLongTermMemoryTool"
 import { runSlashCommandTool } from "../tools/RunSlashCommandTool"
 import { skillTool } from "../tools/SkillTool"
 import { generateImageTool } from "../tools/GenerateImageTool"
+import { downloadFileTool } from "../tools/DownloadFileTool"
 import { applyDiffTool as applyDiffToolClass } from "../tools/ApplyDiffTool"
 import { isValidToolName, validateToolUse } from "../tools/validateToolUse"
 import { codebaseSearchTool } from "../tools/CodebaseSearchTool"
@@ -389,6 +390,8 @@ export async function presentAssistantMessage(cline: Task) {
 						return `[${block.name} for '${block.params.skill}'${block.params.args ? ` with args: ${block.params.args}` : ""}]`
 					case "generate_image":
 						return `[${block.name} for '${block.params.path}']`
+					case "download_file":
+						return `[${block.name} url '${block.params.url ?? ""}' -> '${block.params.filename ?? ""}']`
 					default:
 						return `[${block.name}]`
 				}
@@ -864,6 +867,14 @@ export async function presentAssistantMessage(cline: Task) {
 				case "generate_image":
 					await checkpointSaveAndMark(cline)
 					await generateImageTool.handle(cline, block as ToolUse<"generate_image">, {
+						askApproval,
+						handleError,
+						pushToolResult,
+					})
+					break
+				case "download_file":
+					await checkpointSaveAndMark(cline)
+					await downloadFileTool.handle(cline, block as ToolUse<"download_file">, {
 						askApproval,
 						handleError,
 						pushToolResult,

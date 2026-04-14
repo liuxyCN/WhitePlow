@@ -21,5 +21,7 @@ export const DIRS_TO_IGNORE = [
 	"pkg",
 	"Pods",
 	".git",
+	// Project-local Roo Code config; excluded from doc→md and codebase index scans
+	".roo",
 	".*",
 ]
