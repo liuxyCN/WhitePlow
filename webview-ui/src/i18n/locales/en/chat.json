@@ -169,7 +169,11 @@
 	"contextInjection": {
 		"title": "Context injection",
 		"memoryLine": "{{count}} long-term memory",
-		"codebaseLine": "{{count}} indexed document"
+		"codebaseLine": "{{count}} indexed document",
+		"clickToView": "Click to view injected context",
+		"detailTitle": "Injected context",
+		"memoryHeading": "Long-term memory",
+		"codebaseHeading": "Document database index"
 	},
 	"apiRequest": {
 		"title": "API Request",

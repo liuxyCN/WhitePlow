@@ -23,22 +23,22 @@ describe("getApiRequestTimeout", () => {
 		})
 	})
 
-	it("should return default timeout of 600000ms when no configuration is set", () => {
-		mockGetConfig.mockReturnValue(600)
+	it("should return default timeout of 3600000ms when no configuration is set", () => {
+		mockGetConfig.mockReturnValue(3600)
 
 		const timeout = getApiRequestTimeout()
 
 		expect(vscode.workspace.getConfiguration).toHaveBeenCalledWith("roo-cline")
-		expect(mockGetConfig).toHaveBeenCalledWith("apiRequestTimeout", 600)
-		expect(timeout).toBe(600000) // 600 seconds in milliseconds
+		expect(mockGetConfig).toHaveBeenCalledWith("apiRequestTimeout", 3600)
+		expect(timeout).toBe(3600000) // 3600 seconds in milliseconds
 	})
 
 	it("should return custom timeout in milliseconds", () => {
-		mockGetConfig.mockReturnValue(1200) // 20 minutes
+		mockGetConfig.mockReturnValue(3600) // 60 minutes
 
 		const timeout = getApiRequestTimeout()
 
-		expect(timeout).toBe(1200000) // 1200 seconds in milliseconds
+		expect(timeout).toBe(3600000) // 3600 seconds in milliseconds
 	})
 
 	it("should return undefined for zero timeout (disables timeout)", () => {

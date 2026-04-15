@@ -147,7 +147,11 @@
 	"contextInjection": {
 		"title": "上下文注入",
 		"memoryLine": "{{count}} 条长期记忆",
-		"codebaseLine": "{{count}} 段索引文档"
+		"codebaseLine": "{{count}} 段索引文档",
+		"clickToView": "点击查看注入的上下文",
+		"detailTitle": "注入的上下文",
+		"memoryHeading": "长期记忆",
+		"codebaseHeading": "文档库索引"
 	},
 	"apiRequest": {
 		"title": "API请求",

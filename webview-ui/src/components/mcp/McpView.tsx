@@ -289,7 +289,7 @@ const ServerRow = ({ server, alwaysAllowMcp }: { server: McpServer; alwaysAllowM
 	const [extraFieldValues, setExtraFieldValues] = useState<Record<string, string>>({})
 	const [timeoutValue, setTimeoutValue] = useState(() => {
 		const configTimeout = JSON.parse(server.config)?.timeout
-		return configTimeout ?? 600 // Default 10 minutes (600 seconds)
+		return configTimeout ?? 3600 // Default 60 minutes (3600 seconds)
 	})
 
 	// Computed property to check if server is expandable

@@ -67,6 +67,18 @@ export abstract class BaseOpenAiCompatibleProvider<ModelName extends string>
 		})
 	}
 
+	/**
+	 * Kimi-style binary thinking: gateways often default to enabled when `thinking` is omitted.
+	 * Send explicit `enabled` / `disabled` whenever the model declares `supportsReasoningBinary`.
+	 */
+	protected applyBinaryThinkingToChatParams(params: object, info: ModelInfo): void {
+		if (!info.supportsReasoningBinary) {
+			return
+		}
+		const enabled = this.options.enableReasoningEffort === true
+		;(params as { thinking?: { type: string } }).thinking = { type: enabled ? "enabled" : "disabled" }
+	}
+
 	protected createStream(
 		systemPrompt: string,
 		messages: Anthropic.Messages.MessageParam[],
@@ -98,10 +110,7 @@ export abstract class BaseOpenAiCompatibleProvider<ModelName extends string>
 			parallel_tool_calls: metadata?.parallelToolCalls ?? true,
 		}
 
-		// Add thinking parameter if reasoning is enabled and model supports it
-		if (this.options.enableReasoningEffort && info.supportsReasoningBinary) {
-			;(params as any).thinking = { type: "enabled" }
-		}
+		this.applyBinaryThinkingToChatParams(params, info)
 
 		try {
 			return this.client.chat.completions.create(params, requestOptions)
@@ -238,10 +247,7 @@ export abstract class BaseOpenAiCompatibleProvider<ModelName extends string>
 			messages: [{ role: "user", content: prompt }],
 		}
 
-		// Add thinking parameter if reasoning is enabled and model supports it
-		if (this.options.enableReasoningEffort && modelInfo.supportsReasoningBinary) {
-			;(params as any).thinking = { type: "enabled" }
-		}
+		this.applyBinaryThinkingToChatParams(params, modelInfo)
 
 		try {
 			const response = await this.client.chat.completions.create(params)

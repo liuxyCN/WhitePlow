@@ -37,6 +37,15 @@ const ROUTING_MEMORY_JSON_MAX = 512_000
 /** Max items accepted from optimize-memory LLM output (after validation). */
 const OPTIMIZE_MAX_ITEMS = 500
 
+/** Smart-inject key selection only: auxiliary `completePrompt` should not use reasoning (latency/cost). */
+function providerSettingsForMemoryInjectSelection(base: ProviderSettings): ProviderSettings {
+	return {
+		...base,
+		enableReasoningEffort: false,
+		reasoningEffort: "disable",
+	}
+}
+
 type ExtractedItem = { key: string; value: string | number | boolean }
 
 export interface LongTermMemoryManagerDeps {
@@ -288,7 +297,7 @@ export class LongTermMemoryManager {
 		entries: Record<string, string | number | boolean>,
 	): Promise<string[] | null> {
 		try {
-			const api = await this.deps.getApiConfiguration()
+			const api = providerSettingsForMemoryInjectSelection(await this.deps.getApiConfiguration())
 			const memoriesJson = this.truncateEntriesJsonForRouting(entries)
 			const prompt = buildMemorySelectionUserContent(userText, memoriesJson)
 			const raw = await singleCompletionHandler(api, prompt)

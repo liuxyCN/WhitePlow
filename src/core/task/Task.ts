@@ -2687,6 +2687,8 @@ export class Task extends EventEmitter<TaskEvents> implements TaskLike {
 					JSON.stringify({
 						longTermMemoryKeys: memoryInjection.keysInjected,
 						codebaseSnippets: codebaseInjection.snippetCount,
+						...(memoryInjection.text ? { longTermMemoryText: memoryInjection.text } : {}),
+						...(codebaseInjection.text ? { codebaseText: codebaseInjection.text } : {}),
 					}),
 				)
 			}

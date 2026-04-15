@@ -2587,11 +2587,11 @@ export class McpHub {
 		let timeout: number
 		try {
 			const parsedConfig = ServerConfigSchema.parse(JSON.parse(connection.server.config))
-			timeout = (parsedConfig.timeout ?? 600) * 1000
+			timeout = (parsedConfig.timeout ?? 3600) * 1000
 		} catch (error) {
 			console.error("Failed to parse server config for timeout:", error)
-			// Default to 600 seconds if parsing fails
-			timeout = 600 * 1000
+			// Default to 3600 seconds if parsing fails
+			timeout = 3600 * 1000
 		}
 
 		const requestParams = {
@@ -2622,7 +2622,7 @@ export class McpHub {
 					let timeout2 = timeout
 					try {
 						const parsed2 = ServerConfigSchema.parse(JSON.parse(conn2.server.config))
-						timeout2 = (parsed2.timeout ?? 600) * 1000
+						timeout2 = (parsed2.timeout ?? 3600) * 1000
 					} catch {
 						// keep timeout
 					}

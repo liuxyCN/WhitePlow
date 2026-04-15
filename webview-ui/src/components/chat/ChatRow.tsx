@@ -71,12 +71,12 @@ import {
 	Split,
 	ArrowRight,
 	Check,
-	Layers,
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { PathTooltip } from "../ui/PathTooltip"
 import { OpenMarkdownPreviewButton } from "./OpenMarkdownPreviewButton"
 import { ApiRequestDetailsDialog } from "./ApiRequestDetailsDialog"
+import { ContextInjectionNotice } from "./ContextInjectionNotice"
 
 // Helper function to get previous todos before a specific message
 function getPreviousTodos(messages: ClineMessage[], currentMessageTs: number): any[] {
@@ -1243,39 +1243,8 @@ export const ChatRowContent = ({
 						</div>
 					) : null
 				}
-				case "context_injection_notice": {
-					let data = { longTermMemoryKeys: 0, codebaseSnippets: 0 }
-					try {
-						if (message.text) {
-							data = JSON.parse(message.text) as typeof data
-						}
-					} catch {
-						// ignore
-					}
-					const mem = data.longTermMemoryKeys ?? 0
-					const code = data.codebaseSnippets ?? 0
-					const parts: string[] = []
-					if (mem > 0) {
-						parts.push(t("chat:contextInjection.memoryLine", { count: mem }))
-					}
-					if (code > 0) {
-						parts.push(t("chat:contextInjection.codebaseLine", { count: code }))
-					}
-					if (parts.length === 0) {
-						return null
-					}
-					return (
-						<div
-							className="flex items-start gap-2 text-xs text-vscode-descriptionForeground pl-1 py-1.5 my-0.5 border-l-2 border-vscode-focusBorder/50 ml-1 rounded-sm bg-vscode-editor-background/30">
-							<Layers className="w-3.5 h-3.5 shrink-0 mt-0.5 opacity-80" aria-hidden />
-							<div>
-								<span className="font-medium text-vscode-foreground">{t("chat:contextInjection.title")}</span>
-								<span className="mx-1.5">·</span>
-								<span>{parts.join(" · ")}</span>
-							</div>
-						</div>
-					)
-				}
+				case "context_injection_notice":
+					return <ContextInjectionNotice messageText={message.text} />
 				case "api_req_finished":
 					return null // we should never see this message type
 				case "text":

@@ -13,7 +13,7 @@ export function getApiRequestTimeout(): number | undefined {
 
 	// Validate that it's actually a number and not NaN
 	if (typeof configTimeout !== "number" || isNaN(configTimeout)) {
-		return 600 * 1000 // Default to 600 seconds
+		return 3600 * 1000 // Default to 3600 seconds
 	}
 
 	// 0 or negative means "no timeout" - return undefined to let SDK use its default
