@@ -247,6 +247,27 @@ export function isToolAllowedForMode(
 				)
 			}
 
+			// extract_archive: validate both paths when present
+			if (tool === "extract_archive") {
+				const ap = toolParams?.archive_path
+				const dp = toolParams?.destination_path
+				if (
+					typeof ap === "string" &&
+					ap.length > 0 &&
+					typeof dp === "string" &&
+					dp.length > 0 &&
+					(!doesFileMatchRegex(ap, options.fileRegex) || !doesFileMatchRegex(dp, options.fileRegex))
+				) {
+					throw new FileRestrictionError(
+						mode.name,
+						options.fileRegex,
+						options.description,
+						!doesFileMatchRegex(ap, options.fileRegex) ? ap : dp,
+						tool,
+					)
+				}
+			}
+
 			// Native-only: multi-file edits provide structured params; no legacy XML args parsing.
 		}
 

@@ -457,8 +457,9 @@ export function Run({ run }: { run: Run }) {
 				: streamingToolUsage
 
 			if (taskToolUsage) {
-				for (const [toolName, usage] of Object.entries(taskToolUsage)) {
+				for (const [toolName, rawUsage] of Object.entries(taskToolUsage)) {
 					const tool = toolName as ToolName
+					const usage = rawUsage as { attempts: number; failures: number }
 					const current = toolTotals.get(tool) ?? 0
 					toolTotals.set(tool, current + usage.attempts)
 				}
@@ -512,11 +513,12 @@ export function Run({ run }: { run: Run }) {
 			if (taskToolUsage) {
 				for (const [key, usage] of Object.entries(taskToolUsage)) {
 					const tool = key as keyof ToolUsage
+					const entry = usage as ToolUsageEntry
 					if (!toolUsageAggregate[tool]) {
 						toolUsageAggregate[tool] = { attempts: 0, failures: 0 }
 					}
-					toolUsageAggregate[tool].attempts += usage.attempts
-					toolUsageAggregate[tool].failures += usage.failures
+					toolUsageAggregate[tool].attempts += entry.attempts
+					toolUsageAggregate[tool].failures += entry.failures
 				}
 			}
 		}

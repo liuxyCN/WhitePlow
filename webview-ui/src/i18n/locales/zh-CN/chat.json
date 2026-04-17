@@ -230,7 +230,13 @@
 		"wantsToDownloadFile": "需要将文件下载到工作区根目录",
 		"wantsToDownloadFileOutsideWorkspace": "需要在工作区外下载文件",
 		"wantsToDownloadFileProtected": "需要将文件下载到受保护位置",
-		"didDownloadFile": "已下载文件"
+		"didDownloadFile": "已下载文件",
+		"wantsToExtractArchive": "需要解压归档到工作区",
+		"wantsToExtractArchiveOutsideWorkspace": "需要在工作区外解压归档",
+		"wantsToExtractArchiveProtected": "需要解压归档到受保护位置",
+		"didExtractArchive": "已解压归档",
+		"extractArchiveFileLabel": "文件名",
+		"extractArchiveDestinationLabel": "目标位置"
 	},
 	"directoryOperations": {
 		"wantsToViewTopLevel": "需要查看目录文件列表",

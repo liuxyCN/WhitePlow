@@ -64,6 +64,8 @@ export function getToolDisplayName(toolName: string): string {
 		writeToFile: "Write File",
 		download_file: "Download File",
 		downloadFile: "Download File",
+		extract_archive: "Extract Archive",
+		extractArchive: "Extract Archive",
 
 		// Search operations
 		searchFiles: "Search Files",
@@ -118,6 +120,8 @@ export function getToolIconName(toolName: string): IconName {
 		writeToFile: "file-edit",
 		download_file: "browser",
 		downloadFile: "browser",
+		extract_archive: "folder",
+		extractArchive: "folder",
 
 		// Search operations
 		searchFiles: "search",

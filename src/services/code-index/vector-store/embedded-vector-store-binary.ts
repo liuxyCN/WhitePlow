@@ -11,6 +11,8 @@ import { t } from "../../../i18n"
 const STORE_VERSION = 1 as const
 const COLLECTION_DIR = "doc-index"
 const COLLECTION_FILE = "vec.bin"
+/** Same directory as `vec.bin`; full write goes here first, then `rename` replaces the live file (atomic on POSIX). */
+const COLLECTION_FILE_TMP = `${COLLECTION_FILE}.tmp`
 
 /** On-disk format version (header); bump when binary layout changes. Not compatible with v1 (float32). */
 const FILE_VERSION = 2 as const
@@ -33,12 +35,16 @@ type PersistedStore = {
  * Binary embedded vector index: `<workspace>/.roo/doc-index/vec.bin`.
  * Vectors as float64 LE (same precision as JSON / JS `number`); payload as length-prefixed UTF-8 JSON per point.
  * Format v2 only; older `vec.bin` (v1 float32) is not read — delete and re-index.
+ *
+ * Persistence: writes complete content to `vec.bin.tmp` then `rename`s to `vec.bin` so a crash mid-write
+ * leaves the previous `vec.bin` intact (or absent if first create failed before rename).
  */
 export class EmbeddedVectorStoreBinary implements IVectorStore {
 	private readonly vectorSize: number
 	private readonly workspacePath: string
 	private readonly collectionDir: string
 	private readonly storePath: string
+	private readonly storePathTmp: string
 	private readonly mutex = new Mutex()
 	private memory: PersistedStore | null = null
 	private dimensionMismatchFromDisk = false
@@ -48,6 +54,7 @@ export class EmbeddedVectorStoreBinary implements IVectorStore {
 		this.vectorSize = vectorSize
 		this.collectionDir = path.join(workspacePath, ".roo", COLLECTION_DIR)
 		this.storePath = path.join(this.collectionDir, COLLECTION_FILE)
+		this.storePathTmp = path.join(this.collectionDir, COLLECTION_FILE_TMP)
 	}
 
 	private get metadataId(): string {
@@ -194,13 +201,20 @@ export class EmbeddedVectorStoreBinary implements IVectorStore {
 
 	private async save(data: PersistedStore): Promise<void> {
 		await fs.mkdir(this.collectionDir, { recursive: true })
+		// Remove leftover tmp from an earlier crash after full write but before rename.
+		await fs.unlink(this.storePathTmp).catch((e: NodeJS.ErrnoException) => {
+			if (e.code !== "ENOENT") {
+				throw e
+			}
+		})
+
 		const header = Buffer.allocUnsafe(20)
 		MAGIC.copy(header, 0)
 		header.writeUInt32LE(FILE_VERSION, 8)
 		header.writeUInt32LE(this.vectorSize, 12)
 		header.writeUInt32LE(data.points.length, 16)
 
-		const fh = await fs.open(this.storePath, "w")
+		const fh = await fs.open(this.storePathTmp, "w")
 		try {
 			await fh.write(header, 0, 20, 0)
 			let position = 20
@@ -236,6 +250,8 @@ export class EmbeddedVectorStoreBinary implements IVectorStore {
 		} finally {
 			await fh.close()
 		}
+
+		await fs.rename(this.storePathTmp, this.storePath)
 
 		this.dimensionMismatchFromDisk = false
 		this.memory = data
@@ -439,12 +455,14 @@ export class EmbeddedVectorStoreBinary implements IVectorStore {
 
 	async deleteCollection(): Promise<void> {
 		await this.mutex.runExclusive(async () => {
-			try {
-				await fs.unlink(this.storePath)
-			} catch (e: unknown) {
-				const code = (e as NodeJS.ErrnoException)?.code
-				if (code !== "ENOENT") {
-					throw e
+			for (const p of [this.storePath, this.storePathTmp]) {
+				try {
+					await fs.unlink(p)
+				} catch (e: unknown) {
+					const code = (e as NodeJS.ErrnoException)?.code
+					if (code !== "ENOENT") {
+						throw e
+					}
 				}
 			}
 			this.memory = null

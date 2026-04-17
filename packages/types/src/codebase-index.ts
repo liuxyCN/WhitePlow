@@ -18,10 +18,7 @@ export const CODEBASE_INDEX_DEFAULTS = {
  * CodebaseIndexConfig
  */
 
-/** Legacy persisted value `"lancedb"` is normalized to `"embedded"` on parse. */
-export const codebaseIndexVectorStoreSchema = z
-	.union([z.literal("qdrant"), z.literal("embedded"), z.literal("lancedb")])
-	.transform((v) => (v === "lancedb" ? "embedded" : v))
+export const codebaseIndexVectorStoreSchema = z.enum(["qdrant", "embedded"])
 
 export type CodebaseIndexVectorStore = z.infer<typeof codebaseIndexVectorStoreSchema>
 

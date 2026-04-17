@@ -9,7 +9,7 @@ export const longTermMemoryConfigSchema = z.object({
 	longTermMemoryIngestMaxTasksPerRun: z.number().int().min(1).max(200).optional(),
 	/**
 	 * When true (default), a lightweight API call selects which memory keys to inject from the user message.
-	 * When false, inject by sorted keys until the character budget (legacy).
+	 * When false, no automatic injection of structured memory into the prompt.
 	 */
 	longTermMemorySmartInject: z.boolean().optional(),
 })

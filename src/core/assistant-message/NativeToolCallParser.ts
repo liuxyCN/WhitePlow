@@ -527,6 +527,15 @@ export class NativeToolCallParser {
 				}
 				break
 
+			case "extract_archive":
+				if (partialArgs.archive_path !== undefined || partialArgs.destination_path !== undefined) {
+					nativeArgs = {
+						archive_path: partialArgs.archive_path,
+						destination_path: partialArgs.destination_path,
+					}
+				}
+				break
+
 			case "run_slash_command":
 				if (partialArgs.command !== undefined) {
 					nativeArgs = {
@@ -933,6 +942,15 @@ export class NativeToolCallParser {
 						nativeArgs = {
 							url: args.url,
 							filename: args.filename,
+						} as NativeArgsFor<TName>
+					}
+					break
+
+				case "extract_archive":
+					if (args.archive_path !== undefined && args.destination_path !== undefined) {
+						nativeArgs = {
+							archive_path: args.archive_path,
+							destination_path: args.destination_path,
 						} as NativeArgsFor<TName>
 					}
 					break

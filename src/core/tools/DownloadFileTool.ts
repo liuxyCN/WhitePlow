@@ -11,7 +11,12 @@ import {
 	DOWNLOAD_FILE_MAX_BYTES,
 	fetchWithSsrfSafeRedirects,
 } from "../../utils/downloadUrlSafety"
+import {
+	defaultExtractDestinationFolderName,
+	detectArchiveKind,
+} from "../../utils/archive/detectArchiveKind"
 import { t } from "../../i18n"
+import { extractArchiveTool } from "./ExtractArchiveTool"
 
 export interface DownloadFileParams {
 	url: string
@@ -118,6 +123,19 @@ async function readResponseBodyWithLimitAndProgress(
 		await onProgress(received, contentLength)
 	}
 	return Buffer.concat(chunks)
+}
+
+function isToolResponseErrorPayload(text: string): boolean {
+	const trimmed = text.trim()
+	if (!trimmed.startsWith("{")) {
+		return false
+	}
+	try {
+		const o = JSON.parse(trimmed) as { status?: string }
+		return o.status === "error"
+	} catch {
+		return false
+	}
 }
 
 export class DownloadFileTool extends BaseTool<"download_file"> {
@@ -292,7 +310,89 @@ export class DownloadFileTool extends BaseTool<"download_file"> {
 			await task.fileContextTracker.trackFileContext(relPath, "roo_edited")
 			task.didEditFile = true
 
-			pushToolResult(formatResponse.toolResult(readablePath))
+			if (detectArchiveKind(relPath) !== "unknown") {
+				const destFolder = defaultExtractDestinationFolderName(filename)
+				const readableDest = getReadablePath(task.cwd, destFolder)
+
+				const pushExtractProgress = async (
+					partial: boolean,
+					phase: string,
+					statusKey: "extracting" | "done" | "failed",
+				) => {
+					let line: string
+					switch (statusKey) {
+						case "extracting":
+							line = t("tools:extractArchive.progressExtracting")
+							break
+						case "done":
+							line = t("tools:extractArchive.progressDone")
+							break
+						case "failed":
+							line = t("tools:extractArchive.progressFailed")
+							break
+					}
+					const icon =
+						statusKey === "done" ? "check" : statusKey === "failed" ? "error" : "package"
+
+					await task.say(
+						"tool",
+						JSON.stringify({
+							tool: "extractArchiveProgress",
+							path: readableDest,
+							archivePath: readablePath,
+							destinationPath: readableDest,
+							phase,
+						}),
+						undefined,
+						partial,
+						undefined,
+						{ icon, text: line },
+					)
+				}
+
+				await pushExtractProgress(true, "extracting", "extracting")
+
+				let extractEmittedViaPush = false
+				let capturedExtractText: string | undefined
+				await extractArchiveTool.execute(
+					{ archive_path: relPath, destination_path: destFolder },
+					task,
+					{
+						...callbacks,
+						askApproval: async () => true,
+						pushToolResult: (msg) => {
+							extractEmittedViaPush = true
+							capturedExtractText = typeof msg === "string" ? msg : undefined
+						},
+						handleError: async (action, err) => {
+							extractEmittedViaPush = true
+							await callbacks.handleError(action, err)
+						},
+					},
+				)
+
+				if (extractEmittedViaPush) {
+					if (capturedExtractText !== undefined) {
+						if (isToolResponseErrorPayload(capturedExtractText)) {
+							await pushExtractProgress(false, "error", "failed")
+						} else {
+							await pushExtractProgress(false, "done", "done")
+						}
+						pushToolResult(
+							formatResponse.toolResult(
+								`Downloaded ${readablePath}. ${capturedExtractText}`,
+							),
+						)
+					} else {
+						await pushExtractProgress(false, "error", "failed")
+					}
+				} else {
+					await pushExtractProgress(false, "error", "failed")
+					pushToolResult(formatResponse.toolResult(readablePath))
+				}
+			} else {
+				pushToolResult(formatResponse.toolResult(readablePath))
+			}
 		} catch (error) {
 			if (progressRowActive) {
 				try {

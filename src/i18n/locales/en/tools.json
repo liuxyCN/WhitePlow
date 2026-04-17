@@ -35,5 +35,10 @@
 		"progressWriting": "Saving to disk…",
 		"progressDone": "Download complete",
 		"progressFailed": "Download failed"
+	},
+	"extractArchive": {
+		"progressExtracting": "Extracting archive…",
+		"progressDone": "Extraction complete",
+		"progressFailed": "Extraction failed"
 	}
 }

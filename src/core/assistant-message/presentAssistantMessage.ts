@@ -35,6 +35,7 @@ import { runSlashCommandTool } from "../tools/RunSlashCommandTool"
 import { skillTool } from "../tools/SkillTool"
 import { generateImageTool } from "../tools/GenerateImageTool"
 import { downloadFileTool } from "../tools/DownloadFileTool"
+import { extractArchiveTool } from "../tools/ExtractArchiveTool"
 import { applyDiffTool as applyDiffToolClass } from "../tools/ApplyDiffTool"
 import { isValidToolName, validateToolUse } from "../tools/validateToolUse"
 import { codebaseSearchTool } from "../tools/CodebaseSearchTool"
@@ -386,6 +387,8 @@ export async function presentAssistantMessage(cline: Task) {
 						return `[${block.name} for '${block.params.path}']`
 					case "download_file":
 						return `[${block.name} url '${block.params.url ?? ""}' -> '${block.params.filename ?? ""}']`
+					case "extract_archive":
+						return `[${block.name} '${block.params.archive_path ?? ""}' -> '${block.params.destination_path ?? ""}']`
 					default:
 						return `[${block.name}]`
 				}
@@ -855,6 +858,14 @@ export async function presentAssistantMessage(cline: Task) {
 				case "download_file":
 					await checkpointSaveAndMark(cline)
 					await downloadFileTool.handle(cline, block as ToolUse<"download_file">, {
+						askApproval,
+						handleError,
+						pushToolResult,
+					})
+					break
+				case "extract_archive":
+					await checkpointSaveAndMark(cline)
+					await extractArchiveTool.handle(cline, block as ToolUse<"extract_archive">, {
 						askApproval,
 						handleError,
 						pushToolResult,

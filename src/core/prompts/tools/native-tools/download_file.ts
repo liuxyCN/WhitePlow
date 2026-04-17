@@ -8,6 +8,8 @@ Parameters:
 
 Use this to fetch dependencies, assets, or datasets when the user expects a file in the project root. Maximum response size is about 200 MiB. Do not use it to probe internal networks; only public URLs the user intended.
 
+If the saved file is a supported archive (.zip, .rar, .tar, .tar.gz, .tgz), extraction runs automatically after download without a second approval (destination folder is the archive name without its extension, same rules as extract_archive).
+
 Example: { "url": "https://example.com/schema.json", "filename": "schema.json" }`
 
 const URL_PARAMETER_DESCRIPTION = `Full http or https URL to download`

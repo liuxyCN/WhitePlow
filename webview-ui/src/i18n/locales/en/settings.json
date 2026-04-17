@@ -321,7 +321,7 @@
 		"enableDescription": "Master switch for retrieval and background ingest from task conversation history.",
 		"pauseIngestLabel": "Pause background ingest",
 		"smartInjectLabel": "Smart memory injection",
-		"smartInjectDescription": "Before each reply, use a quick model call to pick which stored memories match your message. When off, memories are injected in key order until the size limit.",
+		"smartInjectDescription": "Before each reply, use a quick model call to pick which stored memories match your message. When off, structured memory is not injected into the prompt automatically.",
 		"statusTitle": "Status",
 		"statuses": {
 			"standby": "Standby",

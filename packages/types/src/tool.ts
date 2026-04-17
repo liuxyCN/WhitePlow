@@ -46,6 +46,7 @@ export const toolNames = [
 	"skill",
 	"generate_image",
 	"download_file",
+	"extract_archive",
 	"custom_tool",
 ] as const
 

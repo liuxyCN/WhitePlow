@@ -1049,6 +1049,52 @@ export const ChatRowContent = ({
 						)}
 					</>
 				)
+			case "extractArchive":
+				return (
+					<>
+						<div style={headerStyle}>
+							{tool.isProtected ? (
+								<span
+									className="codicon codicon-lock"
+									style={{ color: "var(--vscode-editorWarning-foreground)", marginBottom: "-1.5px" }}
+								/>
+							) : (
+								toolIcon("package")
+							)}
+							<span style={{ fontWeight: "bold" }}>
+								{message.type === "ask"
+									? tool.isProtected
+										? t("chat:fileOperations.wantsToExtractArchiveProtected")
+										: tool.isOutsideWorkspace
+											? t("chat:fileOperations.wantsToExtractArchiveOutsideWorkspace")
+											: t("chat:fileOperations.wantsToExtractArchive")
+									: t("chat:fileOperations.didExtractArchive")}
+							</span>
+						</div>
+						{message.type === "ask" && (
+							<div className="pl-6">
+								<ToolUseBlock>
+									<div className="p-2 space-y-1.5">
+										{tool.archivePath && (
+											<div className="text-xs text-vscode-descriptionForeground">
+												<span className="mr-2 shrink-0 font-medium text-vscode-foreground/90">
+													{t("chat:fileOperations.extractArchiveFileLabel")}
+												</span>
+												<span className="break-all">{tool.archivePath}</span>
+											</div>
+										)}
+										<div className="text-xs text-vscode-descriptionForeground">
+											<span className="mr-2 shrink-0 font-medium text-vscode-foreground/90">
+												{t("chat:fileOperations.extractArchiveDestinationLabel")}
+											</span>
+											<span className="break-all">{tool.destinationPath ?? tool.path}</span>
+										</div>
+									</div>
+								</ToolUseBlock>
+							</div>
+						)}
+					</>
+				)
 			default:
 				return null
 		}
@@ -1646,6 +1692,60 @@ export const ChatRowContent = ({
 										)}
 										{byteLine && (
 											<div className="text-xs text-vscode-descriptionForeground">{byteLine}</div>
+										)}
+									</div>
+								</div>
+							)
+						}
+						case "extractArchiveProgress": {
+							const prog = sayTool
+							const phase = prog.phase ?? ""
+							const isFailed = phase === "error"
+							const isDone = phase === "done"
+							const inProgress = message.partial === true && !isFailed && !isDone
+
+							return (
+								<div
+									style={{
+										...headerStyle,
+										alignItems: "flex-start",
+									}}>
+									<div style={{ marginTop: "2px", flexShrink: 0 }}>
+										{inProgress ? (
+											<ProgressIndicator />
+										) : isFailed ? (
+											<span
+												className="codicon codicon-error"
+												style={{ color: errorColor, marginBottom: "-1.5px" }}
+											/>
+										) : (
+											<span
+												className="codicon codicon-check"
+												style={{ color: successColor, marginBottom: "-1.5px" }}
+											/>
+										)}
+									</div>
+									<div className="min-w-0 flex-1 flex flex-col gap-1">
+										<span style={{ fontWeight: "bold" }}>
+											{message.progressStatus?.text ?? ""}
+										</span>
+										{prog.archivePath && (
+											<div className="text-xs text-vscode-descriptionForeground">
+												<span className="mr-2 shrink-0 font-medium text-vscode-foreground/90">
+													{t("chat:fileOperations.extractArchiveFileLabel")}
+												</span>
+												<span className="break-all">{prog.archivePath}</span>
+											</div>
+										)}
+										{(prog.destinationPath ?? prog.path) && (
+											<div className="text-xs text-vscode-descriptionForeground">
+												<span className="mr-2 shrink-0 font-medium text-vscode-foreground/90">
+													{t("chat:fileOperations.extractArchiveDestinationLabel")}
+												</span>
+												<span className="break-all">
+													{prog.destinationPath ?? prog.path}
+												</span>
+											</div>
 										)}
 									</div>
 								</div>

@@ -82,6 +82,8 @@ export const toolParamNames = [
 	"files",
 	"line_ranges",
 	"filename",
+	"archive_path",
+	"destination_path",
 ] as const
 
 export type ToolParamName = (typeof toolParamNames)[number]
@@ -111,6 +113,7 @@ export type NativeToolArgs = {
 	codebase_search: { query: string; path?: string }
 	generate_image: GenerateImageParams
 	download_file: { url: string; filename: string }
+	extract_archive: { archive_path: string; destination_path: string }
 	run_slash_command: { command: string; args?: string }
 	skill: { skill: string; args?: string }
 	search_files: { path: string; regex: string; file_pattern?: string | null }
@@ -265,6 +268,11 @@ export interface DownloadFileToolUse extends ToolUse<"download_file"> {
 	params: Partial<Pick<Record<ToolParamName, string>, "url" | "filename">>
 }
 
+export interface ExtractArchiveToolUse extends ToolUse<"extract_archive"> {
+	name: "extract_archive"
+	params: Partial<Pick<Record<ToolParamName, string>, "archive_path" | "destination_path">>
+}
+
 // Define tool group configuration
 export type ToolGroupConfig = {
 	tools: readonly string[]
@@ -297,6 +305,7 @@ export const TOOL_DISPLAY_NAMES: Record<ToolName, string> = {
 	skill: "load skill",
 	generate_image: "generate images",
 	download_file: "download file from URL",
+	extract_archive: "extract archive (zip, tar, tar.gz, rar)",
 	custom_tool: "use custom tools",
 } as const
 
@@ -306,7 +315,7 @@ export const TOOL_GROUPS: Record<ToolGroup, ToolGroupConfig> = {
 		tools: ["read_file", "search_files", "list_files", "codebase_search"],
 	},
 	edit: {
-		tools: ["apply_diff", "write_to_file", "generate_image", "download_file"],
+		tools: ["apply_diff", "write_to_file", "generate_image", "download_file", "extract_archive"],
 		customTools: ["edit", "search_replace", "edit_file", "apply_patch"],
 	},
 	command: {

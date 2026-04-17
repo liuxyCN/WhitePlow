@@ -35,5 +35,10 @@
 		"progressWriting": "正在写入磁盘…",
 		"progressDone": "下载完成",
 		"progressFailed": "下载失败"
+	},
+	"extractArchive": {
+		"progressExtracting": "正在解压…",
+		"progressDone": "解压完成",
+		"progressFailed": "解压失败"
 	}
 }

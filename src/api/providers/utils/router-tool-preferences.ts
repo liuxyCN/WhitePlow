@@ -22,7 +22,13 @@ export function applyRouterToolPreferences(modelId: string, info: ModelInfo): Mo
 		result = {
 			...result,
 			excludedTools: [
-				...new Set([...(result.excludedTools || []), "apply_diff", "write_to_file", "download_file"]),
+				...new Set([
+					...(result.excludedTools || []),
+					"apply_diff",
+					"write_to_file",
+					"download_file",
+					"extract_archive",
+				]),
 			],
 			includedTools: [...new Set([...(result.includedTools || []), "apply_patch"])],
 		}

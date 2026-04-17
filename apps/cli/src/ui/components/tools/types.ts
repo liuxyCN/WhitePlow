@@ -19,6 +19,8 @@ export function getToolCategory(toolName: string): ToolCategory {
 		"writeToFile",
 		"download_file",
 		"downloadFile",
+		"extract_archive",
+		"extractArchive",
 	]
 
 	const searchTools = ["searchFiles", "search_files", "codebaseSearch", "codebase_search"]

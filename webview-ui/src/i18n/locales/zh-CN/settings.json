@@ -258,7 +258,7 @@
 		"enableDescription": "总开关：控制检索与后台从历史对话抽取。",
 		"pauseIngestLabel": "暂停后台抽取",
 		"smartInjectLabel": "智能注入记忆",
-		"smartInjectDescription": "每次回复前额外调用一次模型，根据你当前输入从已存记忆中挑选要注入的条目。关闭后按键名字母序注入直到长度上限。",
+		"smartInjectDescription": "每次回复前额外调用一次模型，根据你当前输入从已存记忆中挑选要注入的条目。关闭后不会自动把记忆注入到对话上下文。",
 		"statusTitle": "状态",
 		"statuses": {
 			"standby": "待机",

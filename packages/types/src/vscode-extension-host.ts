@@ -876,6 +876,8 @@ export interface ClineSayTool {
 		| "generateImage"
 		| "downloadFile"
 		| "downloadFileProgress"
+		| "extractArchive"
+		| "extractArchiveProgress"
 		| "imageGenerated"
 		| "runSlashCommand"
 		| "updateTodoList"
@@ -883,11 +885,16 @@ export interface ClineSayTool {
 	path?: string
 	/** Source URL for download_file approval UI */
 	url?: string
+	/** extract_archive: path to archive (readable) */
+	archivePath?: string
+	/** extract_archive: destination folder (readable), same as path for display */
+	destinationPath?: string
 	/** downloadFileProgress: bytes received so far */
 	bytesReceived?: number
 	/** downloadFileProgress: total from Content-Length when known */
 	totalBytes?: number
-	/** downloadFileProgress: connecting | downloading | writing | done */
+	/** downloadFileProgress: connecting | downloading | writing | done | error */
+	/** extractArchiveProgress: extracting | done | error */
 	phase?: string
 	// For readCommandOutput
 	readStart?: number

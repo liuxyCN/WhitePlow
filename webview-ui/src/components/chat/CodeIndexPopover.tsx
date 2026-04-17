@@ -235,10 +235,10 @@ export const CodeIndexPopover: React.FC<CodeIndexPopoverProps> = ({
 		codebaseIndexEnabled: true,
 		codebaseIndexVectorStore: "embedded",
 		codebaseIndexQdrantUrl: "",
-		codebaseIndexEmbedderProvider: "openai",
+		codebaseIndexEmbedderProvider: "chinalifepe",
 		codebaseIndexEmbedderBaseUrl: "",
-		codebaseIndexEmbedderModelId: "",
-		codebaseIndexEmbedderModelDimension: undefined,
+		codebaseIndexEmbedderModelId: "qwen3-embedding",
+		codebaseIndexEmbedderModelDimension: 4096,
 		codebaseIndexSearchMaxResults: CODEBASE_INDEX_DEFAULTS.DEFAULT_SEARCH_RESULTS,
 		codebaseIndexSearchMinScore: CODEBASE_INDEX_DEFAULTS.DEFAULT_SEARCH_MIN_SCORE,
 		codebaseIndexAutoInjectOnFirstTurn: true,
@@ -271,15 +271,19 @@ export const CodeIndexPopover: React.FC<CodeIndexPopoverProps> = ({
 		if (codebaseIndexConfig) {
 			const vectorStore: CodebaseIndexVectorStore =
 				codebaseIndexConfig.codebaseIndexVectorStore === "qdrant" ? "qdrant" : "embedded"
+			const embedderProvider = codebaseIndexConfig.codebaseIndexEmbedderProvider || "chinalifepe"
 			const settings = {
 				codebaseIndexEnabled: codebaseIndexConfig.codebaseIndexEnabled ?? true,
 				codebaseIndexVectorStore: vectorStore,
 				codebaseIndexQdrantUrl: codebaseIndexConfig.codebaseIndexQdrantUrl || "",
-				codebaseIndexEmbedderProvider: codebaseIndexConfig.codebaseIndexEmbedderProvider || "openai",
+				codebaseIndexEmbedderProvider: embedderProvider,
 				codebaseIndexEmbedderBaseUrl: codebaseIndexConfig.codebaseIndexEmbedderBaseUrl || "",
-				codebaseIndexEmbedderModelId: codebaseIndexConfig.codebaseIndexEmbedderModelId || "",
+				codebaseIndexEmbedderModelId:
+					codebaseIndexConfig.codebaseIndexEmbedderModelId ||
+					(embedderProvider === "chinalifepe" ? "qwen3-embedding" : ""),
 				codebaseIndexEmbedderModelDimension:
-					codebaseIndexConfig.codebaseIndexEmbedderModelDimension || undefined,
+					codebaseIndexConfig.codebaseIndexEmbedderModelDimension ??
+					(embedderProvider === "chinalifepe" ? 4096 : undefined),
 				codebaseIndexSearchMaxResults:
 					codebaseIndexConfig.codebaseIndexSearchMaxResults ?? CODEBASE_INDEX_DEFAULTS.DEFAULT_SEARCH_RESULTS,
 				codebaseIndexSearchMinScore:

@@ -10,7 +10,7 @@ import { getDefaultModelId, getModelDimension, getModelScoreThreshold } from "..
  * Handles loading, validating, and providing access to configuration values.
  */
 export class CodeIndexConfigManager {
-	/** Persisted values are `qdrant` | `embedded`; legacy `lancedb` is treated as `embedded`. */
+	/** Persisted values are `qdrant` | `embedded` (anything else is treated as `embedded`). */
 	static normalizeVectorStore(raw: string | undefined): "qdrant" | "embedded" {
 		if (raw === "qdrant") {
 			return "qdrant"
@@ -18,8 +18,8 @@ export class CodeIndexConfigManager {
 		return "embedded"
 	}
 
-	private codebaseIndexEnabled: boolean = false
-	private embedderProvider: EmbedderProvider = "openai"
+	private codebaseIndexEnabled: boolean = true
+	private embedderProvider: EmbedderProvider = "chinalifepe"
 	private modelId?: string
 	private modelDimension?: number
 	private openAiOptions?: ApiHandlerOptions
@@ -56,11 +56,12 @@ export class CodeIndexConfigManager {
 	private _loadAndSetConfiguration(): void {
 		// Load configuration from storage
 		const codebaseIndexConfig = this.contextProxy?.getGlobalState("codebaseIndexConfig") ?? {
-			codebaseIndexEnabled: false,
+			codebaseIndexEnabled: true,
 			codebaseIndexQdrantUrl: "http://localhost:6333",
-			codebaseIndexEmbedderProvider: "openai",
+			codebaseIndexEmbedderProvider: "chinalifepe",
 			codebaseIndexEmbedderBaseUrl: "",
-			codebaseIndexEmbedderModelId: "",
+			codebaseIndexEmbedderModelId: "qwen3-embedding",
+			codebaseIndexEmbedderModelDimension: 4096,
 			codebaseIndexSearchMinScore: undefined,
 			codebaseIndexSearchMaxResults: undefined,
 			codebaseIndexBedrockRegion: "us-east-1",
@@ -92,7 +93,7 @@ export class CodeIndexConfigManager {
 		const openRouterSpecificProvider = codebaseIndexConfig.codebaseIndexOpenRouterSpecificProvider ?? ""
 
 		// Update instance variables with configuration
-		this.codebaseIndexEnabled = codebaseIndexEnabled ?? false
+		this.codebaseIndexEnabled = codebaseIndexEnabled ?? true
 		this.vectorStore = CodeIndexConfigManager.normalizeVectorStore(codebaseIndexVectorStore)
 		this.qdrantUrl = codebaseIndexQdrantUrl
 		this.qdrantApiKey = qdrantApiKey ?? ""

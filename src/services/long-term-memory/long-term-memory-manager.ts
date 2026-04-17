@@ -157,7 +157,8 @@ export class LongTermMemoryManager {
 
 	/**
 	 * First API turn: inject structured preferences as context.
-	 * When `userMessageText` is provided and smart inject is on, asks the model which keys to include; otherwise uses sorted-key truncation (legacy).
+	 * When smart inject is off, does not inject automatically.
+	 * When smart inject is on and `userMessageText` is non-empty, asks the model which keys to include; otherwise falls back to sorted-key truncation (legacy fallback only).
 	 */
 	async buildInjectionBlock(userMessageText?: string): Promise<LongTermMemoryInjectionResult> {
 		const empty = (): LongTermMemoryInjectionResult => ({ text: "", keysInjected: 0 })
@@ -169,9 +170,12 @@ export class LongTermMemoryManager {
 		if (allKeys.length === 0) {
 			return empty()
 		}
+		if (!this.isSmartInjectEnabled()) {
+			return empty()
+		}
 
 		const trimmedUser = userMessageText?.trim() ?? ""
-		const useSmart = this.isSmartInjectEnabled() && trimmedUser.length > 0
+		const useSmart = trimmedUser.length > 0
 
 		if (useSmart) {
 			const selected = await this.selectRelevantKeysWithLlm(trimmedUser.slice(0, ROUTING_USER_TEXT_MAX), entries)
