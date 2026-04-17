@@ -81,8 +81,6 @@ export const toolParamNames = [
 	// read_file legacy format parameter (backward compatibility)
 	"files",
 	"line_ranges",
-	"memory_key",
-	"focus",
 	"filename",
 ] as const
 
@@ -120,8 +118,6 @@ export type NativeToolArgs = {
 	update_todo_list: { todos: string }
 	use_mcp_tool: { server_name: string; tool_name: string; arguments?: Record<string, unknown> }
 	write_to_file: { path: string; content: string }
-	delete_long_term_memory: { memory_key: string }
-	optimize_long_term_memory: { focus: string }
 	// Add more tools as they are migrated to native protocol
 }
 
@@ -301,8 +297,6 @@ export const TOOL_DISPLAY_NAMES: Record<ToolName, string> = {
 	skill: "load skill",
 	generate_image: "generate images",
 	download_file: "download file from URL",
-	delete_long_term_memory: "delete long-term memory entry",
-	optimize_long_term_memory: "optimize long-term memory",
 	custom_tool: "use custom tools",
 } as const
 
@@ -336,8 +330,6 @@ export const ALWAYS_AVAILABLE_TOOLS: ToolName[] = [
 	"update_todo_list",
 	"run_slash_command",
 	"skill",
-	"delete_long_term_memory",
-	"optimize_long_term_memory",
 ] as const
 
 /**

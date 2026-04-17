@@ -91,11 +91,6 @@ export function getToolDisplayName(toolName: string): string {
 		// TODO operations
 		update_todo_list: "Update TODO List",
 		updateTodoList: "Update TODO List",
-
-		delete_long_term_memory: "Delete long-term memory",
-		deleteLongTermMemory: "Delete long-term memory",
-		optimize_long_term_memory: "Optimize long-term memory",
-		optimizeLongTermMemory: "Optimize long-term memory",
 	}
 
 	return displayNames[toolName] || toolName
@@ -150,11 +145,6 @@ export function getToolIconName(toolName: string): IconName {
 		// TODO operations
 		update_todo_list: "check",
 		updateTodoList: "check",
-
-		delete_long_term_memory: "cross",
-		deleteLongTermMemory: "cross",
-		optimize_long_term_memory: "gear",
-		optimizeLongTermMemory: "gear",
 	}
 
 	return iconNames[toolName] || "gear"

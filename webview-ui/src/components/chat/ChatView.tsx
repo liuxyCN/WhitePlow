@@ -452,6 +452,7 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 						case "api_req_rate_limit_wait":
 							setSendingDisabled(true)
 							break
+						case "mcp_server_request_started":
 						case "api_req_started":
 							// Clear button state when a new API request starts
 							// This fixes buttons persisting when the task continues
@@ -470,7 +471,6 @@ const ChatViewComponent: React.ForwardRefRenderFunction<ChatViewRef, ChatViewPro
 						case "error":
 						case "text":
 						case "command_output":
-						case "mcp_server_request_started":
 						case "mcp_server_response":
 						case "completion_result":
 							break

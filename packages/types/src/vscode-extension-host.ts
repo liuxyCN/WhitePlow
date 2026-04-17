@@ -880,8 +880,6 @@ export interface ClineSayTool {
 		| "runSlashCommand"
 		| "updateTodoList"
 		| "skill"
-		| "deleteLongTermMemory"
-		| "optimizeLongTermMemory"
 	path?: string
 	/** Source URL for download_file approval UI */
 	url?: string
@@ -946,10 +944,6 @@ export interface ClineSayTool {
 	description?: string
 	// Properties for skill tool
 	skill?: string
-	/** deleteLongTermMemory */
-	memoryKey?: string
-	/** optimizeLongTermMemory */
-	focus?: string
 }
 
 export interface ClineAskUseMcpServer {

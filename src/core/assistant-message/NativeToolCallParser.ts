@@ -654,22 +654,6 @@ export class NativeToolCallParser {
 				}
 				break
 
-			case "delete_long_term_memory":
-				if (partialArgs.memory_key !== undefined) {
-					nativeArgs = {
-						memory_key: partialArgs.memory_key,
-					}
-				}
-				break
-
-			case "optimize_long_term_memory":
-				if (partialArgs.focus !== undefined) {
-					nativeArgs = {
-						focus: partialArgs.focus,
-					}
-				}
-				break
-
 			default:
 				break
 		}
@@ -1026,20 +1010,6 @@ export class NativeToolCallParser {
 							todos: args.todos,
 						} as NativeArgsFor<TName>
 					}
-					break
-
-				case "delete_long_term_memory":
-					if (args.memory_key !== undefined) {
-						nativeArgs = {
-							memory_key: args.memory_key,
-						} as NativeArgsFor<TName>
-					}
-					break
-
-				case "optimize_long_term_memory":
-					nativeArgs = {
-						focus: typeof args.focus === "string" ? args.focus : "",
-					} as NativeArgsFor<TName>
 					break
 
 				default:
