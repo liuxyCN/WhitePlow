@@ -289,7 +289,7 @@ export const ExtensionStateContextProvider: React.FC<{ children: React.ReactNode
 		},
 		longTermMemoryConfig: {
 			longTermMemoryEnabled: true,
-			longTermMemorySmartInject: true,
+			longTermMemoryAutoInject: "smart",
 		},
 		codebaseIndexModels: { ollama: {}, openai: {} },
 		includeDiagnosticMessages: true,

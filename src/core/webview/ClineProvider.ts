@@ -41,6 +41,7 @@ import {
 	type DocumentMarkdownTypeFilters,
 	type LongTermMemoryInjectionResult,
 	resolveDocumentMarkdownTypeOptions,
+	resolveLongTermMemoryAutoInject,
 	RooCodeEventName,
 	requestyDefaultModelId,
 	openRouterDefaultModelId,
@@ -2648,7 +2649,7 @@ export class ClineProvider
 			longTermMemoryConfig: {
 				...longTermMemoryConfig,
 				longTermMemoryEnabled: longTermMemoryConfig?.longTermMemoryEnabled !== false,
-				longTermMemorySmartInject: longTermMemoryConfig?.longTermMemorySmartInject !== false,
+				longTermMemoryAutoInject: resolveLongTermMemoryAutoInject(longTermMemoryConfig ?? {}),
 			},
 			// Only set mdmCompliant if there's an actual MDM policy
 			// undefined means no MDM policy, true means compliant, false means non-compliant
@@ -2905,7 +2906,7 @@ export class ClineProvider
 			longTermMemoryConfig: {
 				...stateValues.longTermMemoryConfig,
 				longTermMemoryEnabled: stateValues.longTermMemoryConfig?.longTermMemoryEnabled !== false,
-				longTermMemorySmartInject: stateValues.longTermMemoryConfig?.longTermMemorySmartInject !== false,
+				longTermMemoryAutoInject: resolveLongTermMemoryAutoInject(stateValues.longTermMemoryConfig ?? {}),
 			},
 			profileThresholds: stateValues.profileThresholds ?? {},
 			lockApiConfigAcrossModes: this.context.workspaceState.get("lockApiConfigAcrossModes", false),

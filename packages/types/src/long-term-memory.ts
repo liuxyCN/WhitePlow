@@ -1,5 +1,8 @@
 import { z } from "zod"
 
+export const longTermMemoryAutoInjectSchema = z.enum(["none", "smart", "all"])
+export type LongTermMemoryAutoInjectMode = z.infer<typeof longTermMemoryAutoInjectSchema>
+
 export const longTermMemoryConfigSchema = z.object({
 	/** Master switch: retrieval + background ingest */
 	longTermMemoryEnabled: z.boolean().optional(),
@@ -8,13 +11,28 @@ export const longTermMemoryConfigSchema = z.object({
 	/** Max tasks to process per ingest run */
 	longTermMemoryIngestMaxTasksPerRun: z.number().int().min(1).max(200).optional(),
 	/**
-	 * When true (default), a lightweight API call selects which memory keys to inject from the user message.
-	 * When false, no automatic injection of structured memory into the prompt.
+	 * @deprecated Prefer `longTermMemoryAutoInject`. When absent, `false` maps to `"none"`, otherwise legacy default matches `"smart"`.
 	 */
 	longTermMemorySmartInject: z.boolean().optional(),
+	/**
+	 * How structured long-term memory is prepended to the user turn: none, LLM-selected subset (smart), or sorted full list within char budget (all).
+	 */
+	longTermMemoryAutoInject: longTermMemoryAutoInjectSchema.optional(),
 })
 
 export type LongTermMemoryConfig = z.infer<typeof longTermMemoryConfigSchema>
+
+/** Resolve inject mode from stored config, including legacy `longTermMemorySmartInject`. */
+export function resolveLongTermMemoryAutoInject(cfg: LongTermMemoryConfig): LongTermMemoryAutoInjectMode {
+	const m = cfg.longTermMemoryAutoInject
+	if (m === "none" || m === "smart" || m === "all") {
+		return m
+	}
+	if (cfg.longTermMemorySmartInject === false) {
+		return "none"
+	}
+	return "smart"
+}
 
 export type LongTermMemorySystemStatus =
 	| "Standby"
@@ -44,4 +62,12 @@ export interface LongTermMemoryInjectionResult {
 	text: string
 	/** Number of structured keys included in `text` (after char budget). */
 	keysInjected: number
+}
+
+/** Extension → webview after `longTermMemoryAddFromText` (manual memory extraction). */
+export interface LongTermMemoryAddFromTextResultPayload {
+	ok: boolean
+	error?: string
+	/** Keys that were written (new or updated). */
+	keys?: string[]
 }

@@ -2,14 +2,15 @@ import * as vscode from "vscode"
 import * as fs from "fs/promises"
 import { createHash } from "crypto"
 
-import type {
-	GlobalState,
-	LongTermMemoryConfig,
-	LongTermMemoryContentsSnapshot,
-	LongTermMemoryInjectionResult,
-	LongTermMemoryStatus,
-	LongTermMemorySystemStatus,
-	ProviderSettings,
+import {
+	type GlobalState,
+	type LongTermMemoryConfig,
+	type LongTermMemoryContentsSnapshot,
+	type LongTermMemoryInjectionResult,
+	type LongTermMemoryStatus,
+	type LongTermMemorySystemStatus,
+	type ProviderSettings,
+	resolveLongTermMemoryAutoInject,
 } from "@roo-code/types"
 
 import { singleCompletionHandler } from "../../utils/single-completion-handler"
@@ -20,7 +21,7 @@ import type { TaskHistoryStore } from "../../core/task-persistence/TaskHistorySt
 
 import { LongTermMemoryPreferencesStore } from "./preferences-store"
 import { LongTermMemorySyncStateStore } from "./sync-state-store"
-import { buildExtractionUserContent } from "./extraction-prompt"
+import { buildExtractionUserContent, buildManualMemoryExtractionUserContent } from "./extraction-prompt"
 import { buildMemorySelectionUserContent } from "./memory-inject-selection-prompt"
 import { buildOptimizationUserContent } from "./optimization-prompt"
 
@@ -36,6 +37,7 @@ const ROUTING_USER_TEXT_MAX = 8_192
 const ROUTING_MEMORY_JSON_MAX = 512_000
 /** Max items accepted from optimize-memory LLM output (after validation). */
 const OPTIMIZE_MAX_ITEMS = 500
+const MANUAL_MEMORY_NOTE_MAX_CHARS = 12_000
 
 /** Smart-inject key selection only: auxiliary `completePrompt` should not use reasoning (latency/cost). */
 function providerSettingsForMemoryInjectSelection(base: ProviderSettings): ProviderSettings {
@@ -96,10 +98,6 @@ export class LongTermMemoryManager {
 		return this.cfg().longTermMemoryPauseIngest === true
 	}
 
-	private isSmartInjectEnabled(): boolean {
-		return this.cfg().longTermMemorySmartInject !== false
-	}
-
 	private pushError(msg: string): void {
 		this.recentErrors = [...this.recentErrors.slice(-(RECENT_ERRORS_MAX - 1)), msg]
 	}
@@ -157,12 +155,15 @@ export class LongTermMemoryManager {
 
 	/**
 	 * First API turn: inject structured preferences as context.
-	 * When smart inject is off, does not inject automatically.
-	 * When smart inject is on and `userMessageText` is non-empty, asks the model which keys to include; otherwise falls back to sorted-key truncation (legacy fallback only).
+	 * `none`: no injection. `all`: sorted keys within char budget (no routing LLM). `smart`: routing LLM when user text is present, else sorted fallback.
 	 */
 	async buildInjectionBlock(userMessageText?: string): Promise<LongTermMemoryInjectionResult> {
 		const empty = (): LongTermMemoryInjectionResult => ({ text: "", keysInjected: 0 })
 		if (!this.isFeatureEnabled()) {
+			return empty()
+		}
+		const mode = resolveLongTermMemoryAutoInject(this.cfg())
+		if (mode === "none") {
 			return empty()
 		}
 		const entries = await this.prefs.getAll()
@@ -170,8 +171,8 @@ export class LongTermMemoryManager {
 		if (allKeys.length === 0) {
 			return empty()
 		}
-		if (!this.isSmartInjectEnabled()) {
-			return empty()
+		if (mode === "all") {
+			return this.legacySortedInjection(entries)
 		}
 
 		const trimmedUser = userMessageText?.trim() ?? ""
@@ -524,6 +525,49 @@ export class LongTermMemoryManager {
 	/**
 	 * Remove one structured memory key. Key must match stored keys (`[a-zA-Z0-9_.]+`).
 	 */
+	/**
+	 * Same LLM JSON schema as background ingest (`parseExtractionJson`), driven by user-typed note from the webview.
+	 */
+	async addMemoryFromUserNote(
+		text: string,
+	): Promise<{ ok: true; keys: string[] } | { ok: false; error: string }> {
+		if (!this.isFeatureEnabled()) {
+			return { ok: false, error: "长期记忆已关闭。" }
+		}
+		const trimmed = text.trim()
+		if (trimmed.length < 5) {
+			return { ok: false, error: "请输入至少几个字的说明。" }
+		}
+		const note = trimmed.slice(0, MANUAL_MEMORY_NOTE_MAX_CHARS)
+		try {
+			let api: ProviderSettings
+			try {
+				api = await this.deps.getApiConfiguration()
+			} catch (e) {
+				return { ok: false, error: `无法读取 API 配置：${e instanceof Error ? e.message : String(e)}` }
+			}
+			const prompt = buildManualMemoryExtractionUserContent(note)
+			const raw = await singleCompletionHandler(api, prompt)
+			const extracted = this.parseExtractionJson(raw)
+			const structured: Record<string, string | number | boolean> = {}
+			for (const it of extracted) {
+				structured[it.key] = it.value
+			}
+			const keys = Object.keys(structured)
+			if (keys.length === 0) {
+				return { ok: false, error: "未能提取到可保存的结构化记忆，请改写后重试。" }
+			}
+			await this.prefs.upsertEntries(structured)
+			await this.broadcastStatus()
+			await this.broadcastContentsSnapshot()
+			return { ok: true, keys }
+		} catch (e) {
+			const msg = e instanceof Error ? e.message : String(e)
+			this.pushError(`手动添加记忆失败：${msg}`)
+			return { ok: false, error: msg }
+		}
+	}
+
 	async deleteStructuredKey(key: string): Promise<{ ok: true } | { ok: false; error: string }> {
 		const k = key.trim()
 		if (!this.isFeatureEnabled()) {

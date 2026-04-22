@@ -26,3 +26,24 @@ ${transcript}
 
 请按上述要求只输出 JSON。`
 }
+
+/** Same extraction rules as history ingest, but the source is free-form user input (manual add from UI). */
+export function buildManualMemoryExtractionUserContent(userNote: string): string {
+	return `你是助手扩展中的「长期记忆抽取」模块。用户在下面「---BEGIN_USER_NOTE---」起的段落中**主动说明**希望长期记住的内容（偏好、习惯、事实或约定等）。
+
+你的任务：与从历史对话自动抽取时**完全一致**的规则，将其整理为结构化条目：
+- key：小写英文点分路径，简短且能区分含义（如 user.replyLanguage）。
+- value：只能是 JSON 字符串、数字或布尔。
+
+禁止输出密钥、密码、token、完整证件号等敏感内容。不要流水账复述原文。
+
+只输出一个合法 JSON 对象，不要用 markdown 代码块，不要其它说明文字。
+格式：{"items":[...]}，每项为 {"key":"...","value":...}（仅 key 与 value 两个字段）。
+最多 15 条；没有可存内容则 {"items":[]}。
+
+---BEGIN_USER_NOTE---
+${userNote}
+---END_USER_NOTE---
+
+请按上述要求只输出 JSON。`
+}

@@ -3350,6 +3350,27 @@ export const webviewMessageHandler = async (
 			}
 			break
 		}
+		case "longTermMemoryAddFromText": {
+			const note = typeof message.text === "string" ? message.text : ""
+			void (async () => {
+				try {
+					const result = await provider.getLongTermMemoryManager().addMemoryFromUserNote(note)
+					await provider.postMessageToWebview({
+						type: "longTermMemoryAddFromTextResult",
+						values: result,
+					})
+				} catch (error) {
+					provider.log(
+						`[LongTermMemory] addMemoryFromUserNote failed: ${error instanceof Error ? error.message : String(error)}`,
+					)
+					await provider.postMessageToWebview({
+						type: "longTermMemoryAddFromTextResult",
+						values: { ok: false, error: error instanceof Error ? error.message : String(error) },
+					})
+				}
+			})()
+			break
+		}
 		case "setDocumentMarkdownAutoEnableDefault": {
 			try {
 				await provider.setDocumentMarkdownAutoEnableDefault(message.bool ?? true)

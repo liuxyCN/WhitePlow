@@ -257,8 +257,14 @@
 		"enableLabel": "启用长期记忆",
 		"enableDescription": "总开关：控制检索与后台从历史对话抽取。",
 		"pauseIngestLabel": "暂停后台抽取",
-		"smartInjectLabel": "智能注入记忆",
-		"smartInjectDescription": "每次回复前额外调用一次模型，根据你当前输入从已存记忆中挑选要注入的条目。关闭后不会自动把记忆注入到对话上下文。",
+		"autoInjectLabel": "自动注入到对话",
+		"autoInjectSectionHint": "控制是否在每次请求前把已保存的结构化记忆写入上下文。",
+		"autoInjectNone": "不注入",
+		"autoInjectNoneHint": "不把结构化记忆自动加入提示词。",
+		"autoInjectSmart": "智能注入",
+		"autoInjectSmartHint": "在你有输入文字时，额外调用一次轻量模型，从已存记忆中挑选相关条目；无文字或路由失败时按键名排序截取注入。",
+		"autoInjectAll": "全部注入",
+		"autoInjectAllHint": "注入全部记忆内容。",
 		"statusTitle": "状态",
 		"statuses": {
 			"standby": "待机",
@@ -281,7 +287,15 @@
 		"browseEmptyStructured": "暂无记忆内容",
 		"browseDeleteKeyTooltip": "删除此条记忆",
 		"browseDeleteKeyAria": "删除此条记忆",
-		"optimizeButton": "优化记忆"
+		"optimizeButton": "优化记忆",
+		"manualAddTitle": "手动添加记忆",
+		"manualAddHint": "使用与「从历史对话自动抽取」相同的模型与 JSON 规则：根据你输入的说明生成键值并合并进存储。",
+		"manualAddPlaceholder": "例如：回复请用中文；回答问题先说结论在分析；编写文档必须标记引用出处",
+		"manualAddButton": "提取并保存",
+		"manualAddSubmitting": "正在调用模型…",
+		"manualAddTooShort": "请至少输入几个字再保存。",
+		"manualAddSuccess": "已写入 {{count}} 条键：{{keys}}",
+		"manualAddUnknownError": "保存失败。"
 	},
 	"autoApprove": {
 		"toggleShortcut": "您可以<SettingsLink>在 IDE 首选项中</SettingsLink>为此设置配置全局快捷方式。",

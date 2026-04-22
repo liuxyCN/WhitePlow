@@ -1,14 +1,19 @@
 import React, { useState, useEffect, useMemo, useCallback } from "react"
 import { Brain, Sparkles, Trash2 } from "lucide-react"
-import { VSCodeCheckbox } from "@vscode/webview-ui-toolkit/react"
+import { VSCodeCheckbox, VSCodeRadio, VSCodeRadioGroup } from "@vscode/webview-ui-toolkit/react"
 
-import type { LongTermMemoryContentsSnapshot, LongTermMemoryStatus } from "@roo-code/types"
+import type {
+	LongTermMemoryAddFromTextResultPayload,
+	LongTermMemoryContentsSnapshot,
+	LongTermMemoryStatus,
+} from "@roo-code/types"
+import { resolveLongTermMemoryAutoInject } from "@roo-code/types"
 
 import { vscode } from "@src/utils/vscode"
 import { useExtensionState } from "@src/context/ExtensionStateContext"
 import { useAppTranslation } from "@/i18n/TranslationContext"
 import { cn } from "@src/lib/utils"
-import { PopoverTrigger, StandardTooltip, Button, Popover, PopoverContent } from "@src/components/ui"
+import { PopoverTrigger, StandardTooltip, Button, Popover, PopoverContent, Textarea } from "@src/components/ui"
 import * as ProgressPrimitive from "@radix-ui/react-progress"
 import { useRooPortal } from "@src/components/ui/hooks/useRooPortal"
 
@@ -25,12 +30,17 @@ const LongTermMemoryPopover: React.FC<LongTermMemoryPopoverProps> = ({ children,
 	const [internalStatus, setInternalStatus] = useState<LongTermMemoryStatus>(externalStatus)
 	const [contentsSnapshot, setContentsSnapshot] = useState<LongTermMemoryContentsSnapshot | null>(null)
 	const [contentsLoading, setContentsLoading] = useState(false)
+	const [manualNote, setManualNote] = useState("")
+	const [manualSubmitting, setManualSubmitting] = useState(false)
+	const [manualFeedback, setManualFeedback] = useState<
+		{ kind: "success"; keys: string[] } | { kind: "error"; message: string } | null
+	>(null)
 
 	const featureOn = longTermMemoryConfig?.longTermMemoryEnabled !== false
 	const pauseIngest = longTermMemoryConfig?.longTermMemoryPauseIngest === true
-	const smartInject = longTermMemoryConfig?.longTermMemorySmartInject !== false
+	const autoInjectMode = resolveLongTermMemoryAutoInject(longTermMemoryConfig ?? {})
 
-	const updateLongTermMemoryConfig = (partial: Record<string, boolean | number | undefined>) => {
+	const updateLongTermMemoryConfig = (partial: Record<string, boolean | number | string | undefined>) => {
 		vscode.postMessage({
 			type: "updateSettings",
 			updatedSettings: {
@@ -62,11 +72,23 @@ const LongTermMemoryPopover: React.FC<LongTermMemoryPopoverProps> = ({ children,
 			} else if (event.data?.type === "longTermMemoryContents") {
 				setContentsSnapshot(event.data.values as LongTermMemoryContentsSnapshot)
 				setContentsLoading(false)
+			} else if (event.data?.type === "longTermMemoryAddFromTextResult") {
+				setManualSubmitting(false)
+				const payload = event.data.values as LongTermMemoryAddFromTextResultPayload
+				if (payload.ok && payload.keys && payload.keys.length > 0) {
+					setManualFeedback({ kind: "success", keys: payload.keys })
+					setManualNote("")
+				} else {
+					setManualFeedback({
+						kind: "error",
+						message: payload.error ?? t("settings:longTermMemory.manualAddUnknownError"),
+					})
+				}
 			}
 		}
 		window.addEventListener("message", handleMessage)
 		return () => window.removeEventListener("message", handleMessage)
-	}, [])
+	}, [t])
 
 	useEffect(() => {
 		if (open) {
@@ -110,6 +132,20 @@ const LongTermMemoryPopover: React.FC<LongTermMemoryPopoverProps> = ({ children,
 	const longTermMemoryBusy =
 		internalStatus.systemStatus === "Ingesting" || internalStatus.systemStatus === "Optimizing"
 
+	const submitManualMemory = useCallback(() => {
+		if (!featureOn || manualSubmitting || longTermMemoryBusy) {
+			return
+		}
+		const trimmed = manualNote.trim()
+		if (trimmed.length < 5) {
+			setManualFeedback({ kind: "error", message: t("settings:longTermMemory.manualAddTooShort") })
+			return
+		}
+		setManualFeedback(null)
+		setManualSubmitting(true)
+		vscode.postMessage({ type: "longTermMemoryAddFromText", text: manualNote })
+	}, [featureOn, longTermMemoryBusy, manualNote, manualSubmitting, t])
+
 	return (
 		<Popover open={open} onOpenChange={setOpen}>
 			{children}
@@ -144,18 +180,49 @@ const LongTermMemoryPopover: React.FC<LongTermMemoryPopoverProps> = ({ children,
 						</VSCodeCheckbox>
 					</div>
 
-					<div className="flex items-center gap-2">
-						<VSCodeCheckbox
-							checked={smartInject}
-							disabled={!featureOn}
-							onChange={(e: any) =>
-								updateLongTermMemoryConfig({ longTermMemorySmartInject: e.target.checked })
-							}>
-							<span className="text-sm">{t("settings:longTermMemory.smartInjectLabel")}</span>
-						</VSCodeCheckbox>
-						<StandardTooltip content={t("settings:longTermMemory.smartInjectDescription")}>
-							<span className="codicon codicon-info text-xs text-vscode-descriptionForeground cursor-help" />
-						</StandardTooltip>
+					<div className="flex flex-col gap-2">
+						<div className="flex items-center gap-2">
+							<span className="text-sm font-medium">{t("settings:longTermMemory.autoInjectLabel")}</span>
+							<StandardTooltip content={t("settings:longTermMemory.autoInjectSectionHint")}>
+								<span className="codicon codicon-info text-xs text-vscode-descriptionForeground cursor-help" />
+							</StandardTooltip>
+						</div>
+						<VSCodeRadioGroup
+							className="flex flex-col gap-2 pl-0.5"
+							value={autoInjectMode}
+							onChange={(e: Event | React.FormEvent<HTMLElement>) => {
+								const target = ((e as CustomEvent)?.detail?.target ||
+									(e.target as HTMLInputElement)) as HTMLInputElement
+								const v = target?.value as "none" | "smart" | "all"
+								if (v === "none" || v === "smart" || v === "all") {
+									updateLongTermMemoryConfig({ longTermMemoryAutoInject: v })
+								}
+							}}>
+							<VSCodeRadio value="none" disabled={!featureOn} className="flex items-start gap-2">
+								<div className="flex flex-1 items-center gap-1 min-w-0">
+									<span className="text-sm">{t("settings:longTermMemory.autoInjectNone")}</span>
+									<StandardTooltip content={t("settings:longTermMemory.autoInjectNoneHint")}>
+										<span className="codicon codicon-info text-xs text-vscode-descriptionForeground cursor-help shrink-0" />
+									</StandardTooltip>
+								</div>
+							</VSCodeRadio>
+							<VSCodeRadio value="smart" disabled={!featureOn} className="flex items-start gap-2">
+								<div className="flex flex-1 items-center gap-1 min-w-0">
+									<span className="text-sm">{t("settings:longTermMemory.autoInjectSmart")}</span>
+									<StandardTooltip content={t("settings:longTermMemory.autoInjectSmartHint")}>
+										<span className="codicon codicon-info text-xs text-vscode-descriptionForeground cursor-help shrink-0" />
+									</StandardTooltip>
+								</div>
+							</VSCodeRadio>
+							<VSCodeRadio value="all" disabled={!featureOn} className="flex items-start gap-2">
+								<div className="flex flex-1 items-center gap-1 min-w-0">
+									<span className="text-sm">{t("settings:longTermMemory.autoInjectAll")}</span>
+									<StandardTooltip content={t("settings:longTermMemory.autoInjectAllHint")}>
+										<span className="codicon codicon-info text-xs text-vscode-descriptionForeground cursor-help shrink-0" />
+									</StandardTooltip>
+								</div>
+							</VSCodeRadio>
+						</VSCodeRadioGroup>
 					</div>
 
 					<div>
@@ -179,6 +246,49 @@ const LongTermMemoryPopover: React.FC<LongTermMemoryPopoverProps> = ({ children,
 						<p className="m-0 mt-2 text-xs text-vscode-descriptionForeground">
 							{t("settings:longTermMemory.structuredCount", { count: internalStatus.structuredKeyCount })}
 						</p>
+					</div>
+
+					<div className="border border-vscode-widget-border rounded p-2 space-y-2">
+						<div className="flex items-center gap-2">
+							<h4 className="text-xs font-medium m-0">{t("settings:longTermMemory.manualAddTitle")}</h4>
+							<StandardTooltip content={t("settings:longTermMemory.manualAddHint")}>
+								<span className="codicon codicon-info text-xs text-vscode-descriptionForeground cursor-help" />
+							</StandardTooltip>
+						</div>
+						<Textarea
+							value={manualNote}
+							onChange={(e) => setManualNote(e.target.value)}
+							placeholder={t("settings:longTermMemory.manualAddPlaceholder")}
+							disabled={!featureOn || manualSubmitting || longTermMemoryBusy}
+							rows={3}
+							maxLength={12000}
+							className="min-h-[72px] text-sm rounded-md"
+						/>
+						<div className="flex flex-wrap items-center gap-2">
+							<Button
+								variant="secondary"
+								size="sm"
+								disabled={!featureOn || manualSubmitting || longTermMemoryBusy}
+								onClick={submitManualMemory}>
+								{t("settings:longTermMemory.manualAddButton")}
+							</Button>
+							{manualSubmitting && (
+								<span className="text-xs text-vscode-descriptionForeground">
+									{t("settings:longTermMemory.manualAddSubmitting")}
+								</span>
+							)}
+						</div>
+						{manualFeedback?.kind === "error" && (
+							<p className="m-0 text-xs text-vscode-errorForeground">{manualFeedback.message}</p>
+						)}
+						{manualFeedback?.kind === "success" && (
+							<p className="m-0 text-xs" style={{ color: "var(--vscode-charts-green)" }}>
+								{t("settings:longTermMemory.manualAddSuccess", {
+									count: manualFeedback.keys.length,
+									keys: manualFeedback.keys.join(", "),
+								})}
+							</p>
+						)}
 					</div>
 
 					<div className="border border-vscode-widget-border rounded p-2 space-y-2">

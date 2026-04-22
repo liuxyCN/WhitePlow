@@ -320,8 +320,14 @@
 		"enableLabel": "Enable long-term memory",
 		"enableDescription": "Master switch for retrieval and background ingest from task conversation history.",
 		"pauseIngestLabel": "Pause background ingest",
-		"smartInjectLabel": "Smart memory injection",
-		"smartInjectDescription": "Before each reply, use a quick model call to pick which stored memories match your message. When off, structured memory is not injected into the prompt automatically.",
+		"autoInjectLabel": "Auto-inject into chat",
+		"autoInjectSectionHint": "Controls whether saved structured memories are prepended to each request context.",
+		"autoInjectNone": "None",
+		"autoInjectNoneHint": "Do not add structured memories to the prompt automatically.",
+		"autoInjectSmart": "Smart",
+		"autoInjectSmartHint": "When your message has text, run a lightweight model call to pick relevant keys; otherwise (or if routing fails) fall back to sorted keys within the character budget.",
+		"autoInjectAll": "All",
+		"autoInjectAllHint": "Inject all memory content.",
 		"statusTitle": "Status",
 		"statuses": {
 			"standby": "Standby",
@@ -344,7 +350,15 @@
 		"browseEmptyStructured": "No entries",
 		"browseDeleteKeyTooltip": "Delete this memory entry",
 		"browseDeleteKeyAria": "Delete this memory entry",
-		"optimizeButton": "Optimize memory"
+		"optimizeButton": "Optimize memory",
+		"manualAddTitle": "Add memory manually",
+		"manualAddHint": "Uses the same model and JSON rules as automatic history extraction: turns your note into key/value entries and merges them into storage.",
+		"manualAddPlaceholder": "e.g. Prefer UK English; Answer questions first with a conclusion and then analyze; Write documents must mark the reference",
+		"manualAddButton": "Extract & save",
+		"manualAddSubmitting": "Calling model…",
+		"manualAddTooShort": "Enter a few more characters before saving.",
+		"manualAddSuccess": "Saved {{count}} key(s): {{keys}}",
+		"manualAddUnknownError": "Save failed."
 	},
 	"autoApprove": {
 		"description": "Run these actions without asking for permission. Only enable for actions you fully trust and if you understand the security risks.",
