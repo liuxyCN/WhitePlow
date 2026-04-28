@@ -1,6 +1,7 @@
 import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
 
+import "./roo-serve-bridge"
 import "./index.css"
 import App from "./App"
 import "../node_modules/@vscode/codicons/dist/codicon.css"

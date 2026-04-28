@@ -2,6 +2,15 @@ import type { WebviewApi } from "vscode-webview"
 
 import { WebviewMessage } from "@roo/WebviewMessage"
 
+function getRooServeAgentId(): string | undefined {
+	if (typeof window === "undefined") {
+		return undefined
+	}
+
+	const w = window as unknown as { __ROO_SERVE_AGENT_ID__?: string }
+	return w.__ROO_SERVE_AGENT_ID__ ?? new URLSearchParams(window.location.search).get("agentId") ?? undefined
+}
+
 /**
  * A utility wrapper around the acquireVsCodeApi() function, which enables
  * message passing and state management between the webview and extension
@@ -33,9 +42,26 @@ class VSCodeAPIWrapper {
 	public postMessage(message: WebviewMessage) {
 		if (this.vsCodeApi) {
 			this.vsCodeApi.postMessage(message)
-		} else {
-			console.log(message)
+			return
 		}
+
+		if (import.meta.env.VITE_ROO_SERVE === "1") {
+			const agentId = getRooServeAgentId()
+
+			if (agentId) {
+				void fetch(`/v1/agents/${agentId}/extension`, {
+					method: "POST",
+					headers: { "Content-Type": "application/json" },
+					body: JSON.stringify(message),
+				}).catch((err: unknown) => {
+					console.error("[Roo serve UI] extension POST failed:", err)
+				})
+
+				return
+			}
+		}
+
+		console.log(message)
 	}
 
 	/**

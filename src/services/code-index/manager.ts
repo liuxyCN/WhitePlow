@@ -16,6 +16,8 @@ import { t } from "../../i18n"
 import { TelemetryService } from "@roo-code/telemetry"
 import { TelemetryEventName } from "@roo-code/types"
 
+import { DEFAULT_MAX_SEARCH_RESULTS } from "./constants"
+
 export class CodeIndexManager {
 	// --- Singleton Implementation ---
 	private static instances = new Map<string, CodeIndexManager>() // Map workspace path to instance
@@ -144,6 +146,11 @@ export class CodeIndexManager {
 
 	public get isFeatureConfigured(): boolean {
 		return this._configManager?.isFeatureConfigured ?? false
+	}
+
+	/** Max search hits (same cap as a single-root index search). */
+	public get currentSearchMaxResults(): number {
+		return this._configManager?.currentSearchMaxResults ?? DEFAULT_MAX_SEARCH_RESULTS
 	}
 
 	public get isInitialized(): boolean {
@@ -370,20 +377,24 @@ export class CodeIndexManager {
 			return
 		}
 
-		// Create .gitignore instance
+		// Create .gitignore instance (optional file — many repos have none)
 		const ignorePath = path.join(workspacePath, ".gitignore")
 		try {
 			const content = await fs.readFile(ignorePath, "utf8")
 			ignoreInstance.add(content)
 			ignoreInstance.add(".gitignore")
-		} catch (error) {
-			// Should never happen: reading file failed even though it exists
-			console.error("Unexpected error loading .gitignore:", error)
-			TelemetryService.instance.captureEvent(TelemetryEventName.CODE_INDEX_ERROR, {
-				error: error instanceof Error ? error.message : String(error),
-				stack: error instanceof Error ? error.stack : undefined,
-				location: "_recreateServices",
-			})
+		} catch (error: unknown) {
+			const errno = error as NodeJS.ErrnoException
+			if (errno?.code === "ENOENT") {
+				// No .gitignore: indexing uses empty ignore rules for git patterns
+			} else {
+				console.error("Unexpected error loading .gitignore:", error)
+				TelemetryService.instance.captureEvent(TelemetryEventName.CODE_INDEX_ERROR, {
+					error: error instanceof Error ? error.message : String(error),
+					stack: error instanceof Error ? error.stack : undefined,
+					location: "_recreateServices",
+				})
+			}
 		}
 
 		// Create RooIgnoreController instance

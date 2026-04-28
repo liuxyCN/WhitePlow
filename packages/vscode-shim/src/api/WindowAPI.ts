@@ -133,6 +133,14 @@ export class WindowAPI {
 		return Promise.resolve(undefined)
 	}
 
+	/**
+	 * Desktop VS Code shows a transient status bar message. CLI/serve has no status bar — return a no-op {@link Disposable}.
+	 */
+	setStatusBarMessage(message: string, _hideAfterTimeoutOrThenable?: number | Thenable<unknown>): Disposable {
+		logs.debug(`setStatusBarMessage: ${message}`, "VSCode.Window")
+		return { dispose: () => {} }
+	}
+
 	showQuickPick(items: string[], _options?: QuickPickOptions): Thenable<string | undefined> {
 		// Return first item for CLI
 		return Promise.resolve(items[0])

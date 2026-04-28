@@ -3,7 +3,9 @@ import path from "path"
 import { type ClineSayTool } from "@roo-code/types"
 
 import { Task } from "../task/Task"
+import { formatResponse } from "../prompts/responses"
 import { getReadablePath } from "../../utils/path"
+import { serveBridgeOutsideWorkspaceReadRejectMessage } from "../../utils/serveBridgeWorkspaceGuard"
 import { isPathOutsideWorkspace } from "../../utils/pathUtils"
 import { regexSearchFiles } from "../../services/ripgrep"
 import type { ToolUse } from "../../shared/tools"
@@ -45,6 +47,15 @@ export class SearchFilesTool extends BaseTool<"search_files"> {
 		task.consecutiveMistakeCount = 0
 
 		const absolutePath = path.resolve(task.cwd, relDirPath)
+		const serveOutsideMsg = serveBridgeOutsideWorkspaceReadRejectMessage(task.cwd, relDirPath)
+		if (serveOutsideMsg) {
+			task.consecutiveMistakeCount++
+			task.recordToolError("search_files", serveOutsideMsg)
+			task.didToolFailInCurrentTurn = true
+			pushToolResult(formatResponse.toolError(serveOutsideMsg))
+			return
+		}
+
 		const isOutsideWorkspace = isPathOutsideWorkspace(absolutePath)
 
 		const sharedMessageProps: ClineSayTool = {

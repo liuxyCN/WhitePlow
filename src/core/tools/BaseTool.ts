@@ -1,7 +1,12 @@
 import type { ToolName } from "@roo-code/types"
 
+import { formatResponse } from "../prompts/responses"
 import { Task } from "../task/Task"
 import type { ToolUse, HandleError, PushToolResult, AskApproval, NativeToolArgs } from "../../shared/tools"
+import {
+	serveBridgeBlockedEditCommandChatLine,
+	serveBridgeEditCommandToolRejectMessage,
+} from "../../utils/serveBridgeWorkspaceGuard"
 
 /**
  * Callbacks passed to tool execution
@@ -89,6 +94,35 @@ export abstract class BaseTool<TName extends ToolName> {
 	}
 
 	/**
+	 * `roo serve` (`ROO_SERVE_BRIDGE`): block tools in the edit/command `TOOL_GROUPS` before `execute()`.
+	 * @returns true when the tool was blocked and a `tool_result` was pushed
+	 */
+	protected async rejectIfServeBridgeBlockedEditOrCommandTool(
+		task: Task,
+		callbacks: ToolCallbacks,
+		summaryForChat: string,
+	): Promise<boolean> {
+		const reason = serveBridgeEditCommandToolRejectMessage(this.name)
+		if (!reason) {
+			return false
+		}
+
+		task.consecutiveMistakeCount++
+		task.recordToolError(this.name, reason)
+		await task.say(
+			"text",
+			serveBridgeBlockedEditCommandChatLine(String(this.name), summaryForChat),
+			undefined,
+			false,
+			undefined,
+			undefined,
+			{ isNonInteractive: true },
+		)
+		callbacks.pushToolResult(formatResponse.toolError(reason))
+		return true
+	}
+
+	/**
 	 * Reset the partial state tracking.
 	 *
 	 * Should be called at the end of execute() (both success and error paths)
@@ -153,6 +187,10 @@ export abstract class BaseTool<TName extends ToolName> {
 			await callbacks.handleError(`parsing ${this.name} args`, new Error(errorMessage))
 			// Note: handleError already emits a tool_result via formatResponse.toolError in the caller.
 			// Do NOT call pushToolResult here to avoid duplicate tool_result payloads.
+			return
+		}
+
+		if (await this.rejectIfServeBridgeBlockedEditOrCommandTool(task, callbacks, `[${this.name}]`)) {
 			return
 		}
 

@@ -19,6 +19,7 @@ import { Task } from "../task/Task"
 import { formatResponse } from "../prompts/responses"
 import { RecordSource } from "../context-tracking/FileContextTrackerTypes"
 import { isPathOutsideWorkspace } from "../../utils/pathUtils"
+import { serveBridgeOutsideWorkspaceReadRejectMessage } from "../../utils/serveBridgeWorkspaceGuard"
 import { getReadablePath } from "../../utils/path"
 import { extractTextFromFile, addLineNumbers, getSupportedBinaryFormats } from "../../integrations/misc/extract-text"
 import { readWithIndentation, readWithSlice } from "../../integrations/misc/indentation-reader"
@@ -109,6 +110,14 @@ export class ReadFileTool extends BaseTool<"read_file"> {
 		if (params.indentation?.anchor_line !== undefined && params.indentation.anchor_line < 1) {
 			const errorMsg = `anchor_line must be a 1-indexed line number (got ${params.indentation.anchor_line}). Line numbers start at 1.`
 			pushToolResult(`Error: ${errorMsg}`)
+			return
+		}
+
+		const serveOutsideMsg = serveBridgeOutsideWorkspaceReadRejectMessage(task.cwd, filePath)
+		if (serveOutsideMsg) {
+			task.consecutiveMistakeCount++
+			task.recordToolError("read_file", serveOutsideMsg)
+			pushToolResult(formatResponse.toolError(serveOutsideMsg))
 			return
 		}
 
@@ -687,6 +696,12 @@ export class ReadFileTool extends BaseTool<"read_file"> {
 		for (const entry of fileEntries) {
 			const relPath = entry.path
 			const fullPath = path.resolve(task.cwd, relPath)
+
+			const serveOutsideMsg = serveBridgeOutsideWorkspaceReadRejectMessage(task.cwd, relPath)
+			if (serveOutsideMsg) {
+				results.push(`File: ${relPath}\nError: ${serveOutsideMsg}`)
+				continue
+			}
 
 			// RooIgnore validation
 			const accessAllowed = task.rooIgnoreController?.validateAccess(relPath)

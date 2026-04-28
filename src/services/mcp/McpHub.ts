@@ -41,6 +41,7 @@ import { arePathsEqual, getWorkspacePath } from "../../utils/path"
 import { injectVariables } from "../../utils/config"
 import { safeWriteJson } from "../../utils/safeWriteJson"
 import { sanitizeMcpName, toolNamesMatch } from "../../utils/mcp-name"
+import { isRooServeBridge } from "../../utils/serveBridgeWorkspaceGuard"
 
 // Discriminated union for connection states
 export type ConnectedMcpConnection = {
@@ -174,9 +175,12 @@ export class McpHub {
 
 	constructor(provider: ClineProvider) {
 		this.providerRef = new WeakRef(provider)
-		this.watchMcpSettingsFile()
-		this.watchProjectMcpFile().catch(console.error)
-		this.setupWorkspaceFoldersWatcher()
+		// `roo serve` agents: no global / `.roo/mcp.json` file watchers or file-based MCP init.
+		if (!isRooServeBridge()) {
+			this.watchMcpSettingsFile()
+			this.watchProjectMcpFile().catch(console.error)
+			this.setupWorkspaceFoldersWatcher()
+		}
 		// Load persisted memory MCP state first, then connect (fetchToolsList needs saved alwaysAllow/disabled)
 		this.initializationPromise = (async () => {
 			try {
@@ -184,10 +188,11 @@ export class McpHub {
 			} catch (error) {
 				console.error("Failed to load memory MCP server persisted state:", error)
 			}
+			const serveBridge = isRooServeBridge()
 			await Promise.all([
-				this.initializeGlobalMcpServers(),
-				this.initializeProjectMcpServers(),
-				this.initializeInMemoryFileCoolServer(),
+				serveBridge ? Promise.resolve() : this.initializeGlobalMcpServers(),
+				serveBridge ? Promise.resolve() : this.initializeProjectMcpServers(),
+				serveBridge ? Promise.resolve() : this.initializeGatewayBackedMemoryServers(),
 			])
 		})()
 	}
@@ -669,22 +674,33 @@ export class McpHub {
 		this.disposables.push(vscode.Disposable.from(changeDisposable, createDisposable, this.settingsWatcher))
 	}
 
-	private async initializeMcpServers(source: "global" | "project"): Promise<void> {
+	private async initializeMcpServers(source: "global" | "project", refreshTrace = false): Promise<void> {
+		const tlog = (msg: string) => {
+			if (refreshTrace) {
+				this.mcpRefreshTrace(`initializeMcpServers(${source}): ${msg}`)
+			}
+		}
 		try {
+			tlog("start")
 			const configPath =
 				source === "global" ? await this.getMcpSettingsFilePath() : await this.getProjectMcpPath()
 
 			if (!configPath) {
+				tlog("no config path, skip")
 				return
 			}
 
+			tlog(`configPath=${configPath}`)
 			const content = await fs.readFile(configPath, "utf-8")
 			const config = JSON.parse(content)
 			const result = McpSettingsSchema.safeParse(config)
 
 			if (result.success) {
 				// Pass all servers including disabled ones - they'll be handled in updateServerConnections
+				const n = Object.keys(result.data.mcpServers || {}).length
+				tlog(`updateServerConnections (validated) begin, ${n} server(s)`)
 				await this.updateServerConnections(result.data.mcpServers || {}, source, false)
+				tlog("updateServerConnections (validated) done")
 			} else {
 				const errorMessages = result.error.errors
 					.map((err) => `${err.path.join(".")}: ${err.message}`)
@@ -695,13 +711,17 @@ export class McpHub {
 				if (source === "global") {
 					// Still try to connect with the raw config, but show warnings
 					try {
+						tlog("updateServerConnections (raw global) begin")
 						await this.updateServerConnections(config.mcpServers || {}, source, false)
+						tlog("updateServerConnections (raw global) done")
 					} catch (error) {
 						this.showErrorMessage(`Failed to initialize ${source} MCP servers with raw config`, error)
 					}
 				}
 			}
+			tlog("finished ok")
 		} catch (error) {
+			tlog(`error: ${error instanceof Error ? error.message : String(error)}`)
 			if (error instanceof SyntaxError) {
 				const errorMessage = t("mcp:errors.invalid_settings_syntax")
 				console.error(errorMessage, error)
@@ -735,20 +755,17 @@ export class McpHub {
 		await this.initializeMcpServers("project")
 	}
 
-	// Initialize in-memory file-cool server
-	private async initializeInMemoryFileCoolServer(): Promise<void> {
+	/**
+	 * Local in-process `file-cool` MCP (wraps gateway file-cool HTTP); expects gateway URL + key.
+	 */
+	private async initializeInMemoryFileCoolServerCore(config: {
+		apiUrl: string
+		apiKey: string
+	}): Promise<void> {
 		try {
-			const config = await this.getGatewayConfig()
-			if (!config) return
-
-			// Initialize streamable-http gateway servers
-			await this.initializeStreamableHttpGatewayServers(config.apiUrl, config.apiKey)
-
-			// Create and connect in-memory server
 			const inMemoryServer = new InMemoryFileCoolServer(config)
 			const client = await inMemoryServer.connect()
 
-			// Create connection
 			const connection: ConnectedMcpConnection = {
 				type: "connected",
 				server: {
@@ -768,9 +785,8 @@ export class McpHub {
 			}
 
 			this.connections.push(connection)
-			await delay(100) // Ensure everything is ready
+			await delay(100)
 
-			// Fetch capabilities
 			await this.fetchServerCapabilities(connection, "file-cool", "memory")
 			await this.notifyWebviewOfServerChanges()
 
@@ -781,6 +797,39 @@ export class McpHub {
 			)
 		} catch (error) {
 			console.error("Failed to initialize in-memory file-cool server:", error)
+		}
+	}
+
+	/**
+	 * Full gateway-backed memory MCP: connect gateway server-list streamable servers, then local file-cool.
+	 * Serve bridge uses `server-list-web`; otherwise `server-list`.
+	 */
+	private async initializeGatewayBackedMemoryServers(refreshTrace = false): Promise<void> {
+		const tlog = (msg: string) => {
+			if (refreshTrace) {
+				this.mcpRefreshTrace(`gatewayMemory: ${msg}`)
+			}
+		}
+		try {
+			tlog("getGatewayConfig begin")
+			const config = await this.getGatewayConfig()
+			if (!config) {
+				tlog("no gateway config, skip")
+				return
+			}
+			tlog("initializeStreamableHttpGatewayServers begin")
+			await this.initializeStreamableHttpGatewayServers(config.apiUrl, config.apiKey)
+			tlog("initializeStreamableHttpGatewayServers done")
+			if (!isRooServeBridge()) {
+				tlog("initializeInMemoryFileCoolServerCore begin")
+				await this.initializeInMemoryFileCoolServerCore(config)
+				tlog("initializeInMemoryFileCoolServerCore done")
+			} else {
+				tlog("skip file-cool in-process (serve bridge)")
+			}
+		} catch (error) {
+			tlog(`error: ${error instanceof Error ? error.message : String(error)}`)
+			console.error("Failed to initialize gateway-backed memory MCP servers:", error)
 		}
 	}
 
@@ -856,7 +905,8 @@ export class McpHub {
 
 	// Fetch server list from gateway
 	private async fetchGatewayServerList(gatewayUrl: string, apiKey: string): Promise<any[]> {
-		const url = `${gatewayUrl}${gatewayUrl.endsWith("/") ? "" : "/"}server-list`
+		const listPath = isRooServeBridge() ? "server-list-web" : "server-list"
+		const url = `${gatewayUrl}${gatewayUrl.endsWith("/") ? "" : "/"}${listPath}`
 		const response = await axios.get(url, {
 			headers: { API_KEY: apiKey },
 			timeout: 10000,
@@ -885,7 +935,8 @@ export class McpHub {
 				url: `${gatewayUrl}${gatewayUrl.endsWith("/") ? "" : "/"}${serverPath}`,
 				headers: { API_KEY: apiKey },
 				disabled:
-					this.memoryServerDisabledStates.get(serverName) ?? (serverName === "file-cool" ? false : true),
+					this.memoryServerDisabledStates.get(serverName) ??
+					(isRooServeBridge() ? false : serverName === "file-cool" ? false : true),
 				timeout: 600,
 				alwaysAllow: [],
 				disabledTools: [],
@@ -1622,10 +1673,7 @@ export class McpHub {
 		return t instanceof SSEClientTransport || t instanceof StreamableHTTPClientTransport
 	}
 
-	private async performSilentReconnect(
-		serverName: string,
-		source: "global" | "project" | "memory",
-	): Promise<void> {
+	private async performSilentReconnect(serverName: string, source: "global" | "project" | "memory"): Promise<void> {
 		const mcpEnabled = await this.isMcpEnabled()
 		if (!mcpEnabled) {
 			throw new Error("MCP is disabled")
@@ -1655,9 +1703,7 @@ export class McpHub {
 	private enqueueSilentReconnect(serverName: string, source: "global" | "project" | "memory"): Promise<void> {
 		const key = `${serverName}\0${source}`
 		const tail = this.silentReconnectChains.get(key) ?? Promise.resolve()
-		const next = tail
-			.catch(() => {})
-			.then(() => this.performSilentReconnect(serverName, source))
+		const next = tail.catch(() => {}).then(() => this.performSilentReconnect(serverName, source))
 		this.silentReconnectChains.set(
 			key,
 			next.catch(() => {}),
@@ -1933,12 +1979,12 @@ export class McpHub {
 			}
 
 			// Re-initialize in-memory servers with new configuration
-			await this.initializeInMemoryFileCoolServer()
+			await this.initializeGatewayBackedMemoryServers(true)
 
 			// Restore tool states after re-initialization
 			this.restoreMemoryServerToolStates()
 
-			await this.notifyWebviewOfServerChanges()
+			await this.notifyWebviewOfServerChanges(true)
 		} catch (error) {
 			console.error("Error refreshing in-memory servers:", error)
 		}
@@ -1988,27 +2034,48 @@ export class McpHub {
 		}
 	}
 
+	/** Trace path for “Refresh all MCP” / hangs; uses Roo output channel when provider is alive. */
+	private mcpRefreshTrace(message: string): void {
+		const line = `[MCP refresh] ${message}`
+		const p = this.providerRef.deref()
+		if (p) {
+			p.log(line)
+		} else {
+			console.log(line)
+		}
+	}
+
 	public async refreshAllConnections(): Promise<void> {
 		if (this.isConnecting) {
+			this.mcpRefreshTrace("refreshAllConnections skipped: already refreshing (isConnecting)")
 			// 使用状态栏消息，3秒后自动消失
 			vscode.window.setStatusBarMessage(t("mcp:info.already_refreshing"), 3000)
 			return
 		}
 
+		this.mcpRefreshTrace("refreshAllConnections: start")
 		// Check if MCP is globally enabled
 		const mcpEnabled = await this.isMcpEnabled()
+		this.mcpRefreshTrace(`refreshAllConnections: isMcpEnabled=${mcpEnabled}`)
 		if (!mcpEnabled) {
 			// Clear all existing connections
 			const existingConnections = [...this.connections]
+			this.mcpRefreshTrace(
+				`refreshAllConnections (MCP disabled): deleting ${existingConnections.length} connection(s)`,
+			)
 			for (const conn of existingConnections) {
 				await this.deleteConnection(conn.server.name, conn.server.source)
 			}
 
 			// Still initialize servers to track them, but they won't connect
-			await this.initializeMcpServers("global")
-			await this.initializeMcpServers("project")
+			this.mcpRefreshTrace("refreshAllConnections (MCP disabled): initializeMcpServers(global)")
+			await this.initializeMcpServers("global", true)
+			this.mcpRefreshTrace("refreshAllConnections (MCP disabled): initializeMcpServers(project)")
+			await this.initializeMcpServers("project", true)
 
-			await this.notifyWebviewOfServerChanges()
+			this.mcpRefreshTrace("refreshAllConnections (MCP disabled): notifyWebviewOfServerChanges")
+			await this.notifyWebviewOfServerChanges(true)
+			this.mcpRefreshTrace("refreshAllConnections (MCP disabled): done")
 			return
 		}
 
@@ -2018,7 +2085,9 @@ export class McpHub {
 
 		try {
 			// Save current memory server tool states before refresh (await so persist finishes before teardown)
+			this.mcpRefreshTrace("refreshAllConnections: saveMemoryServerToolStates")
 			await this.saveMemoryServerToolStates()
+			this.mcpRefreshTrace("refreshAllConnections: saveMemoryServerToolStates done")
 
 			const globalPath = await this.getMcpSettingsFilePath()
 			let globalServers: Record<string, any> = {}
@@ -2060,35 +2129,60 @@ export class McpHub {
 
 			// Clear all existing connections first
 			const existingConnections = [...this.connections]
+			this.mcpRefreshTrace(
+				`refreshAllConnections: deleting ${existingConnections.length} connection(s) before re-init`,
+			)
 			for (const conn of existingConnections) {
+				this.mcpRefreshTrace(
+					`refreshAllConnections: deleteConnection name=${conn.server.name} source=${String(conn.server.source)}`,
+				)
 				await this.deleteConnection(conn.server.name, conn.server.source)
 			}
+			this.mcpRefreshTrace("refreshAllConnections: all deleteConnection calls finished")
 
 			// Re-initialize all servers from scratch
 			// This ensures proper initialization including fetching tools, resources, etc.
-			await this.initializeMcpServers("global")
-			await this.initializeMcpServers("project")
+			this.mcpRefreshTrace("refreshAllConnections: initializeMcpServers(global)")
+			await this.initializeMcpServers("global", true)
+			this.mcpRefreshTrace("refreshAllConnections: initializeMcpServers(global) done")
+			this.mcpRefreshTrace("refreshAllConnections: initializeMcpServers(project)")
+			await this.initializeMcpServers("project", true)
+			this.mcpRefreshTrace("refreshAllConnections: initializeMcpServers(project) done")
 
 			// Re-initialize in-memory servers
-			await this.initializeInMemoryFileCoolServer()
+			this.mcpRefreshTrace(
+				`refreshAllConnections: initializeGatewayBackedMemoryServers (serveBridge=${isRooServeBridge()})`,
+			)
+			await this.initializeGatewayBackedMemoryServers(true)
+			this.mcpRefreshTrace("refreshAllConnections: initializeGatewayBackedMemoryServers done")
 
 			// Restore memory server tool states after re-initialization
+			this.mcpRefreshTrace("refreshAllConnections: restoreMemoryServerToolStates")
 			this.restoreMemoryServerToolStates()
 
 			await delay(100)
 
-			await this.notifyWebviewOfServerChanges()
+			this.mcpRefreshTrace(
+				`refreshAllConnections: notifyWebviewOfServerChanges (connections=${this.connections.length})`,
+			)
+			await this.notifyWebviewOfServerChanges(true)
+			this.mcpRefreshTrace("refreshAllConnections: notifyWebviewOfServerChanges done")
 
 			// 清除刷新中的状态消息
 			refreshingStatus.dispose()
 			// 显示最终成功消息，5秒后自动消失
 			vscode.window.setStatusBarMessage(t("mcp:info.all_refreshed"), 5000)
+			this.mcpRefreshTrace("refreshAllConnections: success, isConnecting will clear in finally")
 		} catch (error) {
 			// 清除刷新中的状态消息
 			refreshingStatus.dispose()
+			this.mcpRefreshTrace(
+				`refreshAllConnections: error ${error instanceof Error ? error.message : String(error)}`,
+			)
 			this.showErrorMessage("Failed to refresh MCP servers", error)
 		} finally {
 			this.isConnecting = false
+			this.mcpRefreshTrace("refreshAllConnections: finally (isConnecting=false)")
 		}
 	}
 
@@ -2148,12 +2242,20 @@ export class McpHub {
 		return indexA !== indexB ? indexA - indexB : nameA.localeCompare(nameB)
 	}
 
-	private async notifyWebviewOfServerChanges(): Promise<void> {
+	private async notifyWebviewOfServerChanges(refreshTrace = false): Promise<void> {
+		const tlog = (msg: string) => {
+			if (refreshTrace) {
+				this.mcpRefreshTrace(`notifyWebview: ${msg}`)
+			}
+		}
+		tlog("start")
 		// Get global server order from settings file
 		const settingsPath = await this.getMcpSettingsFilePath()
+		tlog(`settingsPath=${settingsPath}`)
 		const content = await fs.readFile(settingsPath, "utf-8")
 		const config = JSON.parse(content)
 		const globalServerOrder = Object.keys(config.mcpServers || {})
+		tlog(`global order: ${globalServerOrder.length} name(s)`)
 
 		// Get project server order if available
 		const projectMcpPath = await this.getProjectMcpPath()
@@ -2163,13 +2265,18 @@ export class McpHub {
 				const projectContent = await fs.readFile(projectMcpPath, "utf-8")
 				const projectConfig = JSON.parse(projectContent)
 				projectServerOrder = Object.keys(projectConfig.mcpServers || {})
+				tlog(`project order: ${projectServerOrder.length} name(s)`)
 			} catch (error) {
 				// Silently continue with empty project server order
+				tlog(`project mcp read failed: ${error instanceof Error ? error.message : String(error)}`)
 			}
+		} else {
+			tlog("no project mcp.json path")
 		}
 
 		// Sort connections by priority and order
 		const sortedConnections = this.sortConnectionsByPriority(globalServerOrder, projectServerOrder)
+		tlog(`sorted connections: ${sortedConnections.length}`)
 
 		// Send sorted servers to webview
 		const targetProvider: ClineProvider | undefined = this.providerRef.deref()
@@ -2183,15 +2290,26 @@ export class McpHub {
 			}
 
 			try {
+				tlog(`postMessageToWebview(mcpServers) begin, ${serversToSend.length} server(s)`)
 				await targetProvider.postMessageToWebview(message)
+				tlog("postMessageToWebview(mcpServers) end")
 			} catch (error) {
 				console.error("[McpHub] Error calling targetProvider.postMessageToWebview:", error)
+				if (refreshTrace) {
+					this.mcpRefreshTrace(
+						`notifyWebview: postMessage threw: ${error instanceof Error ? error.stack ?? error.message : String(error)}`,
+					)
+				}
 			}
 		} else {
 			console.error(
 				"[McpHub] No target provider available (neither from getInstance nor providerRef) - cannot send mcpServers message to webview",
 			)
+			if (refreshTrace) {
+				this.mcpRefreshTrace("notifyWebview: no targetProvider, cannot push mcpServers")
+			}
 		}
+		tlog("done")
 	}
 
 	public async toggleServerDisabled(

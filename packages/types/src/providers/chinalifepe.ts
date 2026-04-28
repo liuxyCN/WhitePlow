@@ -3,10 +3,10 @@ import type { ModelInfo } from "../model.js"
 // ChinalifePE API
 export type ChinalifePEModelId = keyof typeof chinalifePEModels
 
-export const chinalifePEDefaultModelId: ChinalifePEModelId = "kimi-k2.5-thinking"
+export const chinalifePEDefaultModelId: ChinalifePEModelId = "kimi-k2.6"
 
 export const chinalifePEModels = {
-	"kimi-k2.5-thinking": {
+	"kimi-k2.6": {
 		maxTokens: 262_144, // 256K max output
 		contextWindow: 262_144,
 		supportsImages: true,
@@ -17,7 +17,7 @@ export const chinalifePEModels = {
 		requiredReasoningEffort: true,
 		reasoningEffort: "medium",
 		isFree: true,
-		description: `ChinalifePE Kimi K2.5 Thinking model`,
+		description: `ChinalifePE Kimi K2.6 model`,
 		supportsTemperature: true,
 		preserveReasoning: true,
 		defaultTemperature: 1.0

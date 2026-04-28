@@ -34,7 +34,7 @@ function parseThemeString(themeString: string | undefined): any {
 
 export async function getTheme() {
 	let currentTheme = undefined
-	const colorTheme = vscode.workspace.getConfiguration("workbench").get<string>("colorTheme") || "Default Dark Modern"
+	const colorTheme = vscode.workspace.getConfiguration("workbench").get<string>("colorTheme") || "Default Light Modern"
 
 	try {
 		for (let i = vscode.extensions.all.length - 1; i >= 0; i--) {
@@ -55,20 +55,16 @@ export async function getTheme() {
 
 		if (currentTheme === undefined && defaultThemes[colorTheme]) {
 			const filename = `${defaultThemes[colorTheme]}.json`
-			currentTheme = await fs.readFile(
-				path.join(getExtensionUri().fsPath, "integrations", "theme", "default-themes", filename),
-				"utf-8",
-			)
+			const themesDir = await resolveDefaultThemesDir(getExtensionUri())
+			currentTheme = await fs.readFile(path.join(themesDir, filename), "utf-8")
 		}
 
 		// Strip comments from theme
 		let parsed = parseThemeString(currentTheme)
 
 		if (parsed.include) {
-			const includeThemeString = await fs.readFile(
-				path.join(getExtensionUri().fsPath, "integrations", "theme", "default-themes", parsed.include),
-				"utf-8",
-			)
+			const themesDir = await resolveDefaultThemesDir(getExtensionUri())
+			const includeThemeString = await fs.readFile(path.join(themesDir, parsed.include), "utf-8")
 			const includeTheme = parseThemeString(includeThemeString)
 			parsed = mergeJson(parsed, includeTheme)
 		}
@@ -143,5 +139,27 @@ export function mergeJson(
 }
 
 function getExtensionUri(): vscode.Uri {
-	return vscode.extensions.getExtension(`${Package.publisher}.${Package.name}`)!.extensionUri
+	const ext = vscode.extensions.getExtension(`${Package.publisher}.${Package.name}`)
+	if (ext?.extensionUri) {
+		return ext.extensionUri
+	}
+	return vscode.Uri.file(process.cwd())
+}
+
+async function resolveDefaultThemesDir(extensionUri: vscode.Uri): Promise<string> {
+	const candidates = [
+		path.join(extensionUri.fsPath, "integrations", "theme", "default-themes"),
+		path.join(extensionUri.fsPath, "..", "integrations", "theme", "default-themes"),
+	]
+	for (const dir of candidates) {
+		try {
+			const stat = await fs.stat(dir)
+			if (stat.isDirectory()) {
+				return dir
+			}
+		} catch {
+			// try next
+		}
+	}
+	return candidates[0]
 }

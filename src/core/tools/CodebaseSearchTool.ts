@@ -1,12 +1,12 @@
 import * as vscode from "vscode"
-import path from "path"
 
 import { Task } from "../task/Task"
-import { CodeIndexManager } from "../../services/code-index/manager"
 import { getWorkspacePath } from "../../utils/path"
 import { formatResponse } from "../prompts/responses"
-import { VectorStoreSearchResult } from "../../services/code-index/interfaces"
 import type { ToolUse } from "../../shared/tools"
+import {
+	mergeSearchIndexAcrossWorkspaceRoots,
+} from "../../services/code-index/multi-root-code-index-search"
 
 import { BaseTool, ToolCallbacks } from "./BaseTool"
 
@@ -57,22 +57,11 @@ export class CodebaseSearchTool extends BaseTool<"codebase_search"> {
 				throw new Error("Extension context is not available.")
 			}
 
-			const manager = CodeIndexManager.getInstance(context)
-
-			if (!manager) {
-				throw new Error("CodeIndexManager is not available.")
-			}
-
-			if (!manager.isFeatureEnabled) {
-				throw new Error("Code Indexing is disabled in the settings.")
-			}
-			if (!manager.isFeatureConfigured) {
-				throw new Error(
-					"Code Indexing is not configured (missing embedder credentials or vector database settings).",
-				)
-			}
-
-			const searchResults: VectorStoreSearchResult[] = await manager.searchIndex(query, directoryPrefix)
+			const { results: searchResults, multiRoot } = await mergeSearchIndexAcrossWorkspaceRoots(context, {
+				workspacePathFallback: workspacePath,
+				query,
+				directoryPrefix,
+			})
 
 			if (!searchResults || searchResults.length === 0) {
 				pushToolResult(`No relevant code snippets found for the query: "${query}"`)
@@ -97,7 +86,7 @@ export class CodebaseSearchTool extends BaseTool<"codebase_search"> {
 				if (!result.payload) return
 				if (!("filePath" in result.payload)) return
 
-				const relativePath = vscode.workspace.asRelativePath(result.payload.filePath, false)
+				const relativePath = vscode.workspace.asRelativePath(result.payload.filePath, multiRoot)
 
 				jsonResult.results.push({
 					filePath: relativePath,

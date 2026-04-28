@@ -7,8 +7,13 @@ import type { DocumentMarkdownStatus, DocumentMarkdownTypeFilters } from "@roo-c
 import { t } from "../../i18n"
 import { RooIgnoreController } from "../../core/ignore/RooIgnoreController"
 import { processFiles } from "../file-cool/client.js"
+import { MAX_LIST_FILES_LIMIT_CODE_INDEX } from "../code-index/constants"
 import { generateRelativeFilePath } from "../code-index/shared/get-relative-path"
+import { listFiles } from "../glob/list-files"
 import { isPathInIgnoredDirectory } from "../glob/ignore-utils"
+import { isRooServeBridge } from "../../utils/serveBridgeWorkspaceGuard"
+import { ContextProxy } from "../../core/config/ContextProxy"
+import { CodeIndexManager } from "../code-index/manager"
 
 const OFFICE_EXTENSIONS = new Set([".doc", ".docx", ".ppt", ".pptx", ".xls", ".xlsx"])
 const PDF_EXTENSIONS = new Set([".pdf"])
@@ -57,7 +62,7 @@ function isOfficeLockFile(fsPath: string): boolean {
  */
 export const DOCUMENT_MARKDOWN_AUTO_ENABLE_DEFAULT_KEY = "documentMarkdownAutoEnableDefault"
 
-/** Same glob for `FileSystemWatcher` and `findFiles` (must stay in sync). */
+/** Same glob for `FileSystemWatcher` (CLI/shim: watcher is inert; discovery uses {@link listFiles} like code index). */
 const SUPPORTED_DOCS_RELATIVE_PATTERN = "**/*.{doc,docx,ppt,pptx,xls,xlsx,pdf,jpg,jpeg,png}"
 
 const GATEWAY_NOT_CONFIGURED_MESSAGE = "MCP Gateway URL or API Key is not configured."
@@ -607,19 +612,17 @@ export class DocumentMarkdownWatcher implements vscode.Disposable {
 			return
 		}
 
-		const pattern = new vscode.RelativePattern(this.workspacePath, SUPPORTED_DOCS_RELATIVE_PATTERN)
-		const uris = await vscode.workspace.findFiles(pattern, "**/{node_modules,.git,.roo}/**", 5000)
-		for (const uri of uris) {
-			const fsPath = uri.fsPath
+		const [allPaths] = await listFiles(this.workspacePath, true, MAX_LIST_FILES_LIMIT_CODE_INDEX)
+		const filePaths = allPaths.filter((p) => !p.endsWith("/"))
+		const allowedPaths = this.ignoreController.filterPaths(filePaths)
+
+		for (const fsPath of allowedPaths) {
 			const ext = path.extname(fsPath).toLowerCase()
 			if (!this.shouldConvertExtension(ext)) {
 				continue
 			}
 			const relativeFilePath = generateRelativeFilePath(fsPath, this.workspacePath)
 			if (isPathInIgnoredDirectory(relativeFilePath)) {
-				continue
-			}
-			if (!this.ignoreController.validateAccess(fsPath)) {
 				continue
 			}
 			await this.maybeEnqueue(fsPath)
@@ -750,6 +753,57 @@ export class DocumentMarkdownWatcher implements vscode.Disposable {
 		}
 	}
 
+	/**
+	 * Under `roo serve` / CLI shim, `createFileSystemWatcher` does not emit real FS events, so code index
+	 * cannot auto-ingest new sidecar `.md` files. After a successful conversion, explicitly kick indexing.
+	 */
+	private requestServeBridgeCodeIndexAfterMarkdownWrite(sourcePath: string): void {
+		if (!isRooServeBridge()) {
+			return
+		}
+		const mdPath = this.getOutputMarkdownPath(sourcePath)
+		void (async () => {
+			try {
+				await fs.access(mdPath)
+			} catch {
+				return
+			}
+			const manager = CodeIndexManager.getInstance(this.context, this.workspacePath)
+			if (!manager) {
+				return
+			}
+			try {
+				const contextProxy = await ContextProxy.getInstance(this.context)
+				await manager.initialize(contextProxy)
+				if (!manager.isFeatureEnabled || !manager.isFeatureConfigured || !manager.isWorkspaceEnabled) {
+					return
+				}
+				if (!manager.isInitialized) {
+					return
+				}
+				const currentState = manager.state
+				if (currentState === "Standby" || currentState === "Error" || currentState === "Indexed") {
+					void manager.startIndexing()
+					if (
+						(currentState === "Standby" || currentState === "Error") &&
+						!manager.isInitialized
+					) {
+						await manager.initialize(contextProxy)
+						if (manager.state === "Standby" || manager.state === "Error") {
+							void manager.startIndexing()
+						}
+					}
+				}
+			} catch (error) {
+				console.warn(
+					`[DocumentMarkdownWatcher] serve-bridge code index after markdown write failed: ${
+						error instanceof Error ? error.message : String(error)
+					}`,
+				)
+			}
+		})()
+	}
+
 	private async convertOne(filePath: string): Promise<void> {
 		try {
 			if (isOfficeLockFile(filePath)) {
@@ -795,6 +849,7 @@ export class DocumentMarkdownWatcher implements vscode.Disposable {
 			}
 
 			await processFiles(plan.args, plan.functionType, gateway)
+			this.requestServeBridgeCodeIndexAfterMarkdownWrite(filePath)
 		} catch (e) {
 			const msg = e instanceof Error ? e.message : String(e)
 			this.pushError(`${path.basename(filePath)}: ${msg}`)

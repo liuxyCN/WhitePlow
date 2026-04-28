@@ -91,6 +91,8 @@ export class CodeIndexConfigManager {
 		const bedrockProfile = codebaseIndexConfig.codebaseIndexBedrockProfile ?? ""
 		const openRouterApiKey = this.contextProxy?.getSecret("codebaseIndexOpenRouterApiKey") ?? ""
 		const openRouterSpecificProvider = codebaseIndexConfig.codebaseIndexOpenRouterSpecificProvider ?? ""
+		const chinalifepeStoredBaseUrl = (codebaseIndexConfig.codebaseIndexChinalifepeBaseUrl ?? "").trim()
+		const chinalifepeStoredApiKey = this.contextProxy?.getSecret("codebaseIndexChinalifepeApiKey") ?? ""
 
 		// Update instance variables with configuration
 		this.codebaseIndexEnabled = codebaseIndexEnabled ?? true
@@ -153,13 +155,32 @@ export class CodeIndexConfigManager {
 					}
 				: undefined
 
-		// ChinalifePE: same OpenAI-compatible URL + API key as the main ChinalifePE API profile
+		// ChinalifePE embedder: optional UI base URL + secret API key first; else profile when apiProvider is ChinalifePE;
+		// else fixed host + key only from UI secret (aligned with MCP gateway defaults).
 		if (this.embedderProvider === "chinalifepe") {
-			const rawPeBase = this.contextProxy?.getGlobalState("openAiBaseUrl") as string | undefined
-			const trimmed = (rawPeBase?.trim() || "https://ai.chinalifepe.com").replace(/\/$/, "")
-			const baseWithV1 = trimmed.endsWith("/v1") ? trimmed : `${trimmed}/v1`
-			const peKey = this.contextProxy?.getSecret("openAiApiKey") ?? ""
-			this.chinalifepeOptions = { baseUrl: baseWithV1, apiKey: peKey }
+			const mainProvider = this.contextProxy?.getGlobalState("apiProvider") as string | undefined
+			const profileKey = this.contextProxy?.getSecret("openAiApiKey") ?? ""
+			const toV1 = (root: string) => {
+				const trimmed = root.replace(/\/$/, "")
+				return trimmed.endsWith("/v1") ? trimmed : `${trimmed}/v1`
+			}
+
+			if (chinalifepeStoredBaseUrl) {
+				const baseWithV1 = toV1(chinalifepeStoredBaseUrl)
+				const peKey =
+					chinalifepeStoredApiKey.trim() || (mainProvider === "chinalifepe" ? profileKey.trim() : "")
+				this.chinalifepeOptions = { baseUrl: baseWithV1, apiKey: peKey }
+			} else if (mainProvider === "chinalifepe") {
+				const rawPeBase = this.contextProxy?.getGlobalState("openAiBaseUrl") as string | undefined
+				const trimmed = (rawPeBase?.trim() || "https://ai.chinalifepe.com").replace(/\/$/, "")
+				const baseWithV1 = trimmed.endsWith("/v1") ? trimmed : `${trimmed}/v1`
+				const peKey = chinalifepeStoredApiKey.trim() || profileKey
+				this.chinalifepeOptions = { baseUrl: baseWithV1, apiKey: peKey }
+			} else {
+				const trimmed = "https://ai.chinalifepe.com".replace(/\/$/, "")
+				const baseWithV1 = `${trimmed}/v1`
+				this.chinalifepeOptions = { baseUrl: baseWithV1, apiKey: chinalifepeStoredApiKey.trim() }
+			}
 		} else {
 			this.chinalifepeOptions = undefined
 		}

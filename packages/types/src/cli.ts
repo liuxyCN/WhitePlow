@@ -6,7 +6,7 @@ import { rooCodeSettingsSchema } from "./global-settings.js"
  * Roo CLI stdin commands
  */
 
-export const rooCliCommandNames = ["start", "message", "cancel", "ping", "shutdown"] as const
+export const rooCliCommandNames = ["start", "message", "cancel", "ping", "shutdown", "extension"] as const
 
 export const rooCliCommandNameSchema = z.enum(rooCliCommandNames)
 
@@ -60,12 +60,20 @@ export const rooCliShutdownCommandSchema = rooCliCommandBaseSchema.extend({
 
 export type RooCliShutdownCommand = z.infer<typeof rooCliShutdownCommandSchema>
 
+export const rooCliExtensionCommandSchema = rooCliCommandBaseSchema.extend({
+	command: z.literal("extension"),
+	message: z.record(z.unknown()),
+})
+
+export type RooCliExtensionCommand = z.infer<typeof rooCliExtensionCommandSchema>
+
 export const rooCliInputCommandSchema = z.discriminatedUnion("command", [
 	rooCliStartCommandSchema,
 	rooCliMessageCommandSchema,
 	rooCliCancelCommandSchema,
 	rooCliPingCommandSchema,
 	rooCliShutdownCommandSchema,
+	rooCliExtensionCommandSchema,
 ])
 
 export type RooCliInputCommand = z.infer<typeof rooCliInputCommandSchema>

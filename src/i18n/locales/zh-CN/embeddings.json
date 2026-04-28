@@ -52,7 +52,7 @@
 		"openAiConfigMissing": "创建嵌入器缺少 OpenAI 配置",
 		"ollamaConfigMissing": "创建嵌入器缺少 Ollama 配置",
 		"openAiCompatibleConfigMissing": "创建嵌入器缺少 OpenAI 兼容配置",
-		"chinalifepeConfigMissing": "创建嵌入器缺少 ChinalifePE 配置（请在 ChinalifePE 提供商配置中填写 API 地址与 API 密钥）",
+		"chinalifepeConfigMissing": "创建嵌入器缺少 ChinalifePE 配置（请在文档库索引设置中填写 API 基础地址与密钥，或在 API 配置中使用 ChinalifePE）",
 		"geminiConfigMissing": "创建嵌入器缺少 Gemini 配置",
 		"mistralConfigMissing": "创建嵌入器时缺少 Mistral 配置",
 		"openRouterConfigMissing": "创建嵌入器时缺少 OpenRouter 配置",

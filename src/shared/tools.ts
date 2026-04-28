@@ -356,6 +356,32 @@ export const TOOL_ALIASES: Record<string, ToolName> = {
 	search_and_replace: "edit",
 } as const
 
+/**
+ * True when the tool (after {@link TOOL_ALIASES} resolution) is listed under any of the given
+ * {@link TOOL_GROUPS} entries — either `tools` or `customTools` (edit-only opt-in list).
+ */
+export function isToolMemberOfToolGroups(toolName: string, groups: readonly ToolGroup[]): boolean {
+	const canonical =
+		(TOOL_ALIASES as Record<string, ToolName | undefined>)[toolName] ?? (toolName as ToolName | string)
+
+	for (const group of groups) {
+		const config = TOOL_GROUPS[group]
+		if (!config) {
+			continue
+		}
+
+		if ((config.tools as readonly string[]).includes(canonical as string)) {
+			return true
+		}
+
+		if (config.customTools && (config.customTools as readonly string[]).includes(canonical as string)) {
+			return true
+		}
+	}
+
+	return false
+}
+
 export type DiffResult =
 	| { success: true; content: string; failParts?: DiffResult[] }
 	| ({

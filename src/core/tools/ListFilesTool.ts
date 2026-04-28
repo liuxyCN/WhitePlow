@@ -4,6 +4,7 @@ import { type ClineSayTool } from "@roo-code/types"
 
 import { Task } from "../task/Task"
 import { formatResponse } from "../prompts/responses"
+import { serveBridgeOutsideWorkspaceReadRejectMessage } from "../../utils/serveBridgeWorkspaceGuard"
 import { listFiles } from "../../services/glob/list-files"
 import { getReadablePath } from "../../utils/path"
 import { isPathOutsideWorkspace } from "../../utils/pathUtils"
@@ -35,6 +36,15 @@ export class ListFilesTool extends BaseTool<"list_files"> {
 			task.consecutiveMistakeCount = 0
 
 			const absolutePath = path.resolve(task.cwd, relDirPath)
+			const serveOutsideMsg = serveBridgeOutsideWorkspaceReadRejectMessage(task.cwd, relDirPath)
+			if (serveOutsideMsg) {
+				task.consecutiveMistakeCount++
+				task.recordToolError("list_files", serveOutsideMsg)
+				task.didToolFailInCurrentTurn = true
+				pushToolResult(formatResponse.toolError(serveOutsideMsg))
+				return
+			}
+
 			const isOutsideWorkspace = isPathOutsideWorkspace(absolutePath)
 
 			const [files, didHitLimit] = await listFiles(absolutePath, recursive || false, 200)

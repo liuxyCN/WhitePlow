@@ -93,6 +93,94 @@ function getProfileBaseUrlAndApiKey(apiConfiguration: ProviderSettings | undefin
 			return { baseUrl: undefined, apiKey: undefined }
 	}
 }
+
+/**
+ * MCP gateway URL: use persisted `mcpGatewayUrl` when set; otherwise if the active
+ * profile is ChinalifePE, derive `<openAiBaseUrl>/mcp`; otherwise use the fixed default.
+ */
+function resolveMcpGatewayUrl(
+	storedGatewayUrl: string | undefined,
+	apiConfiguration: ProviderSettings | undefined,
+): string {
+	const stored = storedGatewayUrl?.trim() ?? ""
+	if (stored) {
+		return stored
+	}
+	if (apiConfiguration?.apiProvider === "chinalifepe") {
+		const { baseUrl } = getProfileBaseUrlAndApiKey(apiConfiguration)
+		const derived = baseUrl?.trim() ? baseUrl.replace(/\/$/, "") + "/mcp" : ""
+		return derived || DEFAULT_MCP_GATEWAY_URL
+	}
+	return DEFAULT_MCP_GATEWAY_URL
+}
+
+/** Persisted gateway key first; only ChinalifePE fills from the active profile API key. */
+function resolveMcpGatewayApiKey(
+	storedGatewayApiKey: string | undefined,
+	apiConfiguration: ProviderSettings | undefined,
+): string {
+	const stored = storedGatewayApiKey?.trim() ?? ""
+	if (stored) {
+		return stored
+	}
+	if (apiConfiguration?.apiProvider === "chinalifepe") {
+		const { apiKey } = getProfileBaseUrlAndApiKey(apiConfiguration)
+		return apiKey?.trim() ?? ""
+	}
+	return ""
+}
+
+/** Default ChinalifePE API root when deriving codebase embed base (aligns with CodeIndexConfigManager). */
+const CHINALIFEPE_CODE_INDEX_DEFAULT_ROOT = "https://ai.chinalifepe.com"
+
+/**
+ * Codebase ChinalifePE embedder base URL for webview: use persisted value when set; otherwise mirror
+ * {@link CodeIndexConfigManager} — active ChinalifePE profile's `openAiBaseUrl`, else fixed default host.
+ */
+function resolveCodebaseIndexChinalifepeBaseUrlForState(
+	storedBaseUrl: string | undefined,
+	apiConfiguration: ProviderSettings | undefined,
+	embedderProvider: string | undefined,
+): string | undefined {
+	if (embedderProvider !== "chinalifepe") {
+		return storedBaseUrl
+	}
+	const stored = (storedBaseUrl ?? "").trim()
+	if (stored) {
+		return stored
+	}
+	if (apiConfiguration?.apiProvider === "chinalifepe") {
+		const raw = apiConfiguration.openAiBaseUrl?.trim()
+		if (raw) {
+			return raw.replace(/\/$/, "")
+		}
+		return CHINALIFEPE_CODE_INDEX_DEFAULT_ROOT
+	}
+	return CHINALIFEPE_CODE_INDEX_DEFAULT_ROOT
+}
+
+/**
+ * Codebase ChinalifePE embedder API key for webview: dedicated secret first, else main profile key when
+ * provider is ChinalifePE (same idea as {@link resolveMcpGatewayApiKey}).
+ */
+function resolveCodebaseIndexChinalifepeApiKeyForState(
+	storedDedicatedSecret: string | undefined,
+	apiConfiguration: ProviderSettings | undefined,
+	embedderProvider: string | undefined,
+): string {
+	if (embedderProvider !== "chinalifepe") {
+		return ""
+	}
+	const stored = (storedDedicatedSecret ?? "").trim()
+	if (stored) {
+		return stored
+	}
+	if (apiConfiguration?.apiProvider === "chinalifepe") {
+		return apiConfiguration.openAiApiKey?.trim() ?? ""
+	}
+	return ""
+}
+
 import { formatLanguage } from "../../shared/language"
 import { WebviewMessage } from "../../shared/WebviewMessage"
 import { EMBEDDING_MODEL_PROFILES } from "../../shared/embeddingModels"
@@ -109,6 +197,7 @@ import { McpServerManager } from "../../services/mcp/McpServerManager"
 import { MarketplaceManager } from "../../services/marketplace"
 import { ShadowCheckpointService } from "../../services/checkpoints/ShadowCheckpointService"
 import { CodeIndexManager } from "../../services/code-index/manager"
+import { mergeSearchIndexAcrossWorkspaceRoots } from "../../services/code-index/multi-root-code-index-search"
 import type { IndexProgressUpdate } from "../../services/code-index/interfaces/manager"
 import {
 	DocumentMarkdownWatcher,
@@ -1288,7 +1377,8 @@ export class ClineProvider
 
 	/**
 	 * Optional vector-search snippets to prepend on the first turn when enabled in settings and index is ready.
-	 * Result count is limited only by Code Index search settings (`codebaseIndexSearchMaxResults` / min score); no extra character budget on the injected block.
+	 * Searches every workspace root’s index and merges hits (same semantics as `codebase_search`).
+	 * Result count is capped by Code Index search settings (`codebaseIndexSearchMaxResults` / min score); no extra character budget on the injected block.
 	 */
 	public async getCodebaseAutoInjectBlock(
 		userQuery: string,
@@ -1305,15 +1395,10 @@ export class ClineProvider
 			return none
 		}
 		try {
-			const mgr = CodeIndexManager.getInstance(this.context, workspacePath)
-			if (!mgr?.isFeatureEnabled || !mgr.isFeatureConfigured) {
-				return none
-			}
-			const sys = mgr.getCurrentStatus().systemStatus
-			if (sys !== "Indexed" && sys !== "Indexing") {
-				return none
-			}
-			const results = await mgr.searchIndex(q)
+			const { results, multiRoot } = await mergeSearchIndexAcrossWorkspaceRoots(this.context, {
+				workspacePathFallback: workspacePath,
+				query: q,
+			})
 			if (!results?.length) {
 				return none
 			}
@@ -1331,7 +1416,7 @@ export class ClineProvider
 					endLine: number
 					codeChunk: string
 				}
-				const rel = vscode.workspace.asRelativePath(p.filePath, false)
+				const rel = vscode.workspace.asRelativePath(p.filePath, multiRoot)
 				const chunk = `### ${rel} (${p.startLine}-${p.endLine})\n\`\`\`\n${p.codeChunk.trim()}\n\`\`\`\n\n`
 				body += chunk
 				included++
@@ -2495,6 +2580,7 @@ export class ClineProvider
 			openRouterImageApiKey,
 			openRouterImageGenerationSelectedModel,
 			lockApiConfigAcrossModes,
+			codebaseIndexChinalifepeApiKey,
 		} = await this.getState()
 
 		let cloudOrganizations: CloudOrganizationMembership[] = []
@@ -2571,20 +2657,8 @@ export class ClineProvider
 			terminalZdotdir: terminalZdotdir ?? false,
 			mcpEnabled: mcpEnabled ?? true,
 			mcpGatewayEnabled: mcpGatewayEnabled ?? true,
-			mcpGatewayUrl: (() => {
-				if (mcpGatewayUrl) return mcpGatewayUrl
-				const { baseUrl } = getProfileBaseUrlAndApiKey(apiConfiguration)
-				if (baseUrl) {
-					// Remove trailing slash if present, then append '/mcp'
-					return baseUrl.replace(/\/$/, "") + "/mcp"
-				}
-				return DEFAULT_MCP_GATEWAY_URL
-			})(),
-			mcpGatewayApiKey: (() => {
-				if (mcpGatewayApiKey) return mcpGatewayApiKey
-				const { apiKey } = getProfileBaseUrlAndApiKey(apiConfiguration)
-				return apiKey ?? ""
-			})(),
+			mcpGatewayUrl: resolveMcpGatewayUrl(mcpGatewayUrl, apiConfiguration),
+			mcpGatewayApiKey: resolveMcpGatewayApiKey(mcpGatewayApiKey, apiConfiguration),
 			mcpGatewayAlwaysAllow: mcpGatewayAlwaysAllow ?? true,
 			currentApiConfigName: currentApiConfigName ?? "default",
 			listApiConfigMeta: listApiConfigMeta ?? [],
@@ -2633,6 +2707,7 @@ export class ClineProvider
 				codebaseIndexEmbedderModelId: codebaseIndexConfig?.codebaseIndexEmbedderModelId ?? "qwen3-embedding",
 				codebaseIndexEmbedderModelDimension: codebaseIndexConfig?.codebaseIndexEmbedderModelDimension ?? 4096,
 				codebaseIndexOpenAiCompatibleBaseUrl: codebaseIndexConfig?.codebaseIndexOpenAiCompatibleBaseUrl,
+				codebaseIndexChinalifepeBaseUrl: codebaseIndexConfig?.codebaseIndexChinalifepeBaseUrl,
 				codebaseIndexSearchMaxResults: codebaseIndexConfig?.codebaseIndexSearchMaxResults,
 				codebaseIndexSearchMinScore: codebaseIndexConfig?.codebaseIndexSearchMinScore,
 				codebaseIndexBedrockRegion: codebaseIndexConfig?.codebaseIndexBedrockRegion,
@@ -2670,6 +2745,7 @@ export class ClineProvider
 			imageGenerationProvider,
 			openRouterImageApiKey,
 			openRouterImageGenerationSelectedModel,
+			codebaseIndexChinalifepeApiKey,
 			openAiCodexIsAuthenticated: await (async () => {
 				try {
 					const { openAiCodexOAuthManager } = await import("../../integrations/openai-codex/oauth")
@@ -2829,20 +2905,8 @@ export class ClineProvider
 			language: stateValues.language ?? formatLanguage(vscode.env.language),
 			mcpEnabled: stateValues.mcpEnabled ?? true,
 			mcpGatewayEnabled: stateValues.mcpGatewayEnabled ?? true,
-			mcpGatewayUrl: (() => {
-				if (stateValues.mcpGatewayUrl) return stateValues.mcpGatewayUrl
-				const { baseUrl } = getProfileBaseUrlAndApiKey(providerSettings)
-				if (baseUrl) {
-					// Remove trailing slash if present, then append '/mcp'
-					return baseUrl.replace(/\/$/, "") + "/mcp"
-				}
-				return DEFAULT_MCP_GATEWAY_URL
-			})(),
-			mcpGatewayApiKey: (() => {
-				if (stateValues.mcpGatewayApiKey) return stateValues.mcpGatewayApiKey
-				const { apiKey } = getProfileBaseUrlAndApiKey(providerSettings)
-				return apiKey ?? ""
-			})(),
+			mcpGatewayUrl: resolveMcpGatewayUrl(stateValues.mcpGatewayUrl, providerSettings),
+			mcpGatewayApiKey: resolveMcpGatewayApiKey(stateValues.mcpGatewayApiKey, providerSettings),
 			mcpGatewayAlwaysAllow: stateValues.mcpGatewayAlwaysAllow ?? true,
 			mcpServers: this.mcpHub?.getAllServers() ?? [],
 			currentApiConfigName: stateValues.currentApiConfigName ?? "default",
@@ -2888,6 +2952,11 @@ export class ClineProvider
 					stateValues.codebaseIndexConfig?.codebaseIndexEmbedderModelDimension ?? 4096,
 				codebaseIndexOpenAiCompatibleBaseUrl:
 					stateValues.codebaseIndexConfig?.codebaseIndexOpenAiCompatibleBaseUrl,
+				codebaseIndexChinalifepeBaseUrl: resolveCodebaseIndexChinalifepeBaseUrlForState(
+					stateValues.codebaseIndexConfig?.codebaseIndexChinalifepeBaseUrl,
+					providerSettings,
+					stateValues.codebaseIndexConfig?.codebaseIndexEmbedderProvider ?? "chinalifepe",
+				),
 				codebaseIndexSearchMaxResults: stateValues.codebaseIndexConfig?.codebaseIndexSearchMaxResults,
 				codebaseIndexSearchMinScore: stateValues.codebaseIndexConfig?.codebaseIndexSearchMinScore,
 				codebaseIndexBedrockRegion: stateValues.codebaseIndexConfig?.codebaseIndexBedrockRegion,
@@ -2897,6 +2966,11 @@ export class ClineProvider
 				codebaseIndexAutoInjectOnFirstTurn:
 					stateValues.codebaseIndexConfig?.codebaseIndexAutoInjectOnFirstTurn !== false,
 			},
+			codebaseIndexChinalifepeApiKey: resolveCodebaseIndexChinalifepeApiKeyForState(
+				this.contextProxy.getSecret("codebaseIndexChinalifepeApiKey"),
+				providerSettings,
+				stateValues.codebaseIndexConfig?.codebaseIndexEmbedderProvider ?? "chinalifepe",
+			),
 			documentMarkdownConfig: {
 				documentMarkdownEnabled: stateValues.documentMarkdownConfig?.documentMarkdownEnabled ?? true,
 				documentMarkdownConvertOffice: stateValues.documentMarkdownConfig?.documentMarkdownConvertOffice,

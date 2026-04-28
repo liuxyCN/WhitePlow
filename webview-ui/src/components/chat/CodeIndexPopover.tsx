@@ -89,6 +89,8 @@ interface LocalCodeIndexSettings {
 	codebaseIndexVercelAiGatewayApiKey?: string
 	codebaseIndexOpenRouterApiKey?: string
 	codebaseIndexOpenRouterSpecificProvider?: string
+	codebaseIndexChinalifepeBaseUrl?: string
+	codebaseIndexChinalifepeApiKey?: string
 }
 
 // Validation schema for codebase index settings
@@ -196,6 +198,23 @@ const createValidationSchema = (
 
 		case "chinalifepe":
 			return baseSchema.extend({
+				codebaseIndexChinalifepeBaseUrl: z
+					.string()
+					.optional()
+					.refine(
+						(s) => {
+							const v = (s ?? "").trim()
+							if (!v) return true
+							try {
+								const u = new URL(v)
+								return u.protocol === "http:" || u.protocol === "https:"
+							} catch {
+								return false
+							}
+						},
+						{ message: t("settings:codeIndex.validation.invalidBaseUrl") },
+					),
+				codebaseIndexChinalifepeApiKey: z.string().optional(),
 				codebaseIndexEmbedderModelId: z
 					.string()
 					.min(1, t("settings:codeIndex.validation.modelSelectionRequired")),
@@ -212,7 +231,13 @@ export const CodeIndexPopover: React.FC<CodeIndexPopoverProps> = ({
 }) => {
 	const SECRET_PLACEHOLDER = "••••••••••••••••"
 	const { t } = useAppTranslation()
-	const { codebaseIndexConfig, codebaseIndexModels, cwd, apiConfiguration } = useExtensionState()
+	const {
+		codebaseIndexConfig,
+		codebaseIndexModels,
+		cwd,
+		apiConfiguration,
+		codebaseIndexChinalifepeApiKey: resolvedChinalifepeCodeIndexApiKey,
+	} = useExtensionState()
 	const [open, setOpen] = useState(false)
 	const [isAdvancedSettingsOpen, setIsAdvancedSettingsOpen] = useState(false)
 	const [isSetupSettingsOpen, setIsSetupSettingsOpen] = useState(false)
@@ -224,7 +249,6 @@ export const CodeIndexPopover: React.FC<CodeIndexPopoverProps> = ({
 
 	// Form validation state
 	const [formErrors, setFormErrors] = useState<Record<string, string>>({})
-	const [hasMainOpenAiApiKey, setHasMainOpenAiApiKey] = useState(false)
 
 	// Discard changes dialog state
 	const [isDiscardDialogShow, setDiscardDialogShow] = useState(false)
@@ -253,6 +277,8 @@ export const CodeIndexPopover: React.FC<CodeIndexPopoverProps> = ({
 		codebaseIndexVercelAiGatewayApiKey: "",
 		codebaseIndexOpenRouterApiKey: "",
 		codebaseIndexOpenRouterSpecificProvider: "",
+		codebaseIndexChinalifepeBaseUrl: "",
+		codebaseIndexChinalifepeApiKey: "",
 	})
 
 	// Initial settings state - stores the settings when popover opens
@@ -302,6 +328,11 @@ export const CodeIndexPopover: React.FC<CodeIndexPopoverProps> = ({
 				codebaseIndexOpenRouterApiKey: "",
 				codebaseIndexOpenRouterSpecificProvider:
 					codebaseIndexConfig.codebaseIndexOpenRouterSpecificProvider || "",
+				codebaseIndexChinalifepeBaseUrl: codebaseIndexConfig.codebaseIndexChinalifepeBaseUrl || "",
+				codebaseIndexChinalifepeApiKey:
+					embedderProvider === "chinalifepe"
+						? (resolvedChinalifepeCodeIndexApiKey?.trim() ?? "")
+						: "",
 			}
 			setInitialSettings(settings)
 			setCurrentSettings(settings)
@@ -309,7 +340,7 @@ export const CodeIndexPopover: React.FC<CodeIndexPopoverProps> = ({
 			// Request secret status to check if secrets exist
 			vscode.postMessage({ type: "requestCodeIndexSecretStatus" })
 		}
-	}, [codebaseIndexConfig])
+	}, [codebaseIndexConfig, resolvedChinalifepeCodeIndexApiKey])
 
 	// Request initial indexing status
 	useEffect(() => {
@@ -383,7 +414,6 @@ export const CodeIndexPopover: React.FC<CodeIndexPopoverProps> = ({
 			if (event.data.type === "codeIndexSecretStatus") {
 				// Update settings to show placeholders for existing secrets
 				const secretStatus = event.data.values
-				setHasMainOpenAiApiKey(!!secretStatus.hasOpenAiApiKey)
 
 				// Update both current and initial settings based on what secrets exist
 				const updateWithSecrets = (prev: LocalCodeIndexSettings): LocalCodeIndexSettings => {
@@ -427,6 +457,18 @@ export const CodeIndexPopover: React.FC<CodeIndexPopoverProps> = ({
 							? SECRET_PLACEHOLDER
 							: ""
 					}
+					if (
+						!prev.codebaseIndexChinalifepeApiKey ||
+						prev.codebaseIndexChinalifepeApiKey === SECRET_PLACEHOLDER
+					) {
+						if (secretStatus.hasChinalifepeCodeIndexApiKey) {
+							updated.codebaseIndexChinalifepeApiKey = SECRET_PLACEHOLDER
+						} else if (resolvedChinalifepeCodeIndexApiKey?.trim()) {
+							updated.codebaseIndexChinalifepeApiKey = resolvedChinalifepeCodeIndexApiKey
+						} else {
+							updated.codebaseIndexChinalifepeApiKey = ""
+						}
+					}
 
 					return updated
 				}
@@ -442,7 +484,7 @@ export const CodeIndexPopover: React.FC<CodeIndexPopoverProps> = ({
 
 		window.addEventListener("message", handleMessage)
 		return () => window.removeEventListener("message", handleMessage)
-	}, [saveStatus])
+	}, [saveStatus, resolvedChinalifepeCodeIndexApiKey])
 
 	// Generic comparison function that detects changes between initial and current settings
 	const hasUnsavedChanges = useMemo(() => {
@@ -505,7 +547,8 @@ export const CodeIndexPopover: React.FC<CodeIndexPopoverProps> = ({
 					key === "codebaseIndexGeminiApiKey" ||
 					key === "codebaseIndexMistralApiKey" ||
 					key === "codebaseIndexVercelAiGatewayApiKey" ||
-					key === "codebaseIndexOpenRouterApiKey"
+					key === "codebaseIndexOpenRouterApiKey" ||
+					key === "codebaseIndexChinalifepeApiKey"
 				) {
 					dataToValidate[key] = "placeholder-valid"
 				}
@@ -517,10 +560,6 @@ export const CodeIndexPopover: React.FC<CodeIndexPopoverProps> = ({
 		try {
 			// Validate using the schema
 			schema.parse(dataToValidate)
-			if (currentSettings.codebaseIndexEmbedderProvider === "chinalifepe" && !hasMainOpenAiApiKey) {
-				setFormErrors({ chinalifepeMainApiKey: t("settings:codeIndex.chinalifepeMainApiKeyRequired") })
-				return false
-			}
 			setFormErrors({})
 			return true
 		} catch (error) {
@@ -1504,11 +1543,48 @@ export const CodeIndexPopover: React.FC<CodeIndexPopoverProps> = ({
 											<p className="text-xs text-vscode-descriptionForeground mt-1 mb-0">
 												{t("settings:codeIndex.chinalifepeDescription")}
 											</p>
-											{formErrors.chinalifepeMainApiKey && (
-												<p className="text-xs text-vscode-errorForeground mt-1 mb-0">
-													{formErrors.chinalifepeMainApiKey}
+											<div className="space-y-2">
+												<label className="text-sm font-medium">
+													{t("settings:codeIndex.chinalifepeBaseUrlLabel")}
+												</label>
+												<VSCodeTextField
+													value={currentSettings.codebaseIndexChinalifepeBaseUrl || ""}
+													onInput={(e: any) =>
+														updateSetting("codebaseIndexChinalifepeBaseUrl", e.target.value)
+													}
+													placeholder={t("settings:codeIndex.chinalifepeBaseUrlPlaceholder")}
+													className="w-full"
+													style={{ width: "100%" }}
+												/>
+												{formErrors.codebaseIndexChinalifepeBaseUrl && (
+													<p className="text-xs text-vscode-errorForeground mt-1 mb-0">
+														{formErrors.codebaseIndexChinalifepeBaseUrl}
+													</p>
+												)}
+												<p className="text-xs text-vscode-descriptionForeground mt-1 mb-0">
+													{t("settings:codeIndex.chinalifepeBaseUrlHint")}
 												</p>
-											)}
+											</div>
+											<div className="space-y-2">
+												<label className="text-sm font-medium">
+													{t("settings:codeIndex.chinalifepeApiKeyLabel")}
+												</label>
+												<VSCodeTextField
+													type="password"
+													value={currentSettings.codebaseIndexChinalifepeApiKey || ""}
+													onInput={(e: any) =>
+														updateSetting("codebaseIndexChinalifepeApiKey", e.target.value)
+													}
+													placeholder={t("settings:codeIndex.chinalifepeApiKeyPlaceholder")}
+													className="w-full"
+													style={{ width: "100%" }}
+												/>
+												{formErrors.codebaseIndexChinalifepeApiKey && (
+													<p className="text-xs text-vscode-errorForeground mt-1 mb-0">
+														{formErrors.codebaseIndexChinalifepeApiKey}
+													</p>
+												)}
+											</div>
 											<div className="space-y-2">
 												<label className="text-sm font-medium">
 													{t("settings:codeIndex.modelLabel")}

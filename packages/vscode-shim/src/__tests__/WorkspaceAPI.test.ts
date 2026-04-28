@@ -29,7 +29,7 @@ describe("WorkspaceAPI", () => {
 			storageDir: path.join(tempDir, "storage"),
 		})
 
-		workspaceAPI = new WorkspaceAPI(workspacePath, context)
+		workspaceAPI = new WorkspaceAPI([workspacePath], context)
 	})
 
 	afterEach(() => {

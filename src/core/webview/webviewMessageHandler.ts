@@ -68,6 +68,11 @@ import { resolveImageMentions } from "../mentions/resolveImageMentions"
 import { RooIgnoreController } from "../ignore/RooIgnoreController"
 import { getWorkspacePath } from "../../utils/path"
 import { isPathOutsideWorkspace } from "../../utils/pathUtils"
+import {
+	serveBridgeBlocksSettingsWebviewMessage,
+	serveBridgeSettingsReadOnlyMessage,
+	isRooServeBridge,
+} from "../../utils/serveBridgeWorkspaceGuard"
 import { Mode, defaultModeSlug } from "../../shared/modes"
 import { getModels, flushModels } from "../../api/providers/fetchers/modelCache"
 import { GetModelsOptions } from "../../shared/api"
@@ -730,6 +735,11 @@ export const webviewMessageHandler = async (
 		}
 	}
 
+	if (serveBridgeBlocksSettingsWebviewMessage(message.type)) {
+		await vscode.window.showErrorMessage(serveBridgeSettingsReadOnlyMessage())
+		return
+	}
+
 	switch (message.type) {
 		case "webviewDidLaunch":
 			// Load custom modes first
@@ -857,6 +867,10 @@ export const webviewMessageHandler = async (
 			break
 
 		case "updateSettings":
+		case "bootstrapCliRuntimeSettings":
+			if (message.type === "bootstrapCliRuntimeSettings" && !isRooServeBridge()) {
+				break
+			}
 			if (message.updatedSettings) {
 				for (const [key, value] of Object.entries(message.updatedSettings)) {
 					let newValue = value
@@ -963,6 +977,22 @@ export const webviewMessageHandler = async (
 					}
 
 					await provider.contextProxy.setValue(key as keyof RooCodeSettings, newValue)
+				}
+
+				const updatedKeys = Object.keys(message.updatedSettings)
+				const shouldRefreshMcpGatewayMemory =
+					updatedKeys.includes("mcpGatewayUrl") ||
+					updatedKeys.includes("mcpGatewayApiKey") ||
+					updatedKeys.includes("mcpGatewayEnabled") ||
+					updatedKeys.includes("openAiBaseUrl") ||
+					updatedKeys.includes("openAiApiKey") ||
+					updatedKeys.includes("apiProvider")
+
+				if (shouldRefreshMcpGatewayMemory) {
+					const mcpHubAfterSettings = provider.getMcpHub()
+					if (mcpHubAfterSettings) {
+						await mcpHubAfterSettings.refreshInMemoryServers()
+					}
 				}
 
 				await provider.postStateToWebview()
@@ -1985,10 +2015,22 @@ export const webviewMessageHandler = async (
 			break
 
 		case "refreshAllMcpServers": {
+			provider.log("[MCP refresh] webview: refreshAllMcpServers received")
 			const mcpHub = provider.getMcpHub()
 
 			if (mcpHub) {
-				await mcpHub.refreshAllConnections()
+				provider.log("[MCP refresh] webview: calling mcpHub.refreshAllConnections()")
+				try {
+					await mcpHub.refreshAllConnections()
+					provider.log("[MCP refresh] webview: refreshAllConnections() finished")
+				} catch (e) {
+					provider.log(
+						`[MCP refresh] webview: refreshAllConnections() threw: ${e instanceof Error ? e.stack ?? e.message : String(e)}`,
+					)
+					throw e
+				}
+			} else {
+				provider.log("[MCP refresh] webview: no McpHub instance; skipping refresh")
 			}
 
 			break
@@ -3027,6 +3069,7 @@ export const webviewMessageHandler = async (
 					codebaseIndexSearchMinScore: settings.codebaseIndexSearchMinScore,
 					codebaseIndexOpenRouterSpecificProvider: settings.codebaseIndexOpenRouterSpecificProvider,
 					codebaseIndexAutoInjectOnFirstTurn: settings.codebaseIndexAutoInjectOnFirstTurn !== false,
+					codebaseIndexChinalifepeBaseUrl: settings.codebaseIndexChinalifepeBaseUrl,
 				}
 
 				// Save global state first
@@ -3067,6 +3110,12 @@ export const webviewMessageHandler = async (
 					await provider.contextProxy.storeSecret(
 						"codebaseIndexOpenRouterApiKey",
 						settings.codebaseIndexOpenRouterApiKey,
+					)
+				}
+				if (settings.codebaseIndexChinalifepeApiKey !== undefined) {
+					await provider.contextProxy.storeSecret(
+						"codebaseIndexChinalifepeApiKey",
+						settings.codebaseIndexChinalifepeApiKey,
 					)
 				}
 
@@ -3394,6 +3443,9 @@ export const webviewMessageHandler = async (
 				"codebaseIndexVercelAiGatewayApiKey",
 			))
 			const hasOpenRouterApiKey = !!(await provider.context.secrets.get("codebaseIndexOpenRouterApiKey"))
+			const hasChinalifepeCodeIndexApiKey = !!(await provider.context.secrets.get(
+				"codebaseIndexChinalifepeApiKey",
+			))
 			const hasOpenAiApiKey = !!(await provider.context.secrets.get("openAiApiKey"))
 
 			provider.postMessageToWebview({
@@ -3406,6 +3458,7 @@ export const webviewMessageHandler = async (
 					hasMistralApiKey,
 					hasVercelAiGatewayApiKey,
 					hasOpenRouterApiKey,
+					hasChinalifepeCodeIndexApiKey,
 					hasOpenAiApiKey,
 				},
 			})

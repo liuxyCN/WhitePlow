@@ -546,7 +546,8 @@ export class FileWatcher implements IFileWatcher {
 
 			// Read file content
 			const fileContent = await vscode.workspace.fs.readFile(vscode.Uri.file(filePath))
-			const content = fileContent.toString()
+			// readFile returns Uint8Array; default .toString() is comma-separated byte values, not UTF-8 text.
+			const content = Buffer.from(fileContent).toString("utf8")
 
 			// Calculate hash
 			const newHash = createHash("sha256").update(content).digest("hex")

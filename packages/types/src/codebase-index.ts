@@ -22,6 +22,13 @@ export const codebaseIndexVectorStoreSchema = z.enum(["qdrant", "embedded"])
 
 export type CodebaseIndexVectorStore = z.infer<typeof codebaseIndexVectorStoreSchema>
 
+/**
+ * ChinalifePE embedder: optional API root override (normalized to …/v1 at runtime).
+ * Declared once and reused in both {@link codebaseIndexConfigSchema} (global index toggles)
+ * and {@link codebaseIndexProviderSchema} (secrets bundle) so the same key stays in sync.
+ */
+const codebaseIndexChinalifepeBaseUrlSchema = z.string().optional()
+
 export const codebaseIndexConfigSchema = z.object({
 	codebaseIndexEnabled: z.boolean().optional(),
 	/** @default "embedded" */
@@ -61,6 +68,7 @@ export const codebaseIndexConfigSchema = z.object({
 	codebaseIndexBedrockProfile: z.string().optional(),
 	// OpenRouter specific fields
 	codebaseIndexOpenRouterSpecificProvider: z.string().optional(),
+	codebaseIndexChinalifepeBaseUrl: codebaseIndexChinalifepeBaseUrlSchema,
 })
 
 export type CodebaseIndexConfig = z.infer<typeof codebaseIndexConfigSchema>
@@ -97,6 +105,8 @@ export const codebaseIndexProviderSchema = z.object({
 	codebaseIndexMistralApiKey: z.string().optional(),
 	codebaseIndexVercelAiGatewayApiKey: z.string().optional(),
 	codebaseIndexOpenRouterApiKey: z.string().optional(),
+	codebaseIndexChinalifepeBaseUrl: codebaseIndexChinalifepeBaseUrlSchema,
+	codebaseIndexChinalifepeApiKey: z.string().optional(),
 })
 
 export type CodebaseIndexProvider = z.infer<typeof codebaseIndexProviderSchema>

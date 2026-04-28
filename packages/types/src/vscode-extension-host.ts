@@ -392,6 +392,8 @@ export type ExtensionState = Pick<
 	profileThresholds: Record<string, number>
 	hasOpenedModeSelector: boolean
 	openRouterImageApiKey?: string
+	/** Resolved ChinalifePE codebase embedder API key for UI (dedicated secret else main profile when embedder is chinalifepe). */
+	codebaseIndexChinalifepeApiKey?: string
 	messageQueue?: QueuedMessage[]
 	lastShownAnnouncementId?: string
 	apiModelId?: string
@@ -591,6 +593,8 @@ export interface WebviewMessage {
 		| "getDismissedUpsells"
 		| "openMarkdownPreview"
 		| "updateSettings"
+		/** CLI extension-host only: same payload as `updateSettings`; not serve-blocked so CLI initial settings reach ContextProxy. */
+		| "bootstrapCliRuntimeSettings"
 		| "allowedCommands"
 		| "apiRequestPreviewAck"
 		| "getTaskWithAggregatedCosts"
@@ -712,6 +716,7 @@ export interface WebviewMessage {
 			| "openai"
 			| "ollama"
 			| "openai-compatible"
+			| "chinalifepe"
 			| "gemini"
 			| "mistral"
 			| "vercel-ai-gateway"
@@ -727,6 +732,7 @@ export interface WebviewMessage {
 		codebaseIndexSearchMinScore?: number
 		codebaseIndexOpenRouterSpecificProvider?: string // OpenRouter provider routing
 		codebaseIndexAutoInjectOnFirstTurn?: boolean
+		codebaseIndexChinalifepeBaseUrl?: string
 
 		// Secret settings
 		codeIndexOpenAiKey?: string
@@ -736,6 +742,7 @@ export interface WebviewMessage {
 		codebaseIndexMistralApiKey?: string
 		codebaseIndexVercelAiGatewayApiKey?: string
 		codebaseIndexOpenRouterApiKey?: string
+		codebaseIndexChinalifepeApiKey?: string
 	}
 	updatedSettings?: RooCodeSettings
 	/** Task configuration applied via `createTask()` when starting a cloud task. */

@@ -42,16 +42,18 @@ export class WorkspaceAPI {
 	private _onDidCloseTextDocument = new EventEmitter<TextDocument>()
 	private context: ExtensionContextImpl
 
-	constructor(workspacePath: string, context: ExtensionContextImpl) {
+	constructor(workspacePaths: readonly string[], context: ExtensionContextImpl) {
 		this.context = context
-		this.workspaceFolders = [
-			{
-				uri: Uri.file(workspacePath),
-				name: path.basename(workspacePath),
-				index: 0,
-			},
-		]
-		this.name = path.basename(workspacePath)
+		const roots = workspacePaths.length > 0 ? [...workspacePaths] : []
+		if (roots.length === 0) {
+			throw new Error("WorkspaceAPI requires at least one workspace folder path")
+		}
+		this.workspaceFolders = roots.map((root, index) => ({
+			uri: Uri.file(root),
+			name: path.basename(root),
+			index,
+		}))
+		this.name = path.basename(roots[0]!)
 		this.fs = new FileSystemAPI()
 	}
 
@@ -88,6 +90,26 @@ export class WorkspaceAPI {
 
 		// If not within any workspace folder, return the original path
 		return fsPath
+	}
+
+	/**
+	 * Returns the workspace folder that contains `uri`, or `undefined` when none match (VS Code parity).
+	 */
+	getWorkspaceFolder(uri: Uri): WorkspaceFolder | undefined {
+		if (!this.workspaceFolders || this.workspaceFolders.length === 0) {
+			return undefined
+		}
+
+		const fsPath = path.normalize(uri.fsPath)
+
+		for (const folder of this.workspaceFolders) {
+			const root = path.normalize(folder.uri.fsPath)
+			if (fsPath === root || fsPath.startsWith(root + path.sep)) {
+				return folder
+			}
+		}
+
+		return undefined
 	}
 
 	onDidChangeWorkspaceFolders(listener: (event: WorkspaceFoldersChangeEvent) => void): Disposable {

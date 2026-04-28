@@ -2,6 +2,8 @@
  * Main factory function for creating VSCode API mock
  */
 
+import * as fs from "fs"
+import * as path from "path"
 import { machineIdSync } from "../utils/machine-id.js"
 import { logs } from "../utils/logger.js"
 
@@ -28,6 +30,7 @@ import {
 import { CancellationTokenSource } from "../classes/CancellationToken.js"
 import { StatusBarItem } from "../classes/StatusBarItem.js"
 import { ExtensionContextImpl } from "../context/ExtensionContext.js"
+import { normalizeOrderedWorkspaceRoots } from "../utils/paths.js"
 
 // Import APIs
 import { WorkspaceAPI } from "./WorkspaceAPI.js"
@@ -60,6 +63,23 @@ import type { UriHandler } from "../interfaces/webview.js"
 const Package = { version: "1.0.0" }
 
 /**
+ * Directory that contains package.json (VS Code extension install root), even when the
+ * bundle lives under a subdirectory such as `dist/` (CLI monorepo layout).
+ */
+function resolveExtensionPackageRoot(bundleRoot: string): string {
+	const atBundle = path.join(bundleRoot, "package.json")
+	if (fs.existsSync(atBundle)) {
+		return bundleRoot
+	}
+	const parent = path.dirname(bundleRoot)
+	const atParent = path.join(parent, "package.json")
+	if (fs.existsSync(atParent)) {
+		return path.normalize(parent)
+	}
+	return bundleRoot
+}
+
+/**
  * Options for creating the VSCode API mock
  */
 export interface VSCodeAPIMockOptions {
@@ -75,6 +95,12 @@ export interface VSCodeAPIMockOptions {
 	 * Set to a temp directory for ephemeral/no-persist mode.
 	 */
 	storageDir?: string
+
+	/**
+	 * Additional workspace roots after {@link createVSCodeAPIMock}'s `workspacePath` (first root).
+	 * Matches VS Code multi-root: ordered folders, first is default cwd.
+	 */
+	workspaceFolderPaths?: string[]
 }
 
 /**
@@ -86,23 +112,53 @@ export function createVSCodeAPIMock(
 	identity?: IdentityInfo,
 	options?: VSCodeAPIMockOptions,
 ) {
+	const roots = normalizeOrderedWorkspaceRoots([
+		workspacePath,
+		...(options?.workspaceFolderPaths ?? []),
+	])
 	const context = new ExtensionContextImpl({
 		extensionPath: extensionRootPath,
-		workspacePath: workspacePath,
+		workspacePath: roots[0]!,
+		...(roots.length > 1 ? { workspaceFolderPaths: roots } : {}),
 		storageDir: options?.storageDir,
 	})
-	const workspace = new WorkspaceAPI(workspacePath, context)
+	const extensionPackageRoot = resolveExtensionPackageRoot(extensionRootPath)
+	let selfExtensionPackageJson: Record<string, unknown> = {}
+	try {
+		selfExtensionPackageJson = JSON.parse(
+			fs.readFileSync(path.join(extensionPackageRoot, "package.json"), "utf8"),
+		) as Record<string, unknown>
+	} catch {
+		selfExtensionPackageJson = {}
+	}
+	const publisher = typeof selfExtensionPackageJson.publisher === "string" ? selfExtensionPackageJson.publisher : ""
+	const extensionName = typeof selfExtensionPackageJson.name === "string" ? selfExtensionPackageJson.name : ""
+	const selfExtensionId = publisher && extensionName ? `${publisher}.${extensionName}` : ""
+	const extensionPackageUri = Uri.file(extensionPackageRoot)
+	const selfExtension = selfExtensionId
+		? {
+				id: selfExtensionId,
+				extensionUri: extensionPackageUri,
+				extensionPath: extensionPackageRoot,
+				isActive: true,
+				packageJSON: selfExtensionPackageJson,
+				exports: undefined,
+				activate: () => Promise.resolve(),
+			}
+		: undefined
+
+	const workspace = new WorkspaceAPI(roots, context)
 	const window = new WindowAPI()
 	const commands = new CommandsAPI()
 
 	// Link window and workspace for cross-API calls
 	window.setWorkspace(workspace)
 
-	// Environment mock with identity values
+	// Environment mock with identity values (`ROO_CLI_RUNTIME` is set by ExtensionHost before this runs)
 	const env = {
 		appName: `wrapper|cli|cli|${Package.version}`,
 		appRoot: options?.appRoot || import.meta.dirname,
-		language: "en",
+		language: process.env.ROO_CLI_RUNTIME === "1" ? "zh-CN" : "en",
 		machineId: identity?.machineId || machineIdSync(),
 		sessionId: identity?.sessionId || "cli-session-id",
 		remoteName: undefined,
@@ -277,19 +333,10 @@ export function createVSCodeAPIMock(
 			onDidEndTask: () => ({ dispose: () => {} }),
 		},
 		extensions: {
-			all: [],
+			all: selfExtension ? [selfExtension] : [],
 			getExtension: (extensionId: string) => {
-				// Mock the extension object with extensionUri for theme loading
-				if (extensionId === "RooVeterinaryInc.roo-cline") {
-					return {
-						id: extensionId,
-						extensionUri: context.extensionUri,
-						extensionPath: context.extensionPath,
-						isActive: true,
-						packageJSON: {},
-						exports: undefined,
-						activate: () => Promise.resolve(),
-					}
+				if (selfExtension && extensionId === selfExtension.id) {
+					return selfExtension
 				}
 				return undefined
 			},

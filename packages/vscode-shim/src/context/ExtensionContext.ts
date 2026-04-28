@@ -3,7 +3,7 @@ import * as fs from "fs"
 import { Uri } from "../classes/Uri.js"
 import { FileMemento } from "../storage/Memento.js"
 import { FileSecretStorage } from "../storage/SecretStorage.js"
-import { hashWorkspacePath, ensureDirectoryExists } from "../utils/paths.js"
+import { hashWorkspacePath, hashWorkspacePaths, ensureDirectoryExists } from "../utils/paths.js"
 import type {
 	ExtensionContext,
 	Extension,
@@ -27,6 +27,12 @@ export interface ExtensionContextOptions {
 	 * Path to the workspace directory
 	 */
 	workspacePath: string
+
+	/**
+	 * All workspace folder roots (ordered). When length > 1, storage hash uses the full list
+	 * (VS Code multi-root parity). Omit or single entry to use {@link workspacePath} only.
+	 */
+	workspaceFolderPaths?: string[]
 
 	/**
 	 * Optional custom storage directory (defaults to ~/.vscode-mock)
@@ -81,7 +87,12 @@ export class ExtensionContextImpl implements ExtensionContext {
 		// Setup storage paths
 		const baseStorageDir =
 			options.storageDir || path.join(process.env.HOME || process.env.USERPROFILE || ".", ".vscode-mock")
-		const workspaceHash = hashWorkspacePath(options.workspacePath)
+		const roots =
+			options.workspaceFolderPaths && options.workspaceFolderPaths.length > 0
+				? options.workspaceFolderPaths
+				: [options.workspacePath]
+		const workspaceHash =
+			roots.length > 1 ? hashWorkspacePaths(roots) : hashWorkspacePath(options.workspacePath)
 
 		this.globalStoragePath = path.join(baseStorageDir, "global-storage")
 		this.globalStorageUri = Uri.file(this.globalStoragePath)

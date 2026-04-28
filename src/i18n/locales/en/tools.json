@@ -40,5 +40,11 @@
 		"progressExtracting": "Extracting archive…",
 		"progressDone": "Extraction complete",
 		"progressFailed": "Extraction failed"
+	},
+	"serve": {
+		"blockedToolChatLine": "[Serve] **{{toolName}}** (not executed) {{summary}}\n\n*{{reason}}*",
+		"disabledToolReason": "Tool \"{{toolName}}\" is disabled in serve (edit and command tool groups are not allowed).",
+		"settingsReadOnly": "This action is not allowed in the serve environment."
 	}
+
 }

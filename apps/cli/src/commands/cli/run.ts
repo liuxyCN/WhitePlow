@@ -17,6 +17,7 @@ import {
 	SDK_BASE_URL,
 	OutputFormat,
 } from "@/types/index.js"
+import type { ExtensionMessage } from "@roo-code/types"
 import { isValidOutputFormat } from "@/types/json-events.js"
 import { JsonEventEmitter } from "@/agent/json-event-emitter.js"
 
@@ -26,6 +27,7 @@ import { readWorkspaceTaskSessions, resolveWorkspaceResumeSessionId } from "@/li
 import { isRecord } from "@/lib/utils/guards.js"
 import { getEnvVarName, getApiKeyFromEnv } from "@/lib/utils/provider.js"
 import { runOnboarding } from "@/lib/utils/onboarding.js"
+import { parseCliUserId } from "@/lib/utils/cli-user-id.js"
 import { validateTerminalShellPath } from "@/lib/utils/shell.js"
 import { getDefaultExtensionPath } from "@/lib/utils/extension.js"
 import { isValidSessionId } from "@/lib/utils/session-id.js"
@@ -39,6 +41,47 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const ROO_MODEL_WARMUP_TIMEOUT_MS = 10_000
 const SIGNAL_ONLY_EXIT_KEEPALIVE_MS = 60_000
 const STREAM_RESUME_WAIT_TIMEOUT_MS = 2_000
+
+function parseCliWorkspaceFoldersFromEnv(): string[] {
+	const raw = process.env.ROO_CLI_WORKSPACE_FOLDERS?.trim()
+	if (!raw) {
+		return []
+	}
+	return raw.split(path.delimiter).map((s) => s.trim()).filter(Boolean).map((p) => path.resolve(p))
+}
+
+function workspaceFlagsToResolvedPaths(w: FlagOptions["workspace"]): string[] {
+	if (w === undefined) {
+		return []
+	}
+	if (Array.isArray(w)) {
+		return w.map((p) => path.resolve(String(p).trim())).filter((p) => p.length > 0)
+	}
+	const t = String(w).trim()
+	return t ? [path.resolve(t)] : []
+}
+
+function dedupeOrderedWorkspaceRoots(roots: string[]): string[] {
+	const seen = new Set<string>()
+	const out: string[] = []
+	for (const p of roots) {
+		const n = path.normalize(p)
+		if (!seen.has(n)) {
+			seen.add(n)
+			out.push(n)
+		}
+	}
+	return out
+}
+
+/** VS Code multi-root parity: `ROO_CLI_WORKSPACE_FOLDERS` (from serve) wins when set; else `-w` flags; else cwd. */
+function resolveEffectiveWorkspaceRoots(flagWorkspace: FlagOptions["workspace"]): string[] {
+	const fromEnv = parseCliWorkspaceFoldersFromEnv()
+	const fromFlags = workspaceFlagsToResolvedPaths(flagWorkspace)
+	const merged =
+		fromEnv.length > 0 ? fromEnv : fromFlags.length > 0 ? fromFlags : [process.cwd()]
+	return dedupeOrderedWorkspaceRoots(merged)
+}
 
 async function bootstrapResumeForStdinStream(host: ExtensionHost, sessionId: string): Promise<void> {
 	host.sendToExtension({ type: "showTaskWithId", text: sessionId })
@@ -182,7 +225,8 @@ export async function run(promptArg: string | undefined, flagOptions: FlagOption
 	const effectiveReasoningEffort =
 		flagOptions.reasoningEffort || settings.reasoningEffort || DEFAULT_FLAGS.reasoningEffort
 	const effectiveProvider = flagOptions.provider ?? settings.provider ?? (rooToken ? "roo" : "openrouter")
-	const effectiveWorkspacePath = flagOptions.workspace ? path.resolve(flagOptions.workspace) : process.cwd()
+	const effectiveWorkspaceRoots = resolveEffectiveWorkspaceRoots(flagOptions.workspace)
+	const effectiveWorkspacePath = effectiveWorkspaceRoots[0]!
 	const legacyRequireApprovalFromSettings =
 		settings.requireApproval ??
 		(settings.dangerouslySkipPermissions === undefined ? undefined : !settings.dangerouslySkipPermissions)
@@ -212,18 +256,25 @@ export async function run(promptArg: string | undefined, flagOptions: FlagOption
 		}
 	}
 
+	const trimmedOpenAiBaseUrl = flagOptions.openAiBaseUrl?.trim()
+	const trimmedCliUserId = flagOptions.cliUserId?.trim() ?? ""
 	const extensionHostOptions: ExtensionHostOptions = {
 		mode: effectiveMode,
 		reasoningEffort: effectiveReasoningEffort === "unspecified" ? undefined : effectiveReasoningEffort,
 		consecutiveMistakeLimit: effectiveConsecutiveMistakeLimit,
 		user: null,
 		provider: effectiveProvider,
+		...(trimmedOpenAiBaseUrl ? { openAiBaseUrl: trimmedOpenAiBaseUrl } : {}),
 		model: effectiveModel,
 		workspacePath: effectiveWorkspacePath,
+		...(effectiveWorkspaceRoots.length > 1
+			? { workspaceFolderPaths: effectiveWorkspaceRoots.slice(1) }
+			: {}),
 		extensionPath: path.resolve(flagOptions.extension || getDefaultExtensionPath(__dirname)),
 		nonInteractive: !effectiveRequireApproval,
 		exitOnError: flagOptions.exitOnError,
 		ephemeral: flagOptions.ephemeral,
+		...(trimmedCliUserId ? { cliUserId: trimmedCliUserId } : {}),
 		debug: flagOptions.debug,
 		exitOnComplete: effectiveExitOnComplete,
 		terminalShell,
@@ -303,14 +354,46 @@ export async function run(promptArg: string | undefined, flagOptions: FlagOption
 		process.exit(1)
 	}
 
-	if (!fs.existsSync(extensionHostOptions.workspacePath)) {
-		console.error(`[CLI] Error: Workspace path does not exist: ${extensionHostOptions.workspacePath}`)
+	if (extensionHostOptions.provider === "chinalifepe" && !extensionHostOptions.openAiBaseUrl) {
+		console.error("[CLI] Error: ChinalifePE requires --open-ai-base-url (OpenAI-compatible API base URL).")
 		process.exit(1)
+	}
+
+	if (extensionHostOptions.openAiBaseUrl) {
+		try {
+			const u = new URL(extensionHostOptions.openAiBaseUrl)
+			if (u.protocol !== "http:" && u.protocol !== "https:") {
+				console.error("[CLI] Error: --open-ai-base-url must use http or https.")
+				process.exit(1)
+			}
+		} catch {
+			console.error("[CLI] Error: --open-ai-base-url is not a valid absolute URL.")
+			process.exit(1)
+		}
+	}
+
+	for (const wsRoot of effectiveWorkspaceRoots) {
+		if (!fs.existsSync(wsRoot)) {
+			console.error(`[CLI] Error: Workspace path does not exist: ${wsRoot}`)
+			process.exit(1)
+		}
 	}
 
 	if (extensionHostOptions.reasoningEffort && !REASONING_EFFORTS.includes(extensionHostOptions.reasoningEffort)) {
 		console.error(
 			`[CLI] Error: Invalid reasoning effort: ${extensionHostOptions.reasoningEffort}, must be one of: ${REASONING_EFFORTS.join(", ")}`,
+		)
+		process.exit(1)
+	}
+
+	if (flagOptions.ephemeral && trimmedCliUserId) {
+		console.error("[CLI] Error: --cli-user-id cannot be used with --ephemeral")
+		process.exit(1)
+	}
+
+	if (!flagOptions.ephemeral && trimmedCliUserId && !parseCliUserId(trimmedCliUserId)) {
+		console.error(
+			"[CLI] Error: Invalid --cli-user-id: use only letters, digits, hyphen, and underscore; max 256 characters.",
 		)
 		process.exit(1)
 	}
@@ -446,6 +529,7 @@ export async function run(promptArg: string | undefined, flagOptions: FlagOption
 		let keepAliveInterval: NodeJS.Timeout | undefined
 		let isShuttingDown = false
 		let hostDisposed = false
+		let serveBridgeListener: ((message: ExtensionMessage) => void) | undefined
 
 		const jsonEmitter = useJsonOutput
 			? new JsonEventEmitter({
@@ -512,6 +596,12 @@ export async function run(promptArg: string | undefined, flagOptions: FlagOption
 
 			hostDisposed = true
 			jsonEmitter?.detach()
+
+			if (serveBridgeListener) {
+				host.off("extensionWebviewMessage", serveBridgeListener)
+				serveBridgeListener = undefined
+			}
+
 			await host.dispose()
 		}
 
@@ -619,6 +709,22 @@ export async function run(promptArg: string | undefined, flagOptions: FlagOption
 
 			if (jsonEmitter) {
 				jsonEmitter.attachToClient(host.client)
+			}
+
+			if (process.env.ROO_SERVE_BRIDGE === "1") {
+				serveBridgeListener = (message: ExtensionMessage) => {
+					try {
+						if (!process.stdout.writable || process.stdout.destroyed) {
+							return
+						}
+
+						process.stdout.write(JSON.stringify({ rooServeBridge: true, message }) + "\n")
+					} catch {
+						// ignore
+					}
+				}
+
+				host.on("extensionWebviewMessage", serveBridgeListener)
 			}
 
 			if (useStdinPromptStream) {

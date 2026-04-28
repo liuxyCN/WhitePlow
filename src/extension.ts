@@ -51,6 +51,9 @@ import {
 import { initializeI18n } from "./i18n"
 import { flushModels, refreshModels } from "./api/providers/fetchers/modelCache"
 
+/** Delay before starting codebase indexing and document→Markdown auto-watch (CLI/serve + desktop). */
+const DOC_INDEX_AND_DOCUMENT_MARKDOWN_START_DELAY_MS = 5_000
+
 /**
  * Built using https://github.com/microsoft/vscode-webview-ui-toolkit
  *
@@ -169,24 +172,15 @@ export async function activate(context: vscode.ExtensionContext) {
 
 	const contextProxy = await ContextProxy.getInstance(context)
 
-	// Initialize code index managers for all workspace folders.
-	const codeIndexManagers: CodeIndexManager[] = []
+	// Register code index managers for all workspace folders (heavy init deferred — see timer below).
+	const codeIndexInitEntries: { manager: CodeIndexManager; fsPath: string }[] = []
 
 	if (vscode.workspace.workspaceFolders) {
 		for (const folder of vscode.workspace.workspaceFolders) {
 			const manager = CodeIndexManager.getInstance(context, folder.uri.fsPath)
 
 			if (manager) {
-				codeIndexManagers.push(manager)
-
-				// Initialize in background; do not block extension activation
-				void manager.initialize(contextProxy).catch((error) => {
-					const message = error instanceof Error ? error.message : String(error)
-					outputChannel.appendLine(
-						`[CodeIndexManager] Error during background CodeIndexManager configuration/indexing for ${folder.uri.fsPath}: ${message}`,
-					)
-				})
-
+				codeIndexInitEntries.push({ manager, fsPath: folder.uri.fsPath })
 				context.subscriptions.push(manager)
 			}
 		}
@@ -195,7 +189,9 @@ export async function activate(context: vscode.ExtensionContext) {
 	// Initialize the provider *before* the Roo Code Cloud service.
 	const provider = new ClineProvider(context, outputChannel, "sidebar", contextProxy, mdmService)
 
-	// Per-folder document → Markdown watchers (file-cool via MCP Gateway).
+	// Per-folder document → Markdown watchers (heavy init deferred — same timer as code index).
+	const documentMarkdownInitEntries: { watcher: DocumentMarkdownWatcher; fsPath: string }[] = []
+
 	if (vscode.workspace.workspaceFolders) {
 		for (const folder of vscode.workspace.workspaceFolders) {
 			const dm = DocumentMarkdownWatcher.getInstance(
@@ -206,16 +202,42 @@ export async function activate(context: vscode.ExtensionContext) {
 				() => provider.getDocumentMarkdownTypeFilters(),
 			)
 			if (dm) {
+				documentMarkdownInitEntries.push({ watcher: dm, fsPath: folder.uri.fsPath })
 				context.subscriptions.push(dm)
-				void dm.initialize().catch((error) => {
-					const message = error instanceof Error ? error.message : String(error)
-					outputChannel.appendLine(
-						`[DocumentMarkdownWatcher] Error initializing for ${folder.uri.fsPath}: ${message}`,
-					)
-				})
 			}
 		}
 	}
+
+	let deferredDocIndexAndMarkdownTimer: ReturnType<typeof setTimeout> | undefined
+	const clearDeferredDocIndexAndMarkdownTimer = () => {
+		if (deferredDocIndexAndMarkdownTimer !== undefined) {
+			clearTimeout(deferredDocIndexAndMarkdownTimer)
+			deferredDocIndexAndMarkdownTimer = undefined
+		}
+	}
+	context.subscriptions.push({ dispose: clearDeferredDocIndexAndMarkdownTimer })
+
+	deferredDocIndexAndMarkdownTimer = setTimeout(() => {
+		deferredDocIndexAndMarkdownTimer = undefined
+
+		for (const { manager, fsPath } of codeIndexInitEntries) {
+			void manager.initialize(contextProxy).catch((error) => {
+				const message = error instanceof Error ? error.message : String(error)
+				outputChannel.appendLine(
+					`[CodeIndexManager] Error during background CodeIndexManager configuration/indexing for ${fsPath}: ${message}`,
+				)
+			})
+		}
+
+		for (const { watcher, fsPath } of documentMarkdownInitEntries) {
+			void watcher.initialize().catch((error) => {
+				const message = error instanceof Error ? error.message : String(error)
+				outputChannel.appendLine(
+					`[DocumentMarkdownWatcher] Error initializing for ${fsPath}: ${message}`,
+				)
+			})
+		}
+	}, DOC_INDEX_AND_DOCUMENT_MARKDOWN_START_DELAY_MS)
 
 	// Initialize Roo Code Cloud service.
 	const postStateListener = () => ClineProvider.getVisibleInstance()?.postStateToWebviewWithoutClineMessages()

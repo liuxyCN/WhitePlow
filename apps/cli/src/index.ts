@@ -12,7 +12,13 @@ import {
 	listModels,
 	listSessions,
 	upgrade,
+	serve,
 } from "@/commands/index.js"
+import type { ServeCommandOptions } from "@/commands/serve/serve-cli.js"
+
+function collectWorkspacePath(value: string, previous: string[]): string[] {
+	return previous.concat(value)
+}
 
 const program = new Command()
 
@@ -29,7 +35,12 @@ program
 	.option("--create-with-session-id <session-id>", "Create a new task with a specific session ID (must be a UUID)")
 	.option("--session-id <session-id>", "Resume a specific task by session ID")
 	.option("-c, --continue", "Resume the most recent task in the current workspace", false)
-	.option("-w, --workspace <path>", "Workspace directory path (defaults to current working directory)")
+	.option(
+		"-w, --workspace <path>",
+		"Workspace directory (repeat for multi-root; first is default cwd; defaults to cwd if omitted)",
+		collectWorkspacePath,
+		[],
+	)
 	.option("-p, --print", "Print response and exit (non-interactive mode)", false)
 	.option(
 		"--stdin-prompt-stream",
@@ -45,6 +56,10 @@ program
 	.option("-d, --debug", "Enable debug output (includes detailed debug information)", false)
 	.option("-a, --require-approval", "Require manual approval for actions", false)
 	.option("-k, --api-key <key>", "API key for the LLM provider")
+	.option(
+		"--open-ai-base-url <url>",
+		"OpenAI-compatible API base URL (required for chinalifepe when not in saved extension settings)",
+	)
 	.option("--provider <provider>", "API provider (roo, anthropic, openai, openrouter, etc.)")
 	.option("-m, --model <model>", "Model to use", DEFAULT_FLAGS.model)
 	.option("--mode <mode>", "Mode to start in (code, architect, ask, debug, etc.)", DEFAULT_FLAGS.mode)
@@ -61,6 +76,10 @@ program
 	)
 	.option("--exit-on-error", "Exit on API request errors instead of retrying", false)
 	.option("--ephemeral", "Run without persisting state (uses temporary storage)", false)
+	.option(
+		"--cli-user-id <id>",
+		"Store extension state under $ROO_CLI_STORAGE_ROOT/<id> (default ~/neontractor-storage/<id>); [a-zA-Z0-9_-]+ only; ignored with --ephemeral",
+	)
 	.option("--oneshot", "Exit upon task completion", false)
 	.option(
 		"--output-format <format>",
@@ -134,6 +153,25 @@ program
 	.description("Upgrade Roo Code CLI to the latest version")
 	.action(async () => {
 		await runUpgradeAction(() => upgrade())
+	})
+
+program
+	.command("serve")
+	.description(
+		"Run HTTP API for agents (SSE). Create agents with POST /v1/agents JSON: workspace, apiKey, openAiBaseUrl (required for default chinalifepe; MCP uses <openAiBaseUrl>/mcp)",
+	)
+	.option("--host <host>", "Bind address", process.env.ROO_SERVE_HOST ?? "127.0.0.1")
+	.option("--port <port>", "TCP port", process.env.ROO_SERVE_PORT ?? "9876")
+	.option("-e, --extension <path>", "Path to the extension bundle directory (extension.js)")
+	.option("-d, --debug", "Enable debug on spawned agents", false)
+	.action(async (opts: ServeCommandOptions) => {
+		try {
+			await serve(opts)
+		} catch (error) {
+			const message = error instanceof Error ? error.message : String(error)
+			console.error(`[serve] ${message}`)
+			process.exit(1)
+		}
 	})
 
 const authCommand = program.command("auth").description("Manage authentication for Roo Code Cloud")

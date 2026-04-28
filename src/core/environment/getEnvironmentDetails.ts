@@ -227,32 +227,46 @@ export async function getEnvironmentDetails(cline: Task, includeFileDetails: boo
 	details += `<model>${modelId}</model>\n`
 
 	if (includeFileDetails) {
-		details += `\n\n# Current Workspace Directory (${cline.cwd.toPosix()}) Files\n`
-		const isDesktop = arePathsEqual(cline.cwd, path.join(os.homedir(), "Desktop"))
+		const workspaceFolders = vscode.workspace.workspaceFolders
+		const roots: { path: string; name: string }[] =
+			workspaceFolders && workspaceFolders.length > 0
+				? workspaceFolders.map((f) => ({ path: f.uri.fsPath, name: f.name }))
+				: [{ path: cline.cwd, name: path.basename(cline.cwd) }]
 
-		if (isDesktop) {
-			// Don't want to immediately access desktop since it would show
-			// permission popup.
-			details += "(Desktop files not shown automatically. Use list_files to explore if needed.)"
+		details += `\n\n# Workspace folders\n`
+		for (const r of roots) {
+			details += `- \`${r.name}\` — \`${r.path.replace(/\\/g, "/")}\`\n`
+		}
+
+		details += `\n# Files under workspace root\n`
+
+		const maxFiles = maxWorkspaceFiles ?? 200
+		const desktopPath = path.join(os.homedir(), "Desktop")
+
+		if (maxFiles === 0) {
+			details += "(Workspace files context disabled. Use list_files to explore if needed.)"
 		} else {
-			const maxFiles = maxWorkspaceFiles ?? 200
+			const perRootLimit = Math.max(1, Math.floor(maxFiles / roots.length))
+			const { showRooIgnoredFiles = false } = state ?? {}
 
-			// Early return for limit of 0
-			if (maxFiles === 0) {
-				details += "(Workspace files context disabled. Use list_files to explore if needed.)"
-			} else {
-				const [files, didHitLimit] = await listFiles(cline.cwd, true, maxFiles)
-				const { showRooIgnoredFiles = false } = state ?? {}
-
-				const result = formatResponse.formatFilesList(
-					cline.cwd,
-					files,
-					didHitLimit,
-					cline.rooIgnoreController,
-					showRooIgnoredFiles,
-				)
-
-				details += result
+			for (const r of roots) {
+				details += `\n## \`${r.path.replace(/\\/g, "/")}\`\n`
+				const isDesktop = arePathsEqual(r.path, desktopPath)
+				if (isDesktop) {
+					// Don't want to immediately access desktop since it would show
+					// permission popup.
+					details += "(Desktop files not shown automatically. Use list_files to explore if needed.)"
+				} else {
+					const [files, didHitLimit] = await listFiles(r.path, true, perRootLimit)
+					const result = formatResponse.formatFilesList(
+						r.path,
+						files,
+						didHitLimit,
+						cline.rooIgnoreController,
+						showRooIgnoredFiles,
+					)
+					details += result
+				}
 			}
 		}
 	}

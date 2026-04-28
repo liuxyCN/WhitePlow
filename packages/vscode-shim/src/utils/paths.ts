@@ -21,14 +21,53 @@ function getBaseStorageDir(): string {
  * @param workspacePath - The workspace path to hash
  * @returns A hexadecimal hash string
  */
-export function hashWorkspacePath(workspacePath: string): string {
+function hashString(s: string): string {
 	let hash = 0
-	for (let i = 0; i < workspacePath.length; i++) {
-		const char = workspacePath.charCodeAt(i)
+	for (let i = 0; i < s.length; i++) {
+		const char = s.charCodeAt(i)
 		hash = (hash << 5) - hash + char
 		hash = hash & hash // Convert to 32-bit integer
 	}
 	return Math.abs(hash).toString(16)
+}
+
+export function hashWorkspacePath(workspacePath: string): string {
+	return hashString(workspacePath)
+}
+
+/**
+ * Stable hash for multi-root workspace storage (ordered folder list, extension parity).
+ */
+export function hashWorkspacePaths(orderedRoots: readonly string[]): string {
+	if (orderedRoots.length === 0) {
+		return hashString("")
+	}
+	if (orderedRoots.length === 1) {
+		return hashString(orderedRoots[0]!)
+	}
+	return hashString(orderedRoots.join("\0"))
+}
+
+/**
+ * CLI / VS Code multi-root: resolve each entry to an absolute normalized path, skip empties,
+ * dedupe preserving first occurrence order (parity with ordered workspace folders).
+ */
+export function normalizeOrderedWorkspaceRoots(paths: readonly string[]): string[] {
+	const seen = new Set<string>()
+	const out: string[] = []
+	for (const raw of paths) {
+		const trimmed = String(raw).trim()
+		if (!trimmed) {
+			continue
+		}
+		const p = path.normalize(path.resolve(trimmed))
+		if (!p || seen.has(p)) {
+			continue
+		}
+		seen.add(p)
+		out.push(p)
+	}
+	return out
 }
 
 /**

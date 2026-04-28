@@ -34,6 +34,82 @@ const wasmPlugin = (): Plugin => ({
 	},
 })
 
+const VIRTUAL_SERVE_THEME_COLORS = "virtual:serve-theme-colors"
+const RESOLVED_VIRTUAL_SERVE_THEME_COLORS = "\0" + VIRTUAL_SERVE_THEME_COLORS
+
+/** Same line-strip as `getTheme.parseThemeString` for theme JSON with // comments. */
+function stripThemeJsonComments(themeString: string): string {
+	return themeString
+		.split("\n")
+		.filter((line) => !line.trim().startsWith("//"))
+		.join("\n")
+}
+
+/**
+ * Merge `colors` along `include`: base theme first, then each file overrides (child wins on same key).
+ */
+function flattenThemeColorsFromFile(absPath: string, stack: Set<string> = new Set()): Record<string, string> {
+	const real = path.resolve(absPath)
+	if (stack.has(real)) {
+		return {}
+	}
+	stack.add(real)
+	try {
+		const raw = fs.readFileSync(real, "utf8")
+		const parsed = JSON.parse(stripThemeJsonComments(raw)) as {
+			include?: string
+			colors?: Record<string, string | null | undefined>
+		}
+
+		let merged: Record<string, string> = {}
+		if (typeof parsed.include === "string" && parsed.include.length > 0) {
+			const incPath = path.resolve(path.dirname(real), parsed.include.replace(/^\.\//, ""))
+			merged = { ...flattenThemeColorsFromFile(incPath, stack) }
+		}
+		if (parsed.colors && typeof parsed.colors === "object") {
+			for (const [k, v] of Object.entries(parsed.colors)) {
+				if (typeof v === "string" && v.length > 0) {
+					merged[k] = v
+				}
+			}
+		}
+		return merged
+	} finally {
+		stack.delete(real)
+	}
+}
+
+function serveThemeColorsPlugin(mode: string): Plugin {
+	return {
+		name: "serve-theme-colors",
+		resolveId(id) {
+			if (id === VIRTUAL_SERVE_THEME_COLORS) {
+				return RESOLVED_VIRTUAL_SERVE_THEME_COLORS
+			}
+			return undefined
+		},
+		load(id) {
+			if (id !== RESOLVED_VIRTUAL_SERVE_THEME_COLORS) {
+				return undefined
+			}
+
+			if (mode !== "serve") {
+				return "export const THEME_COLORS = {};"
+			}
+
+			const themesDir = path.resolve(__dirname, "../src/integrations/theme/default-themes")
+			const entry = path.join(themesDir, "light_modern.json")
+			if (!fs.existsSync(entry)) {
+				console.warn(`[serve-theme-colors] missing ${entry}; THEME_COLORS will be empty`)
+				return "export const THEME_COLORS = {};"
+			}
+
+			const colors = flattenThemeColorsFromFile(entry)
+			return `export const THEME_COLORS = ${JSON.stringify(colors)};`
+		},
+	}
+}
+
 const persistPortPlugin = (): Plugin => ({
 	name: "write-port-to-file",
 	configureServer(viteDevServer) {
@@ -81,7 +157,13 @@ export default defineConfig(({ mode }) => {
 		define["process.env.PKG_OUTPUT_CHANNEL"] = JSON.stringify("Roo-Code-Nightly")
 	}
 
+	if (mode === "serve") {
+		outDir = "../apps/cli/static-webview/build"
+		define["import.meta.env.VITE_ROO_SERVE"] = JSON.stringify("1")
+	}
+
 	const plugins: PluginOption[] = [
+		serveThemeColorsPlugin(mode),
 		react({
 			babel: {
 				plugins: [["babel-plugin-react-compiler", { target: "18" }]],
@@ -94,6 +176,7 @@ export default defineConfig(({ mode }) => {
 	]
 
 	return {
+		base: mode === "serve" ? "/app/" : undefined,
 		plugins,
 		resolve: {
 			alias: {

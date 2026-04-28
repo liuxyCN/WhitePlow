@@ -40,5 +40,11 @@
 		"progressExtracting": "正在解压…",
 		"progressDone": "解压完成",
 		"progressFailed": "解压失败"
+	},
+	"serve": {
+		"blockedToolChatLine": "[Serve] **{{toolName}}**（未执行） {{summary}}\n\n*{{reason}}*",
+		"disabledToolReason": "工具「{{toolName}}」在 serve 模式下已禁用（不允许 edit 与 command 工具组）。",
+		"settingsReadOnly": "在 serve 环境下不允许该操作。"
 	}
+
 }

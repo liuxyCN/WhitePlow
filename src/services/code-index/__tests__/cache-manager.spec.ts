@@ -16,6 +16,7 @@ import { safeWriteJson } from "../../../utils/safeWriteJson"
 vitest.mock("vscode", () => ({
 	Uri: {
 		joinPath: vitest.fn(),
+		file: vitest.fn((fsPath: string) => ({ fsPath, scheme: "file", path: fsPath })),
 	},
 	workspace: {
 		fs: {
@@ -65,10 +66,18 @@ describe("CacheManager", () => {
 	describe("constructor", () => {
 		it("should correctly set up cachePath using Uri.joinPath and crypto.createHash", () => {
 			const expectedHash = createHash("sha256").update(mockWorkspacePath).digest("hex")
+			const expectedName = `roo-index-cache-${expectedHash}.json`
 
+			expect(vscode.Uri.file).toHaveBeenCalledWith(mockWorkspacePath)
 			expect(vscode.Uri.joinPath).toHaveBeenCalledWith(
 				mockContext.globalStorageUri,
-				`roo-index-cache-${expectedHash}.json`,
+				expectedName,
+			)
+			expect(vscode.Uri.joinPath).toHaveBeenCalledWith(
+				{ fsPath: mockWorkspacePath, scheme: "file", path: mockWorkspacePath },
+				".roo",
+				"doc-index",
+				expectedName,
 			)
 		})
 

@@ -25,6 +25,9 @@ vi.mock("vscode", () => ({
 		tabGroups: { all: [], onDidChangeTabs: vi.fn() },
 		visibleTextEditors: [],
 	},
+	workspace: {
+		workspaceFolders: undefined,
+	},
 	env: {
 		language: "en-US",
 	},
@@ -165,8 +168,8 @@ describe("getEnvironmentDetails", () => {
 
 	it("should include file details when includeFileDetails is true", async () => {
 		const result = await getEnvironmentDetails(mockCline as Task, true)
-		expect(result).toContain("# Current Workspace Directory")
-		expect(result).toContain("Files")
+		expect(result).toContain("# Workspace folders")
+		expect(result).toContain("# Files under workspace root")
 
 		expect(listFiles).toHaveBeenCalledWith(mockCwd, true, 50)
 
@@ -201,6 +204,7 @@ describe("getEnvironmentDetails", () => {
 		const result = await getEnvironmentDetails(mockCline as Task, true)
 
 		expect(listFiles).not.toHaveBeenCalled()
+		expect(result).toContain("# Workspace folders")
 		expect(result).toContain("Workspace files context disabled")
 		expect(formatResponse.formatFilesList).not.toHaveBeenCalled()
 	})

@@ -30,6 +30,7 @@ import { DEFAULT_FLAGS, type SupportedProvider } from "@/types/index.js"
 import type { User } from "@/lib/sdk/index.js"
 import { getProviderSettings } from "@/lib/utils/provider.js"
 import { createEphemeralStorageDir } from "@/lib/storage/index.js"
+import { parseCliUserId, resolveCliUserStorageDir } from "@/lib/utils/cli-user-id.js"
 
 import type { WaitingForInputEvent, TaskCompletedEvent } from "./events.js"
 import type { AgentStateInfo } from "./agent-state.js"
@@ -70,14 +71,23 @@ export interface ExtensionHostOptions {
 	user: User | null
 	provider: SupportedProvider
 	apiKey?: string
+	/** OpenAI-compatible base URL (ChinalifePE / custom OpenAI endpoint). */
+	openAiBaseUrl?: string
 	model: string
 	workspacePath: string
+	/** Extra roots after {@link workspacePath} (VS Code multi-root parity). */
+	workspaceFolderPaths?: string[]
 	extensionPath: string
 	nonInteractive?: boolean
 	/**
 	 * When true, uses a temporary storage directory that is cleaned up on exit.
 	 */
 	ephemeral: boolean
+	/**
+	 * When set (and not {@link ephemeral}), extension state is stored under
+	 * `$ROO_CLI_STORAGE_ROOT/<id>` (default `~/neontractor-storage/<id>`). Use {@link parseCliUserId} rules.
+	 */
+	cliUserId?: string
 	debug: boolean
 	exitOnComplete: boolean
 	terminalShell?: string
@@ -227,22 +237,27 @@ export class ExtensionHost extends EventEmitter implements ExtensionHostInterfac
 			experiments: {
 				customTools: true,
 			},
-			...getProviderSettings(this.options.provider, this.options.apiKey, this.options.model),
+			...getProviderSettings(
+				this.options.provider,
+				this.options.apiKey,
+				this.options.model,
+				this.options.openAiBaseUrl,
+			),
 		}
 
 		this.initialSettings = this.options.nonInteractive
 			? {
 					autoApprovalEnabled: true,
 					alwaysAllowReadOnly: true,
-					alwaysAllowReadOnlyOutsideWorkspace: true,
-					alwaysAllowWrite: true,
-					alwaysAllowWriteOutsideWorkspace: true,
-					alwaysAllowWriteProtected: true,
+					alwaysAllowReadOnlyOutsideWorkspace: false,
+					alwaysAllowWrite: false,
+					alwaysAllowWriteOutsideWorkspace: false,
+					alwaysAllowWriteProtected: false,
 					alwaysAllowMcp: true,
 					alwaysAllowModeSwitch: true,
 					alwaysAllowSubtasks: true,
-					alwaysAllowExecute: true,
-					allowedCommands: ["*"],
+					alwaysAllowExecute: false,
+					allowedCommands: [],
 					...baseSettings,
 				}
 			: {
@@ -262,6 +277,48 @@ export class ExtensionHost extends EventEmitter implements ExtensionHostInterfac
 		if (this.options.terminalShell) {
 			this.initialSettings.terminalShellIntegrationDisabled = true
 			this.initialSettings.execaShellPath = this.options.terminalShell
+		}
+
+		// ChinalifePE MCP gateway shares the same host as the OpenAI-compatible API.
+		// Without this, persisted or default `mcpGatewayUrl` (production) wins over `openAiBaseUrl`.
+		if (this.options.provider === "chinalifepe") {
+			const rawBase =
+				this.options.openAiBaseUrl?.trim() ??
+				(typeof this.initialSettings.openAiBaseUrl === "string"
+					? this.initialSettings.openAiBaseUrl.trim()
+					: "")
+			if (rawBase) {
+				const root = rawBase.replace(/\/$/, "")
+				this.initialSettings.mcpGatewayUrl = `${root}/mcp`
+				const gatewayKey =
+					this.options.apiKey?.trim() ??
+					(typeof this.initialSettings.openAiApiKey === "string"
+						? this.initialSettings.openAiApiKey.trim()
+						: "")
+				if (gatewayKey) {
+					this.initialSettings.mcpGatewayApiKey = gatewayKey
+				}
+			}
+		} else {
+			const savedUrl =
+				typeof this.initialSettings.mcpGatewayUrl === "string"
+					? this.initialSettings.mcpGatewayUrl.trim()
+					: ""
+			if (!savedUrl) {
+				this.initialSettings.mcpGatewayUrl = "https://ai.chinalifepe.com/mcp"
+			}
+			const savedKey =
+				typeof this.initialSettings.mcpGatewayApiKey === "string"
+					? this.initialSettings.mcpGatewayApiKey.trim()
+					: ""
+			if (!savedKey) {
+				this.initialSettings.mcpGatewayApiKey = ""
+			}
+		}
+
+		// CLI / `roo serve` agents: default language 简体中文（扩展状态与 i18n 与 vscode.env 对齐）
+		if (process.env.ROO_SERVE_BRIDGE === "1") {
+			this.initialSettings.language = "zh-CN"
 		}
 	}
 
@@ -308,6 +365,12 @@ export class ExtensionHost extends EventEmitter implements ExtensionHostInterfac
 	private setupQuietMode(): void {
 		// Skip if already set up or if integrationTest mode
 		if (this.originalConsole || this.options.integrationTest) {
+			return
+		}
+
+		// `roo serve` parses child stdout as NDJSON; the parent mirrors non-protocol lines to its stderr.
+		// Quiet mode would replace `console.log` with no-ops, so extension logs never reach stdout — skip suppression.
+		if (process.env.ROO_SERVE_BRIDGE === "1") {
 			return
 		}
 
@@ -378,12 +441,26 @@ export class ExtensionHost extends EventEmitter implements ExtensionHostInterfac
 		if (this.options.ephemeral) {
 			this.ephemeralStorageDir = await createEphemeralStorageDir()
 			storageDir = this.ephemeralStorageDir
+		} else if (this.options.cliUserId !== undefined && this.options.cliUserId.trim() !== "") {
+			const safeId = parseCliUserId(this.options.cliUserId)
+			if (!safeId) {
+				this.restoreConsole()
+				throw new Error(
+					"Invalid --cli-user-id: use only letters, digits, hyphen, and underscore; max 256 characters.",
+				)
+			}
+
+			storageDir = resolveCliUserStorageDir(safeId)
+			await fs.promises.mkdir(storageDir, { recursive: true })
 		}
 
 		// Create VSCode API mock.
 		this.vscode = createVSCodeAPI(this.options.extensionPath, this.options.workspacePath, undefined, {
 			appRoot: CLI_PACKAGE_ROOT,
 			storageDir,
+			...(this.options.workspaceFolderPaths?.length
+				? { workspaceFolderPaths: this.options.workspaceFolderPaths }
+				: {}),
 		})
 		;(global as Record<string, unknown>).vscode = this.vscode
 		;(global as Record<string, unknown>).__extensionHost = this
@@ -448,7 +525,11 @@ export class ExtensionHost extends EventEmitter implements ExtensionHostInterfac
 		// webviewDidLaunch handler's first-time init sync reads default state
 		// (apiProvider: "anthropic") instead of the CLI-provided settings.
 		setRuntimeConfigValues("roo-cline", this.initialSettings as Record<string, unknown>)
-		this.sendToExtension({ type: "updateSettings", updatedSettings: this.initialSettings })
+		if (process.env.ROO_SERVE_BRIDGE === "1") {
+			this.sendToExtension({ type: "bootstrapCliRuntimeSettings", updatedSettings: this.initialSettings })
+		} else {
+			this.sendToExtension({ type: "updateSettings", updatedSettings: this.initialSettings })
+		}
 
 		// Now trigger extension initialization. The context proxy should already
 		// have CLI-provided values when the webviewDidLaunch handler runs.

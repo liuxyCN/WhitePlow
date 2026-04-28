@@ -87,7 +87,7 @@ export {
 
 // Export utilities
 export { logs, setLogger, type Logger } from "./utils/logger.js"
-export { VSCodeMockPaths } from "./utils/paths.js"
+export { VSCodeMockPaths, normalizeOrderedWorkspaceRoots } from "./utils/paths.js"
 export { machineIdSync } from "./utils/machine-id.js"
 
 // Re-export as createVSCodeAPI for simpler API

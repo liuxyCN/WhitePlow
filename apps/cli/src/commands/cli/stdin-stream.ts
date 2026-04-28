@@ -6,6 +6,7 @@ import {
 	type RooCliCommandName,
 	type RooCliInputCommand,
 	type RooCliStartCommand,
+	type WebviewMessage,
 } from "@roo-code/types"
 
 import { isRecord } from "@/lib/utils/guards.js"
@@ -51,7 +52,7 @@ export function parseStdinStreamCommand(line: string, lineNumber: number): Stdin
 
 	if (!VALID_STDIN_COMMANDS.has(commandRaw as StdinStreamCommandName)) {
 		throw new Error(
-			`stdin command line ${lineNumber}: unsupported command "${commandRaw}" (expected start|message|cancel|ping|shutdown)`,
+			`stdin command line ${lineNumber}: unsupported command "${commandRaw}" (expected start|message|cancel|ping|shutdown|extension)`,
 		)
 	}
 
@@ -120,6 +121,20 @@ export function parseStdinStreamCommand(line: string, lineNumber: number): Stdin
 			requestId,
 			prompt: promptRaw,
 			...(images !== undefined ? { images } : {}),
+		}
+	}
+
+	if (command === "extension") {
+		const messageRaw = parsed.message
+
+		if (!isRecord(messageRaw)) {
+			throw new Error(`stdin command line ${lineNumber}: "extension" requires object "message"`)
+		}
+
+		return {
+			command,
+			requestId,
+			message: messageRaw,
 		}
 	}
 
@@ -922,6 +937,46 @@ export async function runStdinStreamMode({ host, jsonEmitter, setStreamRequestId
 						success: true,
 					})
 					break
+
+				case "extension": {
+					setStreamRequestId(stdinCommand.requestId)
+
+					try {
+						host.sendToExtension(stdinCommand.message as unknown as WebviewMessage)
+					} catch (error) {
+						const message = error instanceof Error ? error.message : String(error)
+						jsonEmitter.emitControl({
+							subtype: "error",
+							requestId: stdinCommand.requestId,
+							command: "extension",
+							taskId: latestTaskId,
+							content: message,
+							code: "extension_error",
+							success: false,
+						})
+						break
+					}
+
+					jsonEmitter.emitControl({
+						subtype: "ack",
+						requestId: stdinCommand.requestId,
+						command: "extension",
+						taskId: latestTaskId,
+						content: "extension message sent",
+						code: "accepted",
+						success: true,
+					})
+					jsonEmitter.emitControl({
+						subtype: "done",
+						requestId: stdinCommand.requestId,
+						command: "extension",
+						taskId: latestTaskId,
+						content: "extension message delivered",
+						code: "delivered",
+						success: true,
+					})
+					break
+				}
 
 				case "shutdown":
 					jsonEmitter.emitControl({

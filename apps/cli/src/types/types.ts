@@ -8,6 +8,7 @@ export const supportedProviders = [
 	"openrouter",
 	"vercel-ai-gateway",
 	"roo",
+	"chinalifepe",
 ] as const satisfies ProviderName[]
 
 export type SupportedProvider = (typeof supportedProviders)[number]
@@ -23,7 +24,8 @@ export type FlagOptions = {
 	createWithSessionId?: string
 	sessionId?: string
 	continue: boolean
-	workspace?: string
+	/** Single path, or multiple when `-w` is repeated (multi-root). */
+	workspace?: string | string[]
 	print: boolean
 	stdinPromptStream: boolean
 	signalOnlyExit: boolean
@@ -32,6 +34,8 @@ export type FlagOptions = {
 	requireApproval: boolean
 	exitOnError: boolean
 	apiKey?: string
+	/** OpenAI-compatible base URL (e.g. ChinalifePE gateway); no trailing /v1 required. */
+	openAiBaseUrl?: string
 	provider?: SupportedProvider
 	model?: string
 	mode?: string
@@ -39,6 +43,8 @@ export type FlagOptions = {
 	reasoningEffort?: ReasoningEffortFlagOptions
 	consecutiveMistakeLimit?: number
 	ephemeral: boolean
+	/** Per-user storage segment; see ExtensionHostOptions.cliUserId */
+	cliUserId?: string
 	oneshot: boolean
 	outputFormat?: OutputFormat
 }
