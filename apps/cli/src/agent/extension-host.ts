@@ -319,6 +319,23 @@ export class ExtensionHost extends EventEmitter implements ExtensionHostInterfac
 		// CLI / `roo serve` agents: default language 简体中文（扩展状态与 i18n 与 vscode.env 对齐）
 		if (process.env.ROO_SERVE_BRIDGE === "1") {
 			this.initialSettings.language = "zh-CN"
+			const currentMemoryConfig = this.initialSettings.longTermMemoryConfig ?? {}
+			const hasExplicitInjectMode =
+				currentMemoryConfig.longTermMemoryAutoInject !== undefined ||
+				currentMemoryConfig.longTermMemorySmartInject !== undefined
+			const hasExplicitPauseIngest = currentMemoryConfig.longTermMemoryPauseIngest !== undefined
+			if (!hasExplicitInjectMode) {
+				this.initialSettings.longTermMemoryConfig = {
+					...currentMemoryConfig,
+					longTermMemoryAutoInject: "all",
+				}
+			}
+			if (!hasExplicitPauseIngest) {
+				this.initialSettings.longTermMemoryConfig = {
+					...(this.initialSettings.longTermMemoryConfig ?? currentMemoryConfig),
+					longTermMemoryPauseIngest: true,
+				}
+			}
 		}
 	}
 
